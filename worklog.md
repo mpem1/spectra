@@ -1,0 +1,387 @@
+# Project Worklog — Music Visualizer / Lyric Video Studio
+
+Cross-session memory. Each agent MUST read this file before working and append
+its section (starting with a `---` line) after finishing its task.
+
+---
+
+Task ID: 1
+Agent: main orchestrator (Z.ai Code)
+Task: Reconstruct previous session context after context overflow; set up plan.
+
+Work Log:
+- Found no worklog.md from previous session (context was lost before it was written).
+- Examined /home/z/my-project/upload/ — two design reference screenshots from the user:
+  1. pasted_image_1792617676971.png — Gradient editor panel: presets (Sunset, Aurora,
+     Ember, Neon, Mono), color-stop rows with color swatch + position slider + numeric
+     value + delete X, "+ Add color stop" button, Angle slider (degrees, e.g. 48°),
+     "Cycle colors" toggle.
+  2. pasted_image_1792617736287.png — Right sidebar with top tabs: Visual | Background |
+     Lyrics | Export. Export tab shows:
+       - "Deterministic export" card with FRAME-EXACT badge
+       - Format: MP4 (H.264 + au) | Frame rate: 30 fps | Resolution: 1280×720 | Length: Full song
+       - Copy: "Renders offline frame-by-frame, and muxes your audio file" /
+         "no clicks, no drift, perfect sync. Opens directly in DaVinci Resolve."
+       - "Export MP4" button
+       - "Live recording (WebM/MP4)" radio option: real-time screen capture, audio
+         re-recorded; note about alpha recording (VP8 + alpha) active when transparent
+         background is on; "Start recording" button
+       - "Snapshot current frame (PNG)" button
+- Conclusion: The app to build is a music visualizer / lyric-video studio:
+  upload audio → canvas visualizer with gradient controls + timed lyrics →
+  export deterministic MP4 (WebCodecs + mp4-muxer), live WebM recording, PNG snapshot.
+- Verified: Next.js 16 + TS scaffold, shadcn/ui components present, Prisma SQLite ready,
+  dev server already running on :3000 (GET / 200).
+- Created shared type contracts at src/lib/visualizer/types.ts (single source of truth
+  for engine + UI + export pipeline).
+- Installed mp4-muxer (browser MP4 muxing for deterministic export).
+
+Stage Summary:
+- App concept: "Pulse Studio" — music visualizer & lyric video maker.
+- Architecture decided:
+  - src/lib/visualizer/types.ts — shared contracts (Task 1, done by orchestrator)
+  - src/lib/audio/ + src/lib/visualizer/ — deterministic render engine (Task 2-a)
+  - src/components/studio/ — UI panels (Task 2-b)
+  - src/lib/export/ — WebCodecs/MediaRecorder export (Task 3)
+  - Prisma Project model for save/load (Task 3)
+- Only route: / (all UI on home page per project rules).
+
+---
+
+Task ID: 2-a
+Agent: general-purpose (engine)
+Task: Audio + deterministic visualizer engine
+
+Work Log:
+- Read worklog.md + src/lib/visualizer/types.ts (shared contracts; untouched).
+- Built src/lib/audio/fft.ts: dependency-free radix-2 iterative Cooley–Tukey FFT
+  (bit-reversal + butterfly passes, in-place on Float32Array re/im pairs),
+  cached Hann window, and the shared analysis helpers both paths use:
+  computeSpectrum (real input -> magnitudes), normalizeMagnitudesDb (mag*4/N to
+  compensate Hann gain -> dB -> clamped 0..1 with AnalyserNode-default constants
+  MIN_DECIBELS=-100 / MAX_DECIBELS=-30), resampleSpectrumLog (30Hz..16kHz log
+  mapping, max-pooled per bar, low bars = few bins / high bars = many),
+  rmsEnergy, computeBands (bass = first 10% of bars, treble = last 30%).
+- Built src/lib/audio/engine.ts: AudioEngine with lazy AudioContext (created on
+  first user gesture, resume() on play), decodeAudioData loadFile, proper
+  AudioBufferSourceNode lifecycle (recreated on seek/stop, natural-end
+  onended fired via onEnded callbacks, manual stops silenced), clamped
+  currentTime, AnalyserNode fftSize=2048 + smoothingTimeConstant from
+  setAnalysisOptions({barCount, smoothing}) (defaults 64/0.7), getLiveFrame()
+  producing the shared AudioFrame (byte freq -> 0..1 -> log resample, 2048
+  wave, RMS energy, bass/treble bands); returns all-zero valid frame when not
+  playing, never throws; exposes get audioBuffer() for the export pipeline;
+  dispose() closes the context.
+- Built src/lib/audio/offline.ts: OfflineAnalyzer — mono mixdown (channel
+  average), frame(index, barCount, smoothing) computes time = index/fps,
+  2048-sample Hann-windowed slice at floor(time*sampleRate), own FFT, same dB
+  normalization + log bar mapping as the engine, then analyser-style temporal
+  smoothing smoothed = prev + (cur - prev) * (1 - smoothing) (documented:
+  must be called with increasing indices 0,1,2,...; resetSmoothing() for
+  seeks). Getters: duration, totalFrames (ceil(duration*fps)), monoChannelData,
+  sampleRate.
+- Built src/lib/visualizer/gradients.ts: hex (#rgb/#rgba/#rrggbb/#rrggbbaa) +
+  rgb()/rgba() parsing, hueRotate (rgb->hsl->rotate->css; unparseable colors
+  pass through), withAlpha (multiplies embedded alpha), buildGradient (stops
+  normalized/sorted, opacity -> alpha, hue cycling time*cycleSpeed*360),
+  sampleGradient (RGB-lerped per-bar color, same hue cycling), gradientLine
+  (CSS-angle convention: 0deg=to-top, 90deg=to-right -> canvas endpoints).
+- Built src/lib/visualizer/lyrics.ts: findActiveLine (last line with
+  time <= frame.time, -1 if none) + drawLyrics (fade-in over lyrics.fade at
+  line start, fade-out before next line's time, last line persists; font
+  weight/size*S/family sans|serif|mono, positionY% of height, uppercase
+  transform, shadowBlur 12*S rgba(0,0,0,.6) for legibility).
+- Built src/lib/visualizer/renderer.ts: pure renderFrame(rc, frame, config) —
+  no Math.random/Date.now/state; S = height/720 scaling; background solid /
+  gradient (angle->endpoints) / transparent + vignette radial overlay
+  (alpha=vignette, 0=skip) + deterministic grain (mulberry32 seeded by
+  rc.frame, 2000 1px*S rects, alpha=grain*0.15); styles: bars (slot=W/barCount,
+  barW=slot*(1-gap), heights freq*sensitivity clamped, min 3px*S, roundRect
+  rounded tops w/ fallback path, per-bar sampleGradient colors, glow
+  shadowBlur 18*S, mirror/center modes), wave (3px*S gradient stroke across
+  width, mirrored copy when mirror!=none), radial (barCount spokes from
+  H*0.18 circle, len 4*S+freq*H*0.22*sens, rotation frame.time*0.15, glow on,
+  mirror = axis-reflected spokes, center = inward spokes), particles (N=90
+  seeded constants, angle = base + time*speed*(0.2+energy*1.5), radius
+  pulsates with bass*0.25*sens, sampleGradient(i/N) glowing dots + soft center
+  glow reacting to energy).
+- Built src/lib/visualizer/idle.ts: makeIdleFrame(barCount, time) —
+  deterministic layered-sine spectrum with bass boost, smooth sine-mix wave,
+  energy .4 / bass .5 / treble .3.
+- Verified with a throwaway bun script (43 checks, then deleted): FFT peak bin
+  accuracy, dB normalization range, log-resample bin placement, offline frame
+  metrics + smoothing-state reset, gradient parsing/sampling/angle math,
+  idle determinism, findActiveLine boundaries, renderFrame deterministic call
+  sequence + grain count via mocked 2D context. Found + fixed one real bug
+  (computeBands trebleStart was clamped by bassEnd, corrupting treble for
+  barCount <= ~14).
+- bun run lint: 0 problems in src/lib/audio/** and src/lib/visualizer/**
+  (the 2 remaining project errors are in the parallel UI agent's
+  src/components/studio/*.tsx files, not this task's scope). tsc --noEmit:
+  clean for all files under src/lib/audio + src/lib/visualizer.
+
+Stage Summary:
+- Files created (all new, no existing files touched):
+  src/lib/audio/fft.ts, src/lib/audio/engine.ts, src/lib/audio/offline.ts,
+  src/lib/visualizer/gradients.ts, src/lib/visualizer/lyrics.ts,
+  src/lib/visualizer/renderer.ts, src/lib/visualizer/idle.ts
+- Public APIs:
+  fft.ts: FFT_SIZE, MIN_DECIBELS, MAX_DECIBELS, hannWindow(size),
+    computeSpectrum(re, im, out), normalizeMagnitudesDb(mags, out),
+    resampleSpectrumLog(src, binHz, barCount, out), rmsEnergy(wave),
+    computeBands(freq) -> {bass, treble}
+  engine.ts: class AudioEngine — loadFile(file): Promise<{duration, name}>,
+    play/pause/seek/stop/dispose, onEnded(cb), setAnalysisOptions({barCount,
+    smoothing}), getLiveFrame(): AudioFrame; getters currentTime, isPlaying,
+    isLoaded, duration, name, audioBuffer
+  offline.ts: class OfflineAnalyzer(audioBuffer, fps) — frame(index, barCount,
+    smoothing): AudioFrame, resetSmoothing(); getters duration, totalFrames,
+    monoChannelData, sampleRate, framesPerSecond
+  gradients.ts: parseColor, hueRotate(color, deg), withAlpha(color, alpha),
+    buildGradient(ctx, x0,y0,x1,y1, stops, time, cycle, cycleSpeed),
+    sampleGradient(stops, t, time, cycle, cycleSpeed), gradientLine(angle, w, h)
+  lyrics.ts: findActiveLine(lines, time): number, drawLyrics(rc, frame, lyrics)
+  renderer.ts: renderFrame(rc: RenderContext, frame: AudioFrame,
+    config: StudioConfig): void
+  idle.ts: makeIdleFrame(barCount, time): AudioFrame
+- Key decisions: preview/export parity achieved by sharing dB-normalization
+  constants (AnalyserNode defaults -100/-30), log bar mapping and band math
+  between engine + offline analyzer; engine's getLiveFrame and offline's
+  frame() reuse internal buffers (read synchronously); vignette/grain follow
+  the literal spec (applied whenever > 0, also over transparent mode — zero
+  the sliders for clean alpha exports); grain dot size scales with S so 1080p
+  exports match 720p preview.
+- Next (Task 3): consume AudioEngine.audioBuffer + OfflineAnalyzer in
+  src/lib/export/ (WebCodecs + mp4-muxer), loop frame(index) 0..totalFrames-1,
+  renderFrame at export resolution, mux with original audio file.
+---
+
+Task ID: 2-b
+Agent: general-purpose (UI)
+Task: Studio UI — top bar, preview canvas, control panel tabs, gradient editor
+
+Work Log:
+- Read worklog.md + src/lib/visualizer/types.ts; reviewed all shadcn/ui component APIs
+  (Slider, Switch, Select, Dialog, Popover, Tabs, Progress, Badge, Tooltip, Sonner) before use.
+- Created zustand store (src/store/studio.ts): config (deep-cloned DEFAULT_STUDIO_CONFIG),
+  activeTab, audioMeta, projectId, exportSettings (mp4/30fps/1280x720/full) + all patch/set
+  actions with immutable spread updates; patchGradient → visualizer.gradient, patchBgGradient
+  → background.gradient, applyPreset → preset stops onto visualizer gradient.
+- Created registries: canvas-registry.ts (preview canvas singleton) and engine-registry.ts
+  (AudioEngine singleton + PreviewControls {play,pause,seek,isPlaying} so ExportTab can force
+  playback from 0 in demo mode too).
+- GradientEditor matches screenshot 1: reset (RotateCcw), 5 preset chips (28px gradient
+  circles + names), per-stop rows (28×20 swatch → custom Popover picker: native color input +
+  hex input + alpha slider bound to stop.opacity; position slider 0..100 + numeric readout +
+  delete X with min-2 guard), "+ Add color stop" dashed button, Angle slider (° readout),
+  Cycle colors switch (+ conditional cycle-speed slider).
+- Visual tab: 4 style cards (bars/wave/radial/particles, emerald active state), sliders with
+  numeric readouts (bar count 16..256/8, smoothing, sensitivity, roundness, gap), mirror
+  Select + glow Switch, gradient editor section.
+- Background tab: mode cards (Solid/Gradient/Alpha), solid color row (swatch+native picker+hex),
+  background GradientEditor, transparent-mode hint, vignette + grain sliders.
+- Lyrics tab: enable switch, source Textarea + Parse LRC (multi-tag `[mm:ss.xx]` support) +
+  Distribute evenly (uses audioMeta duration, 60s fallback; auto-enables lyrics), parsed-lines
+  list (max-h-96 scroll, editable m:ss time inputs with render-time derived-state reset, text
+  inputs, delete, count badge), style controls (font/size/weight/posY/fade/uppercase/color).
+- Export tab matches screenshot 2: "Deterministic export" card + FRAME-EXACT emerald badge,
+  2×2 selects (format/fps/resolution/length), two-column caption copy, big emerald Export MP4
+  button (disabled + tooltip "Load audio first" until engine.audioBuffer exists), in-flight
+  state shows phase label + Progress % + t= + Cancel (cooperative `signal: {cancelled}` flag
+  passed in opts object), blob download pulse-studio.mp4 + toast; "Live recording (WebM)"
+  card implemented standalone (canvas.captureStream(30) + MediaRecorder, VP9→VP8→webm mime
+  fallback, alpha note when transparent mode, red pulse REC + elapsed timer, seek(0)+play()
+  on start, auto-stop when playback ends, .webm download); Snapshot PNG via canvas.toBlob.
+- PreviewCanvas: owns AudioEngine (ref + registry), DPR-aware canvas inside JS-fitted 16:9
+  letterbox (ResizeObserver), checkerboard layer only in transparent mode, single persistent
+  rAF loop (runs while paused too → config edits repaint instantly via configRef), frame
+  source = engine.getLiveFrame() when loaded else makeIdleFrame(barCount, demoClock), demo
+  clock advances only while playing, engine-authoritative isPlaying sync, throttled (~8Hz)
+  time/duration UI sync, seek slider works in both modes, setAnalysisOptions effect on
+  barCount/smoothing, onEnded → pause, dispose + registry cleanup on unmount.
+- TopBar: wordmark + caption, Load audio (hidden input → engine.loadFile → setAudioMeta +
+  toast), Save (POST /api/projects or PUT /api/projects/:id), Open dialog (GET list with
+  Load/Delete; defensive unknown-narrowing JSON parsing) — all failures → sonner error toast,
+  UI stays usable while API is 404.
+- ControlPanel: zinc-900 card, 4 equal-width tabs synced to store activeTab, tab content in
+  slim-scrollbar overflow-y-auto (lg:max-h-[calc(100vh-150px)], natural on mobile).
+- page.tsx rewritten as studio shell (min-h-screen lg:h-screen flex, TopBar header, preview
+  flex-1 + 360px sidebar); layout.tsx metadata updated + swapped old Radix Toaster for sonner;
+  globals.css gained .slim-scrollbar + .checkerboard utilities.
+- Design language: zinc-950/900/800 palette, emerald-500 accents only, 11px uppercase
+  tracking-wider micro-labels, lucide section icons, rounded-xl cards, aria-labels on all
+  icon buttons, 44px-ish touch targets on primary controls.
+- Verified in headless Chromium: SSR 200 (with a temporary exporter stub now removed), tab
+  switching, LRC parse (2 lines, times 0:01.00/0:03.50, auto-enable), demo playback clock
+  advancing + pause, background mode switching, color popover open, Aurora preset applying
+  (#10b981 stop), 2.4 MB WebM recorded + saved toast, PNG snapshot toast, zero console/page
+  errors.
+
+Stage Summary:
+- Files created: src/store/studio.ts; src/components/studio/{canvas-registry,engine-registry,
+  color-utils,color-picker,controls,gradient-editor,visual-tab,background-tab,lyrics-tab,
+  export-tab,preview-canvas,top-bar,control-panel}.tsx/.ts; rewrote src/app/page.tsx; edited
+  src/app/layout.tsx (metadata + sonner Toaster) and src/app/globals.css (scrollbar/checkerboard).
+- UX decisions: rAF runs continuously for instant config feedback (cheap 2D renders); demo
+  mode loops at 60s and mirrors playback UX so recording works without audio; volume omitted
+  (AudioEngine exposes no gain — per instructions no engine hacks); MediaRecorder captures
+  canvas video only (audio re-record note updated accordingly, deterministic export
+  recommended in copy); extra files beyond the listed set: color-utils.ts, color-picker.tsx,
+  controls.tsx, engine-registry.ts (all internal helpers).
+- Known gaps: page 500s until Task 3 lands src/lib/export/exporter.ts (verified expected —
+  only unresolved import in tsc/lint); seek-slider thumb a11y label sits on Slider root
+  (shadcn Slider limitation); exportMP4 `signal` cancel flag is passed and honored once Task
+  3 lands; project API response parsing is defensive to absorb Task 3 shape changes.
+
+---
+
+Task ID: 3
+Agent: general-purpose (export + backend)
+Task: Deterministic MP4 export pipeline + projects save/load API
+
+Work Log:
+- Read worklog.md (2-a engine API, 2-b UI wiring), types.ts contract (untouched),
+  offline.ts (OfflineAnalyzer: frame(index, barCount, smoothing) sequential-only,
+  totalFrames/monoChannelData/sampleRate getters), renderer.ts (pure renderFrame),
+  export-tab.tsx (call shape: exportMP4({config, settings, audioBuffer, onProgress,
+  signal:{cancelled}}); rejection path keys off cancelFlagRef.current.cancelled →
+  info toast, other errors → error toast) and top-bar.tsx (list = {projects:[{id,
+  name, updatedAt}]}; save = {project} or {id}; load reads project.config as an
+  OBJECT via looksLikeConfig → API must return parsed config, not a string).
+- Verified mp4-muxer@5.2.2 real API in node_modules: still classic exports
+  (Muxer, ArrayBufferTarget, StreamTarget…; addVideoChunk/addAudioChunk(chunk,
+  meta)/finalize; fastStart 'in-memory'; video {codec:'avc',width,height,
+  frameRate}, audio {codec:'aac',numberOfChannels,sampleRate}). Coded against
+  that — NO mediabunny Output/Mp4OutputFormat.
+- Built src/lib/export/exporter.ts: exportMP4(opts) → Promise<Blob>.
+  Guards: throws 'WebCodecs is not supported…' when VideoEncoder/AudioEncoder
+  undefined; throws on empty audio buffer. totalFrames = analyzer.totalFrames,
+  capped by ceil(30s|15s * fps) for clipped lengths. Resolution map for the 4
+  presets (all even). Muxer: avc video + aac stereo @ analyzer.sampleRate,
+  fastStart 'in-memory'. Video pass: detached document.createElement('canvas')
+  (RenderContext needs CanvasRenderingContext2D), clearRect each frame (keeps
+  transparent-bg exports clean), analyzer.frame(i, barCount, smoothing)
+  strictly sequential, renderFrame({ctx,width,height,frame:i}, frame, config),
+  new VideoFrame(canvas, {timestamp: round(i*1e6/fps), duration: round(1e6/fps)})
+  closed right after encode. VideoEncoder configured against 'avc1.640028' with
+  synchronous fallback to 'avc1.42001f', bitrate = clamp(width*height*fps*0.12,
+  2..16 Mbps), avc format 'avc' (AVCC — muxer requirement), keyFrame every 2s
+  via encode(frame, {keyFrame:true}); encoder error callback captured into a
+  failure variable rethrown at await points; backpressure while
+  encodeQueueSize > 8; event-loop yield every ~8 frames + progress
+  {phase:'rendering', progress:(i+1)/total*0.9, time:(i+1)/fps}; encoder.flush()
+  + close in finally. Audio pass: monoChannelData duplicated to stereo, 1024-
+  sample f32-planar AudioData chunks (packed planes — ch1 at offset n when the
+  tail chunk is short), timestamp = round(sampleIndex/sampleRate*1e6), codec
+  'mp4a.40.2' @192kbps, same backpressure, progress {phase:'encoding',
+  0.9→0.97}; flush+close in finally. Finalize: {phase:'muxing'} @0.97 →
+  muxer.finalize() → Blob(target.buffer, 'video/mp4') → {phase:'done', 1,
+  time: totalFrames/fps}. Cancellation: signal.cancelled polled per frame and
+  per audio chunk → ExportCancelledError thrown (tab's flag check shows the
+  info toast; muxer simply never finalized). NO requestAnimationFrame anywhere;
+  no Math.random/Date.now in the pixel path → same inputs give same frames.
+- Prisma: appended Project model (id cuid, name, config String = JSON-serialized
+  StudioConfig, createdAt/updatedAt) to schema.prisma; `bun run db:push` synced
+  db/custom.db + regenerated client (v6.19.2). User/Post untouched.
+- Shared helpers src/lib/projects.ts: projectNameSchema (optional, trimmed,
+  ≤200, blank→'Untitled project'), projectConfigSchema (string | object),
+  normalizeConfigInput (object → stringify; string → JSON.parse-validate +
+  StudioConfig shape check; else 400), presentProject (config parsed back to
+  object for responses, ISO dates) — because top-bar's looksLikeConfig needs
+  config to be an object with visualizer/background/lyrics keys.
+- Routes (Next 16 App Router, params as Promise, runtime nodejs +
+  dynamic force-dynamic, zod safeParse, 400/404/500 JSON errors, find-before-
+  write to return clean 404s):
+  GET  /api/projects        → {projects:[{id,name,updatedAt}]} orderBy updatedAt
+                              desc, take 50
+  POST /api/projects        → {project} 201 (accepts config object or JSON
+                              string, stores string)
+  GET  /api/projects/[id]   → {project} with config as PARSED OBJECT
+  PUT  /api/projects/[id]   → {project} (name and/or config; 400 if neither)
+  DELETE /api/projects/[id] → {ok:true}
+- Live smoke test (curl, dev server): POST 201 object config → stored; GET by id
+  returns parsed config (passes top-bar's looksLikeConfig); PUT accepts name +
+  JSON-string config and re-parses; PUT 'not-json' → 400 'config must be valid
+  JSON'; POST name:123 → 400 with zod issues; GET/DELETE missing id → 404
+  {'error':'Project not found'}; DELETE → {'ok':true}; list newest-first.
+  All shapes match what top-bar.tsx parses.
+- Integration note: the initially-created src/app/api/projects/route.ts was lost
+  (first Write hit a missing parent dir; only [id] landed) which made
+  /api/projects 404 — after re-writing it every route resolved immediately on
+  the running Turbopack dev server. Also had to restart the dev server once
+  (old next-server process survived a partial kill and kept serving stale
+  routes); a temp /api/ping probe route was used to prove hot route pickup and
+  was deleted afterwards.
+- Verification: bun run lint → exit 0 (0 problems project-wide); bunx tsc
+  --noEmit → ZERO errors in src/** (the '@/lib/export/exporter' unresolved-
+  import error is gone; the only remaining tsc errors are 4 pre-existing ones
+  in the sandbox's examples/ and skills/ scaffolding dirs, outside the app).
+  GET / still 200 with the exporter in the client bundle (module is SSR-safe:
+  no window/document at module top level).
+
+Stage Summary:
+- Files created: src/lib/export/exporter.ts (exportMP4 + ExportMP4Options +
+  ExportCancelledError), src/lib/projects.ts (zod schemas + config normalize +
+  presentProject), src/app/api/projects/route.ts (GET list/POST create),
+  src/app/api/projects/[id]/route.ts (GET/PUT/DELETE).
+- Files modified: prisma/schema.prisma (+Project model; db pushed & client
+  regenerated). NO UI files touched — export-tab.tsx's existing call shape
+  (opts {config, settings, audioBuffer, onProgress, signal}) and top-bar.tsx's
+  response parsing were matched exactly; zero integration fixes needed.
+- Exact exportMP4 signature:
+    export async function exportMP4(opts: {
+      config: StudioConfig; settings: ExportSettings; audioBuffer: AudioBuffer;
+      onProgress?: (p: ExportProgress) => void; signal?: { cancelled: boolean };
+    }): Promise<Blob>
+- mp4-muxer API: v5.2.2 classic (Muxer/ArrayBufferTarget/fastStart 'in-memory');
+  video 'avc' 1280x720|1920x1080|1080x1080|720x1280 @ 24/30/60, audio 'aac'
+  stereo @ analyzer.sampleRate. Video codec avc1.640028 → fallback avc1.42001f;
+  bitrate clamp(0.12*w*h*fps, 2..16 Mbps); keyframe every 2s; f32-planar AAC
+  192kbps; progress mapping preparing 0 → rendering →0.9 → encoding →0.97 →
+  muxing 0.97 → done 1.
+- API decisions: Project.config stored as JSON string, always returned PARSED;
+  errors {error, issues?}; list limited to 50 newest by updatedAt; blank/absent
+  name → 'Untitled project'.
+- Known limits: export requires a Chromium with proprietary codecs (H.264
+  encode) — Chrome/Edge fine; transparent-background MP4s get no alpha (H.264
+  limitation, alpha stays a WebM-recording feature).
+- Next: end-to-end browser test of exportMP4 with real audio on a
+  proprietary-codec Chromium; optional save-current-frame-count telemetry.
+---
+Task ID: 4-5 (orchestrator verification)
+Agent: main orchestrator (Z.ai Code)
+Task: Integration verification via agent-browser; fix bugs found; verify export E2E.
+
+Work Log:
+- Verified UI renders: studio shell, animated demo visualizer, all 4 tabs, gradient editor
+  matching design screenshot 1 (presets/stops/angle/cycle), export panel matching screenshot 2.
+- Bug 1 fixed: inactive tab labels nearly invisible -> explicit text-zinc-400 + hover states
+  in control-panel.tsx; also added scroll-reset-to-top on tab switch.
+- Incident: after HMR edit, Turbopack incremental state corrupted (hydration silently dead:
+  canvas black, no slider thumbs; SyntaxError "Invalid regular expression" + ChunkLoadError).
+  Fix: clean rebuild (rm -rf .next + dev server restart). Also disabled Next dev indicator
+  (devIndicators: false) because its portal intercepted clicks over the play button.
+- Bug 2 fixed: Open-projects dialog always showed "No saved projects yet" — Radix Dialog
+  onOpenChange does NOT fire when open is set programmatically; fetchProjects() now called in
+  the Open button's onClick (top-bar.tsx). Save/List/Load/Delete roundtrip verified via UI + curl.
+- Verified LRC parsing (3 lines, auto-enable, editable line editors), lyrics overlay rendering
+  and advancing with playback ("First line of the song" -> "Third line rocks").
+- Uploaded generated 12s WAV: engine loads (toast, 0:12), real-audio reactive bars confirmed.
+- Bug 3 fixed (critical): deterministic MP4 export failed because headless Chromium lacks the
+  proprietary AAC encoder (VideoEncoder OK, AudioEncoder AAC unsupported). exporter.ts now
+  negotiates: AAC (as-is) -> Opus (resamples 44.1k->48k via deterministic linear resampler) ->
+  silent video + toast warning via new onNotice callback; muxer config built conditionally.
+- E2E export verified: progress UI ("Rendering frames… 40%, t = 5.3s", Cancel), completion
+  toast, pulse-studio.mp4 (3.0 MB) downloaded. ffprobe: h264 1280x720 12.000s + opus 12.020s;
+  extracted frame at t=3s shows the visualizer rendered correctly.
+- PNG snapshot verified (pulse-frame.png downloaded; toast "Frame saved").
+- Mobile 390x844 verified: single-column layout, tabs usable; fixed brand truncation (top-bar).
+- Background tab ALPHA mode verified (checkerboard backdrop + alpha notes callout).
+- Final: lint clean, tsc clean (src/), no page errors on pristine load.
+
+Stage Summary:
+- App is feature-complete and browser-verified: preview engine, 4 visualizer styles,
+  gradient editor, background modes (incl. alpha), LRC lyrics, deterministic MP4 export
+  (H.264 + AAC-or-Opus), live WebM recording, PNG snapshot, project save/load (SQLite).
+- Known constraint: in this sandbox's headless Chromium exports use Opus-in-MP4 audio
+  (AAC unavailable); on regular Chrome/Edge, AAC path is used automatically.
