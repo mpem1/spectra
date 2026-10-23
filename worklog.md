@@ -385,3 +385,53 @@ Stage Summary:
   (H.264 + AAC-or-Opus), live WebM recording, PNG snapshot, project save/load (SQLite).
 - Known constraint: in this sandbox's headless Chromium exports use Opus-in-MP4 audio
   (AAC unavailable); on regular Chrome/Edge, AAC path is used automatically.
+---
+Task ID: 6 (design fidelity restoration)
+Agent: main orchestrator (Z.ai Code)
+Task: Restore fidelity to the user's original design. Save design references + spec
+permanently (this was promised in the lost session but never written before context died).
+
+## PERMANENT DESIGN REFERENCES (never delete)
+- /home/z/my-project/design-references/gradient-panel.png  (Gradient editor panel)
+- /home/z/my-project/design-references/export-panel.png    (Export tab + tab bar)
+
+## DESIGN SPEC — LIGHT THEME (extracted pixel-by-pixel from screenshots)
+Overall: WHITE light UI, near-black text, neutral grays. NO dark theme, NO emerald accents.
+- Page/panels: white backgrounds, hairline zinc-200 borders, rounded-xl/2xl, subtle shadows.
+- Text: zinc-900 primary, zinc-500 secondary, zinc-400 captions.
+- Primary buttons: BLACK (zinc-900) bg, white text (e.g. "Export MP4", "Load audio").
+- Secondary buttons: white bg, zinc-200 border, zinc-900 text ("Start recording", "Snapshot").
+
+### Screenshot 1 — Gradient panel (this is the exact initial state)
+- Header: "Gradient" (semibold, zinc-900, ~15px) + circular reset/refresh icon button top-right (gray).
+- Preset chips: white PILL buttons (rounded-full, light border, subtle shadow) each with a
+  small circular gradient dot + label. Row 1: Sunset (orange→pink), Aurora (cyan→green),
+  Ember (red-orange→amber). Row 2: Neon (green→cyan), Mono (grays).
+- Color-stop rows (3): [rounded color swatch] [slider — thumb position matches the number] 
+  [numeric value right, gray: 38 / 50 / 57] [X delete, gray].
+  => DEFAULT gradient stops: green@38, white@50, cyan@57. Angle default 48°, Cycle OFF.
+- "+ Add color stop": full-width white button, light solid border, rounded-lg, dark text + plus icon.
+- "Angle" row: bold dark label left, "48°" gray right; full-width slider below.
+- "Cycle colors" row: bold dark label + gray OFF toggle right.
+
+### Screenshot 2 — Export tab (+ tab bar)
+- Tab bar: segmented control on light zinc-100 track; active tab = WHITE pill w/ shadow + dark text
+  ("Export" active in shot); inactive = gray text. Tabs: Visual | Background | Lyrics | Export.
+- Section header: small icon + "Deterministic export" (semibold dark) + right badge "FRAME-EXACT"
+  = mint/light-green pill (emerald-100 bg, emerald-700 text, tiny uppercase).
+- 2×2 select grid, labels small normal-case gray ABOVE fields: Format [MP4 (H.264 + au)],
+  Frame rate [30 fps], Resolution [1280 × 720], Length [Full song]. White fields, zinc-200 border.
+- Two tiny gray caption columns: "Renders offline frame-by-frame, and muxes your audio file"
+  | "no clicks, no drift, perfect sync. Opens directly in DaVinci Resolve."
+- Big BLACK full-width button: download icon + "Export MP4" (white text, rounded-xl, h-11).
+- "Live recording (WebM/MP4)" option with RADIO circle + gray description ("Real-time screen
+  capture with the recorded audio track. Quick, but the audio is re-recorded — for perfectly
+  synced output use the deterministic export above.")
+- "Start recording" button: white, light border, rounded-xl, RED DOT icon + dark text.
+- Tiny gray note: "Alpha recording (VP8 + alpha) is active because transparent background is on."
+- "Snapshot current frame (PNG)": white outlined full-width button with camera icon.
+
+### Unchanged (still required, previously verified working)
+All functionality stays: 4 visualizer styles, gradient editor behavior, alpha/checkerboard,
+LRC lyrics + overlay, deterministic MP4 (H.264 + AAC/Opus fallback), live WebM recording,
+PNG snapshot, project save/load API. Only the chrome/reskin changes.
