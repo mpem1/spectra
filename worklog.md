@@ -459,3 +459,17 @@ Stage Summary:
 - Browser-verified end-to-end: radial/grid/blob render, LRC parse (4 lines), sync-at-playhead re-sorts (0:28.3→0:16.3), lyrics overlay draws on canvas, Record→saved 0.3MB webm + toast, Space toggles play, My gradients persist across reload, projects API list loads, Convert dialog opens, mobile 390px fits with icon-only top bar.
 - App identity is now Spectra; download filenames use spectra-*. Old "Pulse Studio" references removed from UI/metadata.
 - Known conscious interpretation: "Convert" = video re-encode dialog (original's exact behavior unknown); Presets tab = look presets + cloud projects (original content unknown beyond "presets list").
+
+---
+Task ID: 4-fix
+Agent: main orchestrator (Z.ai Code)
+Task: User feedback — "the blob and grid visualizers are ugly compared to what you had before". Redesign both renderers to parity with bars/wave/radial/particles.
+
+Work Log:
+- renderer.ts drawBlob rewritten: polygon lineTo path (jagged) → quadratic midpoint spline over 128 samples; harmonic-sum deformation (lumpy) → mirrored log-spectrum radial mapping with 3-bin neighborhood averaging + 2 circular-smoothing passes; added idle breathing wobble, pulsing ambient aura, 2 scaled/rotated echo layers (alpha 0.16/0.07), radial-gradient core (light center → saturated rim), thin bright rim stroke, bass pulse.
+- renderer.ts drawGrid rewritten: non-square cells (71×48) → square cells derived from column width; barCount/4 resolution loss → barCount/2 columns clamped 12..28; harsh on/off lighting → float level with smooth frontier fade-in (frac alpha) + white-mixed "hot tip" on topmost full cell (mixToWhite helper + parseColor import); unlit cells now fade with height (0.10 bottom → 0.05 top); glow only on hot tip; grid centered on canvas.
+- Verified in browser with generated 12s music-like WAV injected via synthetic DragEvent drop: blob screenshot shows smooth layered aurora blob; grid screenshot shows classic LED equalizer with hot tips; bars/radial idle states unaffected; zero console errors.
+- Cleanup: removed public/test-audio.wav; lint clean.
+
+Stage Summary:
+- Blob and Grid now visually match the quality of the other four styles. Renderer remains fully deterministic (no Math.random/wall clock) so offline MP4/PNG-seq exports stay frame-exact.

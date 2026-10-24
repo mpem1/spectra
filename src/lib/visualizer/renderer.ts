@@ -15,7 +15,7 @@ import type {
   StudioConfig,
   VisualizerConfig,
 } from './types'
-import { buildGradient, gradientLine, sampleGradient, withAlpha } from './gradients'
+import { buildGradient, gradientLine, parseColor, sampleGradient, withAlpha } from './gradients'
 import { drawLyrics } from './lyrics'
 
 /* --------------------------------- Utilities -------------------------------- */
@@ -422,9 +422,10 @@ function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConf
 /* ------------------------------------ blob ----------------------------------- */
 
 /**
- * Organic blob: closed smooth path around the center whose radius is
- * modulated by harmonic sums of the spectrum — fully deterministic
- * (phases derive from frame.time, never the wall clock).
+ * Organic audio blob: a smooth closed spline around the center whose radius
+ * is driven by the log spectrum (mirrored for left/right symmetry), plus a
+ * gentle idle breathing motion. Layered aurora echoes + a radial-gradient
+ * core give it depth. Fully deterministic — phases derive from frame.time.
  */
 function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
@@ -435,97 +436,179 @@ function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
   const energy = clamp01(frame.energy)
   const g = cfg.gradient
 
-  const baseR = H * 0.16 * (1 + bass * 0.22 * sens + energy * 0.08)
-  const HARMONICS = 5
-  const K = 96
+  const baseR = H * (0.18 + bass * 0.05 * sens + energy * 0.02)
+  const K = 128
+  const freq = frame.freq
+  const len = Math.max(1, freq.length)
 
-  const line = gradientLine(g.angle, W, H)
-  const fill = buildGradient(
-    ctx,
-    line.x0,
-    line.y0,
-    line.x1,
-    line.y1,
-    g.stops,
-    frame.time,
-    g.cycleColors,
-    g.cycleSpeed,
-  )
-
-  const path = new Path2D()
-  for (let i = 0; i <= K; i++) {
-    const a = (i / K) * Math.PI * 2
-    let r = baseR
-    for (let h = 1; h <= HARMONICS; h++) {
-      const bin = Math.min(
-        frame.freq.length - 1,
-        Math.floor(((h - 1) / HARMONICS) * frame.freq.length),
-      )
-      const v = clamp01((frame.freq[bin] ?? 0) * sens)
-      r += Math.sin(a * h + frame.time * (0.4 + h * 0.17)) * v * baseR * (0.55 / Math.sqrt(h))
-    }
-    r = Math.max(baseR * 0.35, r)
-    const x = cx + Math.cos(a) * r
-    const y = cy + Math.sin(a) * r
-    if (i === 0) path.moveTo(x, y)
-    else path.lineTo(x, y)
+  // Spectrum magnitude at each of K sample angles. The mapping is mirrored
+  // (angle 0..π walks the spectrum forward, π..2π walks it back) so the blob
+  // stays left/right symmetric, and small neighborhoods are averaged so a
+  // single hot bin can't spike the outline.
+  const radii = new Float32Array(K)
+  for (let i = 0; i < K; i++) {
+    const m = 1 - Math.abs((i / K) * 2 - 1)
+    const bin = Math.min(len - 1, Math.floor(m * (len - 1)))
+    const b0 = Math.max(0, bin - 1)
+    const b1 = Math.min(len - 1, bin + 1)
+    const v = ((freq[b0] ?? 0) + (freq[bin] ?? 0) + (freq[b1] ?? 0)) / 3
+    radii[i] = clamp01(v * sens)
   }
-  path.closePath()
+  // Two circular-smoothing passes → silky silhouette.
+  for (let pass = 0; pass < 2; pass++) {
+    let prev = radii[K - 1]
+    for (let i = 0; i < K; i++) {
+      const cur = radii[i]
+      const next = radii[(i + 1) % K]
+      radii[i] = prev * 0.25 + cur * 0.5 + next * 0.25
+      prev = cur
+    }
+  }
+  for (let i = 0; i < K; i++) {
+    const a = (i / K) * Math.PI * 2
+    // Soft idle wobble so the blob breathes even in silence.
+    const wobble =
+      Math.sin(a * 2 + frame.time * 0.7) * 0.035 + Math.sin(a * 3 - frame.time * 0.45) * 0.02
+    radii[i] = baseR * (1 + wobble + radii[i] * 0.75)
+  }
 
+  // Smooth closed spline through segment midpoints (quadratic midpoint
+  // technique) — no polygon corners, no jagged edges.
+  const buildPath = (scale: number, phase: number): Path2D => {
+    const pts: Array<[number, number]> = []
+    for (let i = 0; i < K; i++) {
+      const a = (i / K) * Math.PI * 2 + phase
+      const r = radii[i] * scale
+      pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r])
+    }
+    const p = new Path2D()
+    const midX = (pts[K - 1][0] + pts[0][0]) / 2
+    const midY = (pts[K - 1][1] + pts[0][1]) / 2
+    p.moveTo(midX, midY)
+    for (let i = 0; i < K; i++) {
+      const cur = pts[i]
+      const nxt = pts[(i + 1) % K]
+      p.quadraticCurveTo(cur[0], cur[1], (cur[0] + nxt[0]) / 2, (cur[1] + nxt[1]) / 2)
+    }
+    p.closePath()
+    return p
+  }
+
+  const cLow = sampleGradient(g.stops, 0.1, frame.time, g.cycleColors, g.cycleSpeed)
+  const cMid = sampleGradient(g.stops, 0.5, frame.time, g.cycleColors, g.cycleSpeed)
+  const cHigh = sampleGradient(g.stops, 0.9, frame.time, g.cycleColors, g.cycleSpeed)
+
+  // Ambient aura pulsing behind everything.
+  const auraR = baseR * 2.15
+  const aura = ctx.createRadialGradient(cx, cy, baseR * 0.4, cx, cy, auraR)
+  aura.addColorStop(0, withAlpha(cMid, 0.26))
+  aura.addColorStop(0.55, withAlpha(cMid, 0.09))
+  aura.addColorStop(1, withAlpha(cMid, 0))
+  ctx.fillStyle = aura
+  ctx.fillRect(cx - auraR, cy - auraR, auraR * 2, auraR * 2)
+
+  // Echo layers — slightly larger, softly rotated copies fading outward.
+  const echoes: Array<{ scale: number; alpha: number; phase: number }> = [
+    { scale: 1.28, alpha: 0.16, phase: 0.05 },
+    { scale: 1.58, alpha: 0.07, phase: -0.065 },
+  ]
+  for (const e of echoes) {
+    ctx.fillStyle = withAlpha(cMid, e.alpha)
+    ctx.fill(buildPath(e.scale, e.phase))
+  }
+
+  // Core: radial gradient (light center → saturated rim) for real depth.
+  const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseR * 1.5)
+  core.addColorStop(0, withAlpha(cLow, 0.95))
+  core.addColorStop(0.62, withAlpha(cMid, 0.9))
+  core.addColorStop(1, withAlpha(cHigh, 0.92))
+  const mainPath = buildPath(1, 0)
   if (cfg.glow) {
-    ctx.shadowColor = sampleGradient(g.stops, 0.5, frame.time, g.cycleColors, g.cycleSpeed)
-    ctx.shadowBlur = 30 * S
+    ctx.shadowColor = withAlpha(cMid, 0.85)
+    ctx.shadowBlur = 34 * S
   } else {
     ctx.shadowBlur = 0
   }
-  ctx.fillStyle = fill
-  ctx.fill(path)
-
+  ctx.fillStyle = core
+  ctx.fill(mainPath)
   ctx.shadowBlur = 0
-  ctx.lineWidth = Math.max(1.5, 2.5 * S)
-  ctx.strokeStyle = sampleGradient(g.stops, 0.85, frame.time, g.cycleColors, g.cycleSpeed)
-  ctx.stroke(path)
+
+  // Thin bright rim to finish the silhouette.
+  ctx.lineWidth = Math.max(1, 1.5 * S)
+  ctx.strokeStyle = withAlpha(cHigh, 0.75)
+  ctx.stroke(mainPath)
 }
 
 /* ------------------------------------ grid ----------------------------------- */
 
+/** Mix a CSS color toward white (t = 0..1). Falls back to the input color. */
+function mixToWhite(color: string, t: number): string {
+  const parsed = parseColor(color)
+  if (!parsed) return color
+  const k = clamp01(t)
+  const r = Math.round(parsed.r + (255 - parsed.r) * k)
+  const gg = Math.round(parsed.g + (255 - parsed.g) * k)
+  const b = Math.round(parsed.b + (255 - parsed.b) * k)
+  return `rgb(${r}, ${gg}, ${b})`
+}
+
 /**
- * LED-matrix grid: columns map onto the spectrum, cells light bottom-up when
- * their band magnitude crosses the row threshold.
+ * LED-matrix equalizer: square cells, columns mapped onto the log spectrum.
+ * Cells light bottom-up with a smooth frontier fade-in and a bright "hot
+ * tip" on the topmost full cell; unlit cells fade with height for depth.
  */
 function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
-  const cols = Math.round(clamp(cfg.barCount / 4, 8, 48))
-  const rows = 12
-  const margin = W * 0.055
-  const cellW = (W - margin * 2) / cols
-  const cellH = (H - margin * 2) / rows
-  const gapRatio = clamp(cfg.gap, 0, 0.8)
+  const cols = Math.round(clamp(cfg.barCount / 2, 12, 28))
+  const marginX = W * 0.06
+  const cell = (W - marginX * 2) / cols
+  const rows = Math.max(6, Math.floor((H - H * 0.1) / cell))
+  const gridW = cols * cell
+  const gridH = rows * cell
+  const x0 = (W - gridW) / 2
+  const y0 = (H - gridH) / 2
+  const gapRatio = clamp(cfg.gap, 0, 0.8) * 0.55
   const sens = clamp(cfg.sensitivity, 0, 3)
-  const radius = clamp01(cfg.roundness) * Math.min(cellW, cellH) * 0.45
+  const radius = (0.18 + clamp01(cfg.roundness) * 0.32) * cell
+  const w = cell * (1 - gapRatio)
+  const h = w
+  const off = (cell - w) / 2
+  const freq = frame.freq
 
   for (let c = 0; c < cols; c++) {
-    const bin = Math.floor((c / cols) * frame.freq.length)
-    const v = clamp01((frame.freq[bin] ?? 0) * sens)
-    const litRows = Math.round(v * rows)
+    const bin = Math.min(freq.length - 1, Math.floor((c / cols) * freq.length))
+    const v = clamp01((freq[bin] ?? 0) * sens)
+    const level = v * rows
+    const full = Math.floor(level)
+    const frac = level - full
     const color = barColorAt(cfg, frame, c, cols)
-    const x = margin + c * cellW
 
     for (let r = 0; r < rows; r++) {
       const rowFromBottom = rows - 1 - r
-      const lit = rowFromBottom < litRows
-      const y = margin + r * cellH
-      const w = cellW * (1 - gapRatio)
-      const h = cellH * (1 - gapRatio)
+      const x = x0 + c * cell + off
+      const y = y0 + r * cell + off
 
-      ctx.fillStyle = lit ? color : withAlpha(color, 0.07)
-      if (lit && cfg.glow) {
-        ctx.shadowColor = color
+      let alpha: number
+      let hot = false
+      if (rowFromBottom < full) {
+        alpha = 1
+        hot = rowFromBottom === full - 1 // topmost full cell = bright tip
+      } else if (rowFromBottom === full) {
+        alpha = frac * 0.85 // frontier cell fades in smoothly
+      } else {
+        // Unlit guiding dots, slightly brighter at the bottom for depth.
+        alpha = 0.1 - 0.05 * (rowFromBottom / Math.max(1, rows - 1))
+      }
+
+      const cellColor = hot ? mixToWhite(color, 0.55) : color
+      ctx.fillStyle = withAlpha(cellColor, alpha)
+      if (hot && cfg.glow) {
+        ctx.shadowColor = cellColor
         ctx.shadowBlur = 10 * S
       } else {
         ctx.shadowBlur = 0
       }
-      fillRoundRect(ctx, x + (cellW - w) / 2, y + (cellH - h) / 2, w, h, radius)
+      fillRoundRect(ctx, x, y, w, h, radius)
     }
   }
   ctx.shadowBlur = 0
