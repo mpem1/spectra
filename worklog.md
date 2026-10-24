@@ -520,3 +520,22 @@ Work Log:
 
 Stage Summary:
 - agent-browser verified while PAUSED at 0:00 (never pressed play): bars identical height across 2s but palette visibly swept purple→pink→red → orange→pink→purple; blob palette sweep + gentle wobble also alive while paused; zero page errors; lint clean. Export determinism preserved (offline styleTime = song time).
+
+---
+Task ID: 5-lyrics
+Agent: Z.ai Code (main)
+Task: Lyrics tab fixes — distribute-reset bug, multi-line UX, 4s auto-hide, 2-line stack, gradient/outline/glow styling. Plus verify Cycle colors (pending question from previous round).
+
+Work Log:
+- Read lyrics-tab.tsx / lyrics.ts / types.ts / store / gradients.ts to map the current lyrics pipeline.
+- types.ts: extended LyricsConfig with holdTime (default 4), fill 'solid'|'gradient', outline + outlineWidth + outlineColor, glow + glowStrength + glowColor; extended DEFAULT_STUDIO_CONFIG.lyrics (old saved projects merge over defaults in setConfig, so migration is safe).
+- lyrics.ts rewritten: two-line karaoke stack — current line bright at positionY, previous line dimmed (0.55) one gap (size*1.35) ABOVE it; line window ends at min(next.time, start+holdTime) so an unreplaced line fades out after holdTime (4s default) instead of sticking forever; previous line departs together with the current one (deterministic envelopes, pure function of frame.time); fill = palette sweep via sampleGradient across measured text width (8 stops, follows cycleColors/cycleSpeed, deterministic via frame.styleTime); outline strokeText behind fill; glow drawn as double colored shadow pass; long lines auto-shrink to fit 92% canvas width.
+- renderer.ts: drawLyrics now receives config.visualizer.gradient as palette.
+- lyrics-tab.tsx: root cause of "Distribute evenly resets what I type" — the button always rebuilt lines from the textarea. Added lastImportedRef: if textarea unchanged since last import, re-space EXISTING lines' times only (redistributeTimes); empty textarea also re-spaces. Row wrapper key changed from `${index}-${line.time}` (remount on every time edit) to stable index. Added "+ Add" button in Lines header AND "Add line" button at list bottom (new row: last.time+3 or playhead, auto-selected, autofocus on its text input, one-shot flag). Lines count now singular/plural ("1 line" / "3 lines"). Hints + textarea placeholder rewritten to explain one-line-per-row + multi-line paste. Style section: Fill segmented control (Solid/Gradient, Color picker hidden when gradient), Auto-hide slider (1-12s), Outline switch+width+color, Glow switch+strength+color.
+- Browser verified (agent-browser, demo playback): distribute → 3 rows at 0/20/40s; edited row 1 text → re-clicked Distribute evenly → edit survived; + Add → row 4 at 0:43 with focus in its text input; played with lines at 0/2/4s → 2-line stack visible at ~2s (line1 dimmed above, line2 below), canvas clean at 0:18 (auto-hide after 4s hold works); gradient fill + outline + glow render on canvas, gradient sweeps palette colors across the glyphs; Cycle colors toggle ON → palette phase visibly shifted between two frames 3s apart (bars orange→pink→purple → pink→purple→pink) — cycle colors confirmed WORKING (previous user question resolved).
+- Lint clean, zero browser console errors, dev.log clean. Temp screenshots removed.
+
+Stage Summary:
+- Lyrics: no-reset distribute, explicit add-line flow, 4s auto-hold, 2-line stacked display, gradient/outline/glow styling — all browser-verified.
+- Cycle colors verified functional end-to-end (toggle → palette sweep in bars and lyrics gradient).
+- Files: src/lib/visualizer/types.ts, src/lib/visualizer/lyrics.ts, src/lib/visualizer/renderer.ts, src/components/studio/lyrics-tab.tsx.

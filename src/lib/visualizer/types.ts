@@ -92,6 +92,20 @@ export interface LyricsConfig {
   fade: number
   /** Uppercase transform */
   uppercase: boolean
+  /** Seconds a line stays before fading out when no newer line replaces it */
+  holdTime: number
+  /** Text fill: flat color or a sweep of the visualizer palette */
+  fill: 'solid' | 'gradient'
+  /** Outline stroke behind the text */
+  outline: boolean
+  /** Outline stroke width, px relative to 720p canvas */
+  outlineWidth: number
+  outlineColor: string
+  /** Soft glow halo behind the text */
+  glow: boolean
+  /** Glow blur strength 0..1 */
+  glowStrength: number
+  glowColor: string
 }
 
 /* ----------------------------------- Project --------------------------------- */
@@ -254,5 +268,13 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     color: '#ffffff',
     fade: 0.35,
     uppercase: false,
+    holdTime: 4,
+    fill: 'solid',
+    outline: false,
+    outlineWidth: 3,
+    outlineColor: '#000000',
+    glow: false,
+    glowStrength: 0.5,
+    glowColor: '#ffffff',
   },
 }

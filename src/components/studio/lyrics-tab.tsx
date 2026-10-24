@@ -59,6 +59,7 @@ function LyricRow({
   index,
   selected,
   active,
+  autoFocusText,
   onSelect,
   onTime,
   onText,
@@ -69,6 +70,7 @@ function LyricRow({
   index: number
   selected: boolean
   active: boolean
+  autoFocusText?: boolean
   onSelect: () => void
   onTime: (seconds: number) => void
   onText: (text: string) => void
@@ -121,6 +123,7 @@ function LyricRow({
         className="h-8 flex-1 text-xs"
         aria-label={`Line ${index + 1} text`}
         placeholder="Lyric line"
+        autoFocus={autoFocusText}
         onClick={(e) => e.stopPropagation()}
       />
       <Button
@@ -159,7 +162,11 @@ export function LyricsTab() {
   const [raw, setRaw] = useState('')
   const [selected, setSelected] = useState<number | null>(null)
   const [activeLine, setActiveLine] = useState(-1)
+  const [justAdded, setJustAdded] = useState<number | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
+  // The source text the current lines were imported from — lets "Distribute
+  // evenly" tell "re-import" apart from "the user has been editing the rows".
+  const lastImportedRef = useRef('')
 
   const duration = audioMeta?.duration ?? 60
 
@@ -167,20 +174,47 @@ export function LyricsTab() {
     const lines = parseLrc(raw)
     if (lines.length === 0) return
     patchLyrics({ lines, enabled: true })
+    lastImportedRef.current = raw
     setSelected(null)
   }
+
+  /** Re-spaces existing lines' start times evenly — text is left untouched. */
+  const redistributeTimes = useCallback(
+    (lines: LyricLine[]) => {
+      if (lines.length === 0) return
+      const n = lines.length
+      patchLyrics({
+        lines: lines.map((l, i) => ({
+          ...l,
+          time: duration > 0 ? (i / n) * duration : 0,
+        })),
+      })
+    },
+    [duration, patchLyrics],
+  )
 
   const handleDistribute = () => {
     const parts = raw
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter((l) => l.length > 0)
-    if (parts.length === 0) return
+    if (parts.length === 0) {
+      // Box is empty: just re-space the times of the lines already below.
+      redistributeTimes(lyrics.lines)
+      return
+    }
+    if (raw === lastImportedRef.current && lyrics.lines.length > 0) {
+      // Same text as the last import — the user has been editing the rows,
+      // so only re-space their times instead of wiping those edits.
+      redistributeTimes(lyrics.lines)
+      return
+    }
     const lines = parts.map((text, i) => ({
       time: duration > 0 ? (i / parts.length) * duration : 0,
       text,
     }))
     patchLyrics({ lines, enabled: true })
+    lastImportedRef.current = raw
     setSelected(null)
   }
 
@@ -188,10 +222,32 @@ export function LyricsTab() {
     patchLyrics({ lines: lyrics.lines.map((l, i) => (i === index ? { ...l, ...partial } : l)) })
   }
 
+  /** Appends an empty row after the last line (or at the playhead for the first). */
+  const addLine = () => {
+    const lines = lyrics.lines
+    const last = lines.length > 0 ? lines[lines.length - 1] : null
+    const playhead = getPreviewControls()?.getTime() ?? 0
+    const time = last ? Math.max(last.time + 3, playhead) : Math.max(playhead, 0)
+    patchLyrics({
+      lines: [...lines, { time, text: '' }],
+      enabled: lines.length === 0 ? true : lyrics.enabled,
+    })
+    const index = lines.length
+    setSelected(index)
+    setJustAdded(index)
+  }
+
   const deleteLine = (index: number) => {
     patchLyrics({ lines: lyrics.lines.filter((_, i) => i !== index) })
     setSelected(null)
   }
+
+  // Release the one-shot autofocus flag for the freshly added row.
+  useEffect(() => {
+    if (justAdded === null) return
+    const t = window.setTimeout(() => setJustAdded(null), 600)
+    return () => window.clearTimeout(t)
+  }, [justAdded])
 
   /** Sets the target line's time to the current playhead, keeping the list time-ordered. */
   const syncLine = useCallback(
@@ -279,7 +335,9 @@ export function LyricsTab() {
         <Textarea
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
-          placeholder={'Paste lyrics or .lrc here…\n[00:12.50] First line of the song\n[00:18.20] Second line'}
+          placeholder={
+            'Type or paste lyrics — one line per row:\nFirst line of the verse\nSecond line\n\nOptional [00:12.50] timestamps are understood too.'
+          }
           className="min-h-28 bg-zinc-950/60 font-mono text-xs"
           aria-label="Lyrics source text"
         />
@@ -308,15 +366,27 @@ export function LyricsTab() {
         <SectionTitle
           icon={Type}
           right={
-            <span className="text-[11px] tabular-nums text-zinc-500">
-              {lyrics.lines.length} lines
-            </span>
+            <>
+              <span className="text-[11px] tabular-nums text-zinc-500">
+                {lyrics.lines.length} {lyrics.lines.length === 1 ? 'line' : 'lines'}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 gap-1 rounded-md border-zinc-800 px-2 text-[11px] hover:border-emerald-500/60 hover:text-emerald-400"
+                onClick={addLine}
+              >
+                <Plus className="size-3" /> Add
+              </Button>
+            </>
           }
         >
           Lines
         </SectionTitle>
-        <p className="text-[11px] text-zinc-600">
-          Click a row to select it, press{' '}
+        <p className="text-[11px] leading-snug text-zinc-600">
+          Each row is one lyric line. Add more with{' '}
+          <span className="text-zinc-400">+ Add</span>, or paste several lines above and hit{' '}
+          <span className="text-zinc-400">Distribute evenly</span>. Select a row and press{' '}
           <kbd className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-300">
             S
           </kbd>{' '}
@@ -324,17 +394,21 @@ export function LyricsTab() {
         </p>
         {lyrics.lines.length === 0 ? (
           <p className="rounded-lg border border-dashed border-zinc-800 p-3 text-center text-[11px] text-zinc-600">
-            No lines yet — parse LRC or distribute text above.
+            No lines yet — paste lyrics above and hit Distribute evenly, or add one with + Add.
           </p>
         ) : (
           <div ref={listRef} className="slim-scrollbar max-h-96 space-y-1 overflow-y-auto pr-1">
             {lyrics.lines.map((line, index) => (
-              <div key={`${index}-${line.time}`} data-line-index={index}>
+              // Stable positional key — a key derived from time/text would
+              // remount the row on every keystroke (same trap as the
+              // gradient stop rows and their popover).
+              <div key={index} data-line-index={index}>
                 <LyricRow
                   line={line}
                   index={index}
                   selected={selected === index}
                   active={activeLine === index}
+                  autoFocusText={justAdded === index}
                   onSelect={() => setSelected(index)}
                   onTime={(time) => setLine(index, { time })}
                   onText={(text) => setLine(index, { text })}
@@ -346,17 +420,27 @@ export function LyricsTab() {
           </div>
         )}
         {lyrics.lines.length > 0 ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-full text-xs text-zinc-500 hover:text-zinc-200"
-            onClick={() => {
-              patchLyrics({ lines: [] })
-              setSelected(null)
-            }}
-          >
-            <Plus className="size-3.5" /> Clear all lines
-          </Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs text-zinc-500 hover:text-emerald-400"
+              onClick={addLine}
+            >
+              <Plus className="size-3.5" /> Add line
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs text-zinc-500 hover:text-zinc-200"
+              onClick={() => {
+                patchLyrics({ lines: [] })
+                setSelected(null)
+              }}
+            >
+              <Trash2 className="size-3.5" /> Clear all
+            </Button>
+          </div>
         ) : null}
       </section>
 
@@ -416,6 +500,19 @@ export function LyricsTab() {
           onChange={(fade) => patchLyrics({ fade })}
           format={(v) => `${v.toFixed(2)}s`}
         />
+        <SliderRow
+          label="Auto-hide"
+          value={lyrics.holdTime}
+          min={1}
+          max={12}
+          step={0.5}
+          onChange={(holdTime) => patchLyrics({ holdTime })}
+          format={(v) => `${v.toFixed(1)}s`}
+        />
+        <p className="-mt-1 text-[11px] leading-snug text-zinc-600">
+          A line fades out after this many seconds unless a newer line replaces it. The previous
+          line stays on screen above the current one while both are live.
+        </p>
 
         <div className="flex h-7 items-center justify-between">
           <MicroLabel>Uppercase</MicroLabel>
@@ -426,21 +523,101 @@ export function LyricsTab() {
           />
         </div>
 
+        {/* Fill: flat color or palette sweep */}
+        <div className="space-y-1.5">
+          <MicroLabel>Fill</MicroLabel>
+          <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+            {(['solid', 'gradient'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={lyrics.fill === mode}
+                onClick={() => patchLyrics({ fill: mode })}
+                className={cn(
+                  'h-7 rounded-md text-xs capitalize transition-colors',
+                  lyrics.fill === mode
+                    ? 'bg-emerald-500/15 text-emerald-300'
+                    : 'text-zinc-400 hover:text-zinc-200',
+                )}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+          {lyrics.fill === 'gradient' ? (
+            <p className="text-[11px] leading-snug text-zinc-600">
+              Sweeps the visualizer palette across the text — follows Cycle colors in the Style
+              tab.
+            </p>
+          ) : (
+            <div className="flex h-8 items-center gap-2">
+              <MicroLabel className="flex-1">Color</MicroLabel>
+              <ColorPickerButton
+                value={lyrics.color}
+                onChange={(color) => patchLyrics({ color })}
+                ariaLabel="Lyrics color"
+              />
+              <input
+                type="color"
+                value={toHex6(textColor)}
+                onChange={(e) => patchLyrics({ color: e.target.value })}
+                className="h-7 w-10 cursor-pointer rounded-md border border-zinc-800 bg-zinc-950 p-0.5"
+                aria-label="Native lyrics color picker"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Outline */}
         <div className="flex h-8 items-center gap-2">
-          <MicroLabel className="flex-1">Color</MicroLabel>
-          <ColorPickerButton
-            value={lyrics.color}
-            onChange={(color) => patchLyrics({ color })}
-            ariaLabel="Lyrics color"
+          <MicroLabel className="flex-1">Outline</MicroLabel>
+          <Switch
+            aria-label="Lyrics outline"
+            checked={lyrics.outline}
+            onCheckedChange={(outline) => patchLyrics({ outline })}
           />
-          <input
-            type="color"
-            value={toHex6(textColor)}
-            onChange={(e) => patchLyrics({ color: e.target.value })}
-            className="h-7 w-10 cursor-pointer rounded-md border border-zinc-800 bg-zinc-950 p-0.5"
-            aria-label="Native lyrics color picker"
+          <ColorPickerButton
+            value={lyrics.outlineColor}
+            onChange={(outlineColor) => patchLyrics({ outlineColor })}
+            ariaLabel="Outline color"
           />
         </div>
+        {lyrics.outline ? (
+          <SliderRow
+            label="Outline width"
+            value={lyrics.outlineWidth}
+            min={1}
+            max={12}
+            step={0.5}
+            onChange={(outlineWidth) => patchLyrics({ outlineWidth })}
+            format={(v) => `${v.toFixed(1)}px`}
+          />
+        ) : null}
+
+        {/* Glow */}
+        <div className="flex h-8 items-center gap-2">
+          <MicroLabel className="flex-1">Glow</MicroLabel>
+          <Switch
+            aria-label="Lyrics glow"
+            checked={lyrics.glow}
+            onCheckedChange={(glow) => patchLyrics({ glow })}
+          />
+          <ColorPickerButton
+            value={lyrics.glowColor}
+            onChange={(glowColor) => patchLyrics({ glowColor })}
+            ariaLabel="Glow color"
+          />
+        </div>
+        {lyrics.glow ? (
+          <SliderRow
+            label="Glow strength"
+            value={lyrics.glowStrength}
+            min={0}
+            max={1}
+            step={0.05}
+            onChange={(glowStrength) => patchLyrics({ glowStrength })}
+          />
+        ) : null}
       </section>
     </div>
   )

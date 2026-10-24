@@ -88,7 +88,7 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   drawBackground(rc, frame, config.background, S)
   drawVisualizer(rc, frame, config.visualizer, S)
   if (config.lyrics.enabled && config.lyrics.lines.length > 0) {
-    drawLyrics(rc, frame, config.lyrics)
+    drawLyrics(rc, frame, config.lyrics, config.visualizer.gradient)
   }
   rc.ctx.restore()
 }
