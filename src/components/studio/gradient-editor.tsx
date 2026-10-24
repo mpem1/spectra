@@ -186,7 +186,9 @@ export function GradientEditor({
       {/* Color stops */}
       <div className="space-y-1.5" role="group" aria-label="Gradient color stops">
         {value.stops.map((stop, index) => (
-          <div key={`${index}-${stop.position}-${stop.color}`} className="flex items-center gap-2">
+          // Stable key — a key derived from color/position would remount the
+          // row on every change and slam the color picker popover shut.
+          <div key={index} className="flex items-center gap-2">
             <ColorPickerButton
               value={stop.color}
               onChange={(color) => updateStop(index, { color })}

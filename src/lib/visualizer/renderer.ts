@@ -471,10 +471,15 @@ function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConf
 /* ------------------------------------ blob ----------------------------------- */
 
 /**
- * Organic audio blob: a smooth closed spline around the center whose radius
- * is driven by the log spectrum (mirrored for left/right symmetry), plus a
- * gentle idle breathing motion. Layered aurora echoes + a radial-gradient
- * core give it depth. Fully deterministic — phases derive from frame.time.
+ * Organic audio blob — a liquid, breathing form. The spectrum is folded into
+ * six zones, each driving one LOW-order harmonic (k = 2..7) around the
+ * outline, which keeps the silhouette smooth and elegant instead of spiky.
+ * Harmonic phases drift slowly so the deformation travels around the body,
+ * an idle wobble keeps it alive in silence, and the whole shape rotates
+ * gently. The body carries the full three-color palette as an angle-aware
+ * linear sweep, finished with a soft aura, one halo echo, rim shading, a
+ * specular highlight and a rim light. Fully deterministic — every phase
+ * derives from frame.time.
  */
 function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
@@ -484,56 +489,59 @@ function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
   const bass = clamp01(frame.bass)
   const energy = clamp01(frame.energy)
   const g = cfg.gradient
+  const t = frame.time
 
-  const baseR = H * (0.18 + bass * 0.05 * sens + energy * 0.02)
-  const K = 128
+  /* ---- fold the (log) spectrum into six zones → harmonic amplitudes ---- */
   const freq = frame.freq
   const len = Math.max(1, freq.length)
-
-  // Spectrum magnitude at each of K sample angles. The mapping is mirrored
-  // (angle 0..π walks the spectrum forward, π..2π walks it back) so the blob
-  // stays left/right symmetric, and small neighborhoods are averaged so a
-  // single hot bin can't spike the outline.
-  const radii = new Float32Array(K)
-  for (let i = 0; i < K; i++) {
-    const m = 1 - Math.abs((i / K) * 2 - 1)
-    const bin = Math.min(len - 1, Math.floor(m * (len - 1)))
-    const b0 = Math.max(0, bin - 1)
-    const b1 = Math.min(len - 1, bin + 1)
-    const v = ((freq[b0] ?? 0) + (freq[bin] ?? 0) + (freq[b1] ?? 0)) / 3
-    radii[i] = clamp01(v * sens)
+  const HARMONICS = [
+    { k: 2, drift: 0.55, amp: 0.5 }, // bass zone — the biggest, slowest swell
+    { k: 3, drift: -0.75, amp: 0.42 },
+    { k: 4, drift: 0.95, amp: 0.34 },
+    { k: 5, drift: -1.15, amp: 0.26 },
+    { k: 6, drift: 1.3, amp: 0.18 },
+    { k: 7, drift: -1.5, amp: 0.12 }, // treble zone — fine shimmer
+  ]
+  const zones = new Float32Array(HARMONICS.length)
+  for (let z = 0; z < HARMONICS.length; z++) {
+    const a = Math.floor((z / HARMONICS.length) * len)
+    const b = Math.max(a + 1, Math.floor(((z + 1) / HARMONICS.length) * len))
+    let sum = 0
+    for (let i = a; i < b; i++) sum += freq[i] ?? 0
+    zones[z] = clamp01((sum / (b - a)) * sens)
   }
-  // Two circular-smoothing passes → silky silhouette.
-  for (let pass = 0; pass < 2; pass++) {
-    let prev = radii[K - 1]
-    for (let i = 0; i < K; i++) {
-      const cur = radii[i]
-      const next = radii[(i + 1) % K]
-      radii[i] = prev * 0.25 + cur * 0.5 + next * 0.25
-      prev = cur
+
+  /* ---- radial deformation at angle a: harmonics + idle breathing ---- */
+  const sampleDef = (a: number): number => {
+    let def = 0
+    for (let z = 0; z < HARMONICS.length; z++) {
+      const h = HARMONICS[z]
+      def += zones[z] * h.amp * Math.cos(h.k * a + t * h.drift)
     }
-  }
-  for (let i = 0; i < K; i++) {
-    const a = (i / K) * Math.PI * 2
-    // Soft idle wobble so the blob breathes even in silence.
-    const wobble =
-      Math.sin(a * 2 + frame.time * 0.7) * 0.035 + Math.sin(a * 3 - frame.time * 0.45) * 0.02
-    radii[i] = baseR * (1 + wobble + radii[i] * 0.75)
+    // The blob stays alive even in total silence.
+    def += 0.045 * Math.sin(2 * a + t * 0.8)
+    def += 0.03 * Math.sin(3 * a - t * 0.5)
+    def += 0.018 * Math.sin(5 * a + t * 0.33)
+    return clamp(def, -0.35, 0.6)
   }
 
-  // Smooth closed spline through segment midpoints (quadratic midpoint
-  // technique) — no polygon corners, no jagged edges.
-  const buildPath = (scale: number, phase: number): Path2D => {
+  const baseR = H * (0.185 + bass * 0.05 * sens + energy * 0.025)
+  const rot = t * 0.1
+
+  /* ---- smooth closed spline through K samples (quadratic midpoints) ---- */
+  const K = 140
+  const buildPath = (scale: number): Path2D => {
     const pts: Array<[number, number]> = []
     for (let i = 0; i < K; i++) {
-      const a = (i / K) * Math.PI * 2 + phase
-      const r = radii[i] * scale
-      pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r])
+      const a = (i / K) * Math.PI * 2
+      const r = Math.min(baseR * (1 + sampleDef(a)), H * 0.44) * scale
+      const ang = a + rot
+      pts.push([cx + Math.cos(ang) * r, cy + Math.sin(ang) * r])
     }
     const p = new Path2D()
-    const midX = (pts[K - 1][0] + pts[0][0]) / 2
-    const midY = (pts[K - 1][1] + pts[0][1]) / 2
-    p.moveTo(midX, midY)
+    const mx = (pts[K - 1][0] + pts[0][0]) / 2
+    const my = (pts[K - 1][1] + pts[0][1]) / 2
+    p.moveTo(mx, my)
     for (let i = 0; i < K; i++) {
       const cur = pts[i]
       const nxt = pts[(i + 1) % K]
@@ -543,48 +551,73 @@ function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
     return p
   }
 
-  const cLow = sampleGradient(g.stops, 0.1, frame.time, g.cycleColors, g.cycleSpeed)
-  const cMid = sampleGradient(g.stops, 0.5, frame.time, g.cycleColors, g.cycleSpeed)
-  const cHigh = sampleGradient(g.stops, 0.9, frame.time, g.cycleColors, g.cycleSpeed)
+  const cMid = sampleGradient(g.stops, 0.5, t, g.cycleColors, g.cycleSpeed)
+  const cHigh = sampleGradient(g.stops, 0.9, t, g.cycleColors, g.cycleSpeed)
 
-  // Ambient aura pulsing behind everything.
-  const auraR = baseR * 2.15
-  const aura = ctx.createRadialGradient(cx, cy, baseR * 0.4, cx, cy, auraR)
-  aura.addColorStop(0, withAlpha(cMid, 0.26))
-  aura.addColorStop(0.55, withAlpha(cMid, 0.09))
+  /* ---- soft aura behind everything ---- */
+  const auraR = baseR * 2.1
+  const aura = ctx.createRadialGradient(cx, cy, baseR * 0.35, cx, cy, auraR)
+  aura.addColorStop(0, withAlpha(cMid, 0.2))
+  aura.addColorStop(0.55, withAlpha(cMid, 0.07))
   aura.addColorStop(1, withAlpha(cMid, 0))
   ctx.fillStyle = aura
   ctx.fillRect(cx - auraR, cy - auraR, auraR * 2, auraR * 2)
 
-  // Echo layers — slightly larger, softly rotated copies fading outward.
-  const echoes: Array<{ scale: number; alpha: number; phase: number }> = [
-    { scale: 1.28, alpha: 0.16, phase: 0.05 },
-    { scale: 1.58, alpha: 0.07, phase: -0.065 },
-  ]
-  for (const e of echoes) {
-    ctx.fillStyle = withAlpha(cMid, e.alpha)
-    ctx.fill(buildPath(e.scale, e.phase))
-  }
+  /* ---- single halo echo — clean depth without a blurry mess ---- */
+  ctx.fillStyle = withAlpha(cMid, 0.1)
+  ctx.fill(buildPath(1.16))
 
-  // Core: radial gradient (light center → saturated rim) for real depth.
-  const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseR * 1.5)
-  core.addColorStop(0, withAlpha(cLow, 0.95))
-  core.addColorStop(0.62, withAlpha(cMid, 0.9))
-  core.addColorStop(1, withAlpha(cHigh, 0.92))
-  const mainPath = buildPath(1, 0)
+  /* ---- main body: full palette swept across the blob at the configured
+   * angle (gradient line spans the body's bounding square), so the Angle
+   * slider visibly rotates the three colors around the form. ---- */
+  const mainPath = buildPath(1)
+  const span = Math.min(baseR * 1.35, H * 0.44)
+  const line = gradientLine(g.angle, span * 2, span * 2)
   if (cfg.glow) {
-    ctx.shadowColor = withAlpha(cMid, 0.85)
-    ctx.shadowBlur = 34 * S
+    ctx.shadowColor = withAlpha(cMid, 0.8)
+    ctx.shadowBlur = 30 * S
   } else {
     ctx.shadowBlur = 0
   }
-  ctx.fillStyle = core
+  ctx.fillStyle = buildGradient(
+    ctx,
+    cx - span + line.x0,
+    cy - span + line.y0,
+    cx - span + line.x1,
+    cy - span + line.y1,
+    g.stops,
+    t,
+    g.cycleColors,
+    g.cycleSpeed,
+  )
   ctx.fill(mainPath)
   ctx.shadowBlur = 0
 
-  // Thin bright rim to finish the silhouette.
-  ctx.lineWidth = Math.max(1, 1.5 * S)
-  ctx.strokeStyle = withAlpha(cHigh, 0.75)
+  /* ---- rim shading for sphere-like depth ---- */
+  const depth = ctx.createRadialGradient(cx, cy, baseR * 0.2, cx, cy, baseR * 1.02)
+  depth.addColorStop(0.6, 'rgba(0, 0, 0, 0)')
+  depth.addColorStop(1, withAlpha(cHigh, 0.4))
+  ctx.fillStyle = depth
+  ctx.fill(mainPath)
+
+  /* ---- specular highlight ---- */
+  const sheen = ctx.createRadialGradient(
+    cx - baseR * 0.22,
+    cy - baseR * 0.28,
+    0,
+    cx,
+    cy,
+    baseR * 1.1,
+  )
+  sheen.addColorStop(0, 'rgba(255, 255, 255, 0.26)')
+  sheen.addColorStop(0.45, 'rgba(255, 255, 255, 0.07)')
+  sheen.addColorStop(1, 'rgba(255, 255, 255, 0)')
+  ctx.fillStyle = sheen
+  ctx.fill(mainPath)
+
+  /* ---- rim light ---- */
+  ctx.lineWidth = Math.max(1, 1.8 * S)
+  ctx.strokeStyle = withAlpha(cHigh, 0.8)
   ctx.stroke(mainPath)
 }
 

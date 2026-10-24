@@ -494,3 +494,15 @@ Work Log:
 
 Stage Summary:
 - Browser-verified end-to-end with injected WAV + synthetic photo drop: matrix over darkened photo matches the user's reference (center-mirror dot columns, angle gradient orange→purple); shade 0%→100% fader works; angle 0°/360°/48° produce clearly different gradient directions; cycle ON sweeps smoothly with only palette colors; bars/radial unchanged aside from the angle-aware fill; zero console errors; lint clean; test artifacts removed.
+
+---
+Task ID: 4-fix-3
+Agent: main orchestrator (Z.ai Code)
+Task: User feedback round 3 — blob animation looks bad; changing a gradient color closes the color picker when clicking in the box.
+
+Work Log:
+- gradient-editor.tsx: root cause of the self-closing picker found — the stop row React key was `${index}-${stop.position}-${stop.color}`, so the FIRST color change remounted the row, destroying ColorPickerButton's local `open` state (popover slammed shut). Key changed to stable `index` with an explanatory comment.
+- renderer.ts drawBlob REWRITTEN as a low-order harmonic liquid blob: spectrum folded into 6 zones driving cosine harmonics k=2..7 around the outline (bass = biggest slowest swell, treble = fine shimmer); harmonic phases drift over time so deformation travels around the body; 3-term idle breathing wobble; slow global rotation (t*0.1); def clamped [-0.35, 0.6] and radius capped at H*0.44; body filled with the full 3-color palette swept across the blob's bounding square at the configured angle (Angle slider visibly rotates palette on the blob); layers = soft aura → single halo echo (1.16x) → main fill → radial rim shading → specular white sheen → 1.8S rim light. Replaces the old per-angle spectrum mapping that produced spiky/jittery outlines.
+
+Stage Summary:
+- agent-browser verified: blob morphs smoothly in idle mode (two frames differ) and is beat-driven with the injected 16s test WAV (cyan→pink→purple palette sweep across the liquid body); hex edit in the open picker (#f97316 → #22d3ee) keeps the popover open (expanded=true) and updates the swatch + canvas live; zero console errors; lint clean; test WAV + generator script + screenshots removed.
