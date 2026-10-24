@@ -38,6 +38,7 @@ export function PreviewCanvas() {
   const audioMeta = useStudioStore((s) => s.audioMeta)
   const barCount = useStudioStore((s) => s.config.visualizer.barCount)
   const smoothing = useStudioStore((s) => s.config.visualizer.smoothing)
+  const patchBackground = useStudioStore((s) => s.patchBackground)
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -118,6 +119,21 @@ export function PreviewCanvas() {
 
   /* ----------------------- drop-anywhere + shortcuts ----------------------- */
 
+  /** Dropped images become the background (with the shade fader available). */
+  const setBackgroundFromFile = useCallback(
+    (file: File): Promise<void> =>
+      new Promise((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          patchBackground({ mode: 'image', imageSrc: String(reader.result) })
+          resolve()
+        }
+        reader.onerror = () => resolve()
+        reader.readAsDataURL(file)
+      }),
+    [patchBackground],
+  )
+
   useEffect(() => {
     const onDragOver = (e: DragEvent) => {
       if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
@@ -131,8 +147,11 @@ export function PreviewCanvas() {
     const onDrop = (e: DragEvent) => {
       e.preventDefault()
       setDragOver(false)
-      const file = Array.from(e.dataTransfer?.files ?? []).find((f) => f.type.startsWith('audio/'))
-      if (file) void loadAudioFile(file)
+      const files = Array.from(e.dataTransfer?.files ?? [])
+      const image = files.find((f) => f.type.startsWith('image/'))
+      const audio = files.find((f) => f.type.startsWith('audio/'))
+      if (image) void setBackgroundFromFile(image)
+      if (audio) void loadAudioFile(audio)
     }
     const onKeyDown = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return
@@ -158,7 +177,7 @@ export function PreviewCanvas() {
       window.removeEventListener('drop', onDrop)
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [play, pause, seek])
+  }, [play, pause, seek, setBackgroundFromFile])
 
   /* ------------------------------- sizing ---------------------------------- */
 

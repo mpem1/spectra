@@ -473,3 +473,24 @@ Work Log:
 
 Stage Summary:
 - Blob and Grid now visually match the quality of the other four styles. Renderer remains fully deterministic (no Math.random/wall clock) so offline MP4/PNG-seq exports stay frame-exact.
+
+---
+Task ID: 4-fix-2
+Agent: main orchestrator (Z.ai Code)
+Task: User feedback round 2 — gradients don't move smoothly; angle slider does nothing; color cycle produces off-palette colors; grid should match the original "Matrix" dot-matrix reference (screenshot provided); missing PNG background with shade fader.
+
+Work Log:
+- gradients.ts: hue-rotation cycling REPLACED with smooth palette ping-pong — cyclePhase() = sinusoidal 0..1 sweep, reflect() folds positions back into the palette so colors NEVER leave the chosen stops; sampleGradient/buildGradient refactored around a pure sampleStops(); rotateRgba/stopColor removed. Motion is seam-free and palette-only.
+- renderer.ts: new visualizerFill() helper = canvas-space linear gradient across the whole canvas at the configured angle; applied to bars (fill), radial (stroke), particles (fill) and the new matrix — the Angle slider now visibly rotates coloring on every style (verified 0° vs 48°).
+- renderer.ts drawGrid rewritten as the original "Matrix": small round dots (radius ~cell*0.21), one column per barCount band (64 default), square grid; columns light bottom-up / both edges (mirror) / outward from vertical center (mirror=center, as in reference); frontier dots fade smoothly via globalAlpha; no unlit dots (background shows through, like the reference); per-column glow tint.
+- renderer.ts drawBackground: new 'image' mode — cover-fit drawImage + shade fader (black overlay alpha=bg.shade), dark fallback while decoding; vignette/grain still apply.
+- types.ts: BackgroundMode += 'image'; BackgroundConfig += imageSrc (data URL), shade (0..1); cycle docs updated; defaults added.
+- New lib/visualizer/image-cache.ts: sync getBackgroundImage (renderer) + async loadBackgroundImage (export preflight).
+- background-section.tsx: 4-way mode selector (Solid/Gradient/Image/Alpha); ImageBackgroundSection with hidden file input, upload/replace/remove buttons, thumbnail preview, SHADE slider (0-100%).
+- preview-canvas.tsx: image drops now set the background (audio drops still load audio).
+- exporter.ts + png-seq.ts: await loadBackgroundImage() before frame 0 (deterministic exports with image backgrounds).
+- store/studio.ts setConfig: merges loaded configs over DEFAULT_STUDIO_CONFIG (old saved projects without imageSrc/shade load safely); renderer shade is `?? 0` guarded.
+- gradient-editor.tsx: hint text under cycle speed explaining palette-only back-and-forth sweep.
+
+Stage Summary:
+- Browser-verified end-to-end with injected WAV + synthetic photo drop: matrix over darkened photo matches the user's reference (center-mirror dot columns, angle gradient orange→purple); shade 0%→100% fader works; angle 0°/360°/48° produce clearly different gradient directions; cycle ON sweeps smoothly with only palette colors; bars/radial unchanged aside from the angle-aware fill; zero console errors; lint clean; test artifacts removed.

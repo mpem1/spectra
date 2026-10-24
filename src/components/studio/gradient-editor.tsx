@@ -256,15 +256,21 @@ export function GradientEditor({
       </div>
 
       {value.cycleColors ? (
-        <SliderRow
-          label="Cycle speed"
-          value={value.cycleSpeed}
-          min={0.05}
-          max={2}
-          step={0.05}
-          onChange={(cycleSpeed) => onChange({ ...value, cycleSpeed })}
-          format={(v) => `${v.toFixed(2)}x`}
-        />
+        <div className="space-y-2">
+          <SliderRow
+            label="Cycle speed"
+            value={value.cycleSpeed}
+            min={0.05}
+            max={2}
+            step={0.05}
+            onChange={(cycleSpeed) => onChange({ ...value, cycleSpeed })}
+            format={(v) => `${v.toFixed(2)}x`}
+          />
+          <p className="text-[11px] leading-snug text-zinc-500">
+            The gradient sweeps smoothly back and forth through your palette — colors always stay
+            within the colors you picked.
+          </p>
+        </div>
       ) : null}
 
       {/* My gradients */}

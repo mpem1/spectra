@@ -15,7 +15,8 @@ import type {
   StudioConfig,
   VisualizerConfig,
 } from './types'
-import { buildGradient, gradientLine, parseColor, sampleGradient, withAlpha } from './gradients'
+import { buildGradient, gradientLine, sampleGradient, withAlpha } from './gradients'
+import { getBackgroundImage } from './image-cache'
 import { drawLyrics } from './lyrics'
 
 /* --------------------------------- Utilities -------------------------------- */
@@ -102,7 +103,26 @@ function drawBackground(
 ): void {
   const { ctx, width: W, height: H } = rc
 
-  if (bg.mode === 'solid') {
+  if (bg.mode === 'image') {
+    const img = getBackgroundImage(bg.imageSrc)
+    if (img) {
+      // Cover-fit: scale until the image covers the canvas, then center.
+      const scale = Math.max(W / img.naturalWidth, H / img.naturalHeight)
+      const dw = img.naturalWidth * scale
+      const dh = img.naturalHeight * scale
+      ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh)
+      // Shade fader — darkens the photo so the visualizer pops.
+      const shade = clamp01(bg.shade ?? 0)
+      if (shade > 0) {
+        ctx.fillStyle = `rgba(0, 0, 0, ${shade})`
+        ctx.fillRect(0, 0, W, H)
+      }
+    } else {
+      // Image still decoding — dark fallback, next frame picks it up.
+      ctx.fillStyle = '#0a0a0a'
+      ctx.fillRect(0, 0, W, H)
+    }
+  } else if (bg.mode === 'solid') {
     ctx.fillStyle = bg.color
     ctx.fillRect(0, 0, W, H)
   } else if (bg.mode === 'gradient') {
@@ -192,11 +212,34 @@ function drawVisualizer(
   ctx.restore()
 }
 
-/** Shared bar-color sampler: gradient sampled by bar position. */
+/** Shared bar-color sampler: gradient sampled by bar position (glow tints). */
 function barColorAt(cfg: VisualizerConfig, frame: AudioFrame, index: number, count: number): string {
   const g = cfg.gradient
   const t = count > 1 ? index / (count - 1) : 0
   return sampleGradient(g.stops, t, frame.time, g.cycleColors, g.cycleSpeed)
+}
+
+/**
+ * Canvas-space linear gradient across the WHOLE canvas at the configured
+ * angle. Used as the fill for every visualizer style, which is what makes
+ * the Angle slider visibly rotate the coloring (e.g. green bottom-left →
+ * orange top-right, like the reference).
+ */
+function visualizerFill(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig): CanvasGradient {
+  const { ctx, width: W, height: H } = rc
+  const g = cfg.gradient
+  const line = gradientLine(g.angle, W, H)
+  return buildGradient(
+    ctx,
+    line.x0,
+    line.y0,
+    line.x1,
+    line.y1,
+    g.stops,
+    frame.time,
+    g.cycleColors,
+    g.cycleSpeed,
+  )
 }
 
 /* ------------------------------------ bars ---------------------------------- */
@@ -213,6 +256,10 @@ function drawBars(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
   const radius = clamp01(cfg.roundness) * (barW / 2)
   const sens = clamp(cfg.sensitivity, 0, 3)
   const centerY = H / 2
+  // One canvas-space gradient for all bars → the Angle slider rotates the
+  // coloring across the whole visualizer (fill is continuous in canvas space).
+  const fill = visualizerFill(rc, frame, cfg)
+  ctx.fillStyle = fill
 
   for (let i = 0; i < n; i++) {
     const v = clamp01((i < freq.length ? freq[i] : 0) * sens)
@@ -220,7 +267,6 @@ function drawBars(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
     const x = i * slot + (slot - barW) / 2
     const color = barColorAt(cfg, frame, i, n)
 
-    ctx.fillStyle = color
     if (cfg.glow) {
       ctx.shadowColor = color
       ctx.shadowBlur = 18 * S
@@ -322,6 +368,8 @@ function drawRadial(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
 
   ctx.lineWidth = lineWidth
   ctx.lineCap = 'round'
+  // Angle-aware gradient across the canvas (rotates with the Angle slider).
+  ctx.strokeStyle = visualizerFill(rc, frame, cfg)
 
   for (let i = 0; i < n; i++) {
     const t = i / n
@@ -330,7 +378,6 @@ function drawRadial(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
     const len = Math.min(4 * S + v * H * 0.22, maxLen)
     const color = barColorAt(cfg, frame, i, n)
 
-    ctx.strokeStyle = color
     if (cfg.glow) {
       ctx.shadowColor = color
       ctx.shadowBlur = 18 * S
@@ -385,6 +432,10 @@ function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConf
   const sens = clamp(cfg.sensitivity, 0, 3)
   const energy = clamp01(frame.energy)
   const bass = clamp01(frame.bass)
+  // Angle-aware canvas gradient — particle colors follow their position.
+  const fill = visualizerFill(rc, frame, cfg)
+  const midColor = sampleGradient(g.stops, 0.5, frame.time, g.cycleColors, g.cycleSpeed)
+  ctx.fillStyle = fill
 
   for (let i = 0; i < PARTICLE_COUNT; i++) {
     // Seeded constants per particle — identical every frame.
@@ -399,9 +450,7 @@ function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConf
     const x = cx + Math.cos(angle) * r
     const y = cy + Math.sin(angle) * r
 
-    const color = sampleGradient(g.stops, i / PARTICLE_COUNT, frame.time, g.cycleColors, g.cycleSpeed)
-    ctx.fillStyle = color
-    ctx.shadowColor = color
+    ctx.shadowColor = midColor
     ctx.shadowBlur = cfg.glow ? 12 * S : 0
     ctx.beginPath()
     ctx.arc(x, y, size, 0, Math.PI * 2)
@@ -411,7 +460,7 @@ function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConf
   // Soft center glow reacting to overall energy.
   ctx.shadowBlur = 0
   const glowRadius = Math.max(1, H * (0.06 + energy * 0.12 * sens))
-  const glowColor = sampleGradient(g.stops, 0.5, frame.time, g.cycleColors, g.cycleSpeed)
+  const glowColor = midColor
   const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowRadius)
   glow.addColorStop(0, withAlpha(glowColor, 0.5))
   glow.addColorStop(1, withAlpha(glowColor, 0))
@@ -541,75 +590,78 @@ function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
 
 /* ------------------------------------ grid ----------------------------------- */
 
-/** Mix a CSS color toward white (t = 0..1). Falls back to the input color. */
-function mixToWhite(color: string, t: number): string {
-  const parsed = parseColor(color)
-  if (!parsed) return color
-  const k = clamp01(t)
-  const r = Math.round(parsed.r + (255 - parsed.r) * k)
-  const gg = Math.round(parsed.g + (255 - parsed.g) * k)
-  const b = Math.round(parsed.b + (255 - parsed.b) * k)
-  return `rgb(${r}, ${gg}, ${b})`
-}
-
 /**
- * LED-matrix equalizer: square cells, columns mapped onto the log spectrum.
- * Cells light bottom-up with a smooth frontier fade-in and a bright "hot
- * tip" on the topmost full cell; unlit cells fade with height for depth.
+ * Dot-matrix equalizer (the original "Matrix" look): small round dots in a
+ * square grid, one column per spectrum band. Columns light bottom-up — or
+ * outward from the vertical center when Mirror = center (as in the
+ * reference screenshot). Dot colors come from the angle-based canvas
+ * gradient; unlit cells are skipped entirely so the background shows through.
  */
 function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
-  const cols = Math.round(clamp(cfg.barCount / 2, 12, 28))
-  const marginX = W * 0.06
+  const cols = Math.round(clamp(cfg.barCount, 8, 96))
+  const marginX = W * 0.045
   const cell = (W - marginX * 2) / cols
-  const rows = Math.max(6, Math.floor((H - H * 0.1) / cell))
+  const rows = Math.max(4, Math.floor((H * 0.9) / cell))
   const gridW = cols * cell
   const gridH = rows * cell
   const x0 = (W - gridW) / 2
   const y0 = (H - gridH) / 2
-  const gapRatio = clamp(cfg.gap, 0, 0.8) * 0.55
   const sens = clamp(cfg.sensitivity, 0, 3)
-  const radius = (0.18 + clamp01(cfg.roundness) * 0.32) * cell
-  const w = cell * (1 - gapRatio)
-  const h = w
-  const off = (cell - w) / 2
+  const radius = cell * (0.1 + 0.18 * clamp01(cfg.roundness)) * (1 - 0.5 * clamp01(cfg.gap))
   const freq = frame.freq
+  const centerRow = (rows - 1) / 2
+  const fill = visualizerFill(rc, frame, cfg)
+
+  ctx.fillStyle = fill
 
   for (let c = 0; c < cols; c++) {
     const bin = Math.min(freq.length - 1, Math.floor((c / cols) * freq.length))
     const v = clamp01((freq[bin] ?? 0) * sens)
+    if (v <= 0.001) continue
     const level = v * rows
-    const full = Math.floor(level)
-    const frac = level - full
-    const color = barColorAt(cfg, frame, c, cols)
+
+    if (cfg.glow) {
+      ctx.shadowColor = barColorAt(cfg, frame, c, cols)
+      ctx.shadowBlur = 7 * S
+    } else {
+      ctx.shadowBlur = 0
+    }
+
+    // Batch all fully-lit dots of this column into one path; the frontier
+    // dot(s) fade in smoothly via globalAlpha.
+    const path = new Path2D()
+    const frontier: Array<{ x: number; y: number; alpha: number }> = []
 
     for (let r = 0; r < rows; r++) {
-      const rowFromBottom = rows - 1 - r
-      const x = x0 + c * cell + off
-      const y = y0 + r * cell + off
-
-      let alpha: number
-      let hot = false
-      if (rowFromBottom < full) {
-        alpha = 1
-        hot = rowFromBottom === full - 1 // topmost full cell = bright tip
-      } else if (rowFromBottom === full) {
-        alpha = frac * 0.85 // frontier cell fades in smoothly
+      // coverage: ≥1 fully lit · 0..1 frontier fade · ≤0 dark
+      let coverage: number
+      if (cfg.mirror === 'center') {
+        coverage = level / 2 - Math.abs(r - centerRow)
+      } else if (cfg.mirror === 'mirror') {
+        coverage = Math.max(level - (rows - 1 - r), level - r)
       } else {
-        // Unlit guiding dots, slightly brighter at the bottom for depth.
-        alpha = 0.1 - 0.05 * (rowFromBottom / Math.max(1, rows - 1))
+        coverage = level - (rows - 1 - r)
       }
-
-      const cellColor = hot ? mixToWhite(color, 0.55) : color
-      ctx.fillStyle = withAlpha(cellColor, alpha)
-      if (hot && cfg.glow) {
-        ctx.shadowColor = cellColor
-        ctx.shadowBlur = 10 * S
+      if (coverage <= 0) continue
+      const x = x0 + c * cell + cell / 2
+      const y = y0 + r * cell + cell / 2
+      if (coverage >= 1) {
+        path.moveTo(x + radius, y)
+        path.arc(x, y, radius, 0, Math.PI * 2)
       } else {
-        ctx.shadowBlur = 0
+        frontier.push({ x, y, alpha: coverage })
       }
-      fillRoundRect(ctx, x, y, w, h, radius)
     }
+
+    ctx.fill(path)
+    for (const f of frontier) {
+      ctx.globalAlpha = clamp01(f.alpha)
+      ctx.beginPath()
+      ctx.arc(f.x, f.y, radius, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.globalAlpha = 1
   }
   ctx.shadowBlur = 0
 }

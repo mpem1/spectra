@@ -9,6 +9,7 @@
 import { zipSync } from 'fflate'
 import { OfflineAnalyzer } from '../audio/offline'
 import { renderFrame } from '../visualizer/renderer'
+import { loadBackgroundImage } from '../visualizer/image-cache'
 import type {
   ExportProgress,
   ExportResolution,
@@ -53,6 +54,15 @@ const tick = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0))
 export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResult> {
   const { config, settings, audioBuffer, onProgress, signal } = opts
   const { width, height } = RESOLUTIONS[settings.resolution]
+
+  // Decode a configured background image before frame 0 (deterministic frames).
+  if (config.background.mode === 'image' && config.background.imageSrc) {
+    try {
+      await loadBackgroundImage(config.background.imageSrc)
+    } catch {
+      // Fall through — the renderer paints a dark fallback.
+    }
+  }
 
   const analyzer = new OfflineAnalyzer(audioBuffer, settings.fps)
   const total = Math.min(

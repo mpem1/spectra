@@ -19,9 +19,9 @@ export interface GradientConfig {
   stops: ColorStop[]
   /** Gradient angle in degrees (0-360) */
   angle: number
-  /** When true, hue-cycles the stops over time during playback */
+  /** When true, the palette sweeps smoothly back and forth (colors stay in the palette) */
   cycleColors: boolean
-  /** Speed of hue cycling, cycles per second (used when cycleColors = true) */
+  /** Sweep speed — one full back-and-forth pass per 1/speed seconds */
   cycleSpeed: number
 }
 
@@ -52,7 +52,7 @@ export interface VisualizerConfig {
 
 /* --------------------------------- Background -------------------------------- */
 
-export type BackgroundMode = 'solid' | 'gradient' | 'transparent'
+export type BackgroundMode = 'solid' | 'gradient' | 'transparent' | 'image'
 
 export interface BackgroundConfig {
   mode: BackgroundMode
@@ -60,6 +60,10 @@ export interface BackgroundConfig {
   color: string
   /** Optional second gradient used when mode = gradient */
   gradient: GradientConfig
+  /** Image data URL (used when mode = image), drawn cover-fit */
+  imageSrc: string
+  /** Darkening overlay over the image, 0..1 ("shade fader") */
+  shade: number
   /** Vignette strength 0..1 (darkens edges) */
   vignette: number
   /** Subtle noise grain 0..1 */
@@ -228,6 +232,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
       cycleColors: false,
       cycleSpeed: 0.05,
     },
+    imageSrc: '',
+    shade: 0.5,
     vignette: 0.35,
     grain: 0.08,
   },

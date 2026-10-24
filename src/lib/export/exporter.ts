@@ -18,6 +18,7 @@
 import { ArrayBufferTarget, Muxer } from 'mp4-muxer'
 import { OfflineAnalyzer } from '../audio/offline'
 import { renderFrame } from '../visualizer/renderer'
+import { loadBackgroundImage } from '../visualizer/image-cache'
 import type {
   ExportProgress,
   ExportResolution,
@@ -147,6 +148,16 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
   const cancelled = (): boolean => signal?.cancelled === true
 
   report({ phase: 'preparing', progress: 0, time: 0 })
+
+  // A configured background image must be fully decoded before frame 0 so
+  // every rendered frame includes it (deterministic output).
+  if (config.background.mode === 'image' && config.background.imageSrc) {
+    try {
+      await loadBackgroundImage(config.background.imageSrc)
+    } catch {
+      onNotice?.('Background image could not be loaded — exporting with a dark background.')
+    }
+  }
 
   const fps = settings.fps
   const analyzer = new OfflineAnalyzer(audioBuffer, fps)

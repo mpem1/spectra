@@ -186,7 +186,16 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
   setActiveTab: (activeTab) => set({ activeTab }),
   setAudioMeta: (audioMeta) => set({ audioMeta }),
   setProjectId: (projectId) => set({ projectId }),
-  setConfig: (config) => set({ config: structuredClone(config) }),
+  setConfig: (config) =>
+    set({
+      // Merge over the factory defaults so configs saved by older versions
+      // (missing newer fields like background.imageSrc / shade) still load.
+      config: {
+        visualizer: { ...DEFAULT_STUDIO_CONFIG.visualizer, ...config.visualizer },
+        background: { ...DEFAULT_STUDIO_CONFIG.background, ...config.background },
+        lyrics: { ...DEFAULT_STUDIO_CONFIG.lyrics, ...config.lyrics },
+      },
+    }),
 
   setLoop: (loop) => {
     set({ loop })

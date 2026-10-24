@@ -174,12 +174,6 @@ function normalizeStops(stops: ColorStop[]): NormalizedStop[] {
     .sort((a, b) => a.position - b.position)
 }
 
-/** Resolve one stop to a CSS color: hue-cycle (if cycling) then apply alpha. */
-function stopColor(stop: NormalizedStop, hueShift: number, cycling: boolean): string {
-  const base = cycling ? hueRotate(stop.color, hueShift) : stop.color
-  return withAlpha(base, stop.alpha)
-}
-
 /**
  * Build a linear canvas gradient. Callers convert the config angle to canvas
  * coordinates themselves (see gradientLine) and pass the endpoints here.
@@ -202,16 +196,21 @@ export function buildGradient(
     gradient.addColorStop(1, '#ffffff')
     return gradient
   }
-  const hueShift = cycle ? time * cycleSpeed * 360 : 0
+  // Canvas stop positions stay fixed; with cycling on, the COLOR at each
+  // position slides smoothly back and forth through the palette, so only
+  // palette colors (and blends between adjacent stops) are ever shown.
+  const phase = cycle ? cyclePhase(time, cycleSpeed) : 0
   for (const stop of normalized) {
-    gradient.addColorStop(stop.position / 100, stopColor(stop, hueShift, cycle))
+    const pos01 = stop.position / 100
+    gradient.addColorStop(pos01, sampleStops(normalized, cycle ? reflect(pos01 + phase) : pos01))
   }
   return gradient
 }
 
 /**
- * Interpolated color at t ∈ [0..1] along the stop list (for per-bar coloring).
- * Applies the same hue cycling as buildGradient so bars stay in sync.
+ * Interpolated color at t ∈ [0..1] along the stop list (for glow tints etc.).
+ * Applies the same palette ping-pong as buildGradient so everything stays
+ * in sync — colors always remain inside the user's palette.
  */
 export function sampleGradient(
   stops: ColorStop[],
@@ -222,14 +221,38 @@ export function sampleGradient(
 ): string {
   const normalized = normalizeStops(stops)
   if (normalized.length === 0) return '#ffffff'
-  if (normalized.length === 1) return stopColor(normalized[0], cycle ? time * cycleSpeed * 360 : 0, cycle)
+  const clamped = clamp(t, 0, 1)
+  const pos01 = cycle ? reflect(clamped + cyclePhase(time, cycleSpeed)) : clamped
+  return sampleStops(normalized, pos01)
+}
 
-  const pos = clamp(t, 0, 1) * 100
-  const hueShift = cycle ? time * cycleSpeed * 360 : 0
+/* ------------------------- Palette cycling (ping-pong) ----------------------- */
 
-  if (pos <= normalized[0].position) return stopColor(normalized[0], hueShift, cycle)
+/**
+ * Smooth cycle phase in [0..1]: a sinusoidal back-and-forth sweep. One full
+ * out-and-back pass takes 1/speed seconds. Because the window reflects at
+ * the palette ends instead of wrapping, colors NEVER leave the palette and
+ * the motion has no seams or jumps.
+ */
+export function cyclePhase(time: number, cycleSpeed: number): number {
+  const speed = Math.max(0.001, cycleSpeed)
+  return 0.5 - 0.5 * Math.cos(time * speed * Math.PI * 2)
+}
+
+/** Fold x ∈ [0..2] into [0..1] by reflection (triangle wave) — continuous. */
+function reflect(x: number): number {
+  return x <= 1 ? x : 2 - x
+}
+
+/** Sample the normalized stop list at a plain palette position (no cycling). */
+function sampleStops(normalized: NormalizedStop[], pos01: number): string {
+  if (normalized.length === 0) return '#ffffff'
+  if (normalized.length === 1) return withAlpha(normalized[0].color, normalized[0].alpha)
+
+  const pos = clamp(pos01, 0, 1) * 100
+  if (pos <= normalized[0].position) return withAlpha(normalized[0].color, normalized[0].alpha)
   const last = normalized[normalized.length - 1]
-  if (pos >= last.position) return stopColor(last, hueShift, cycle)
+  if (pos >= last.position) return withAlpha(last.color, last.alpha)
 
   for (let i = 0; i < normalized.length - 1; i++) {
     const a = normalized[i]
@@ -237,25 +260,18 @@ export function sampleGradient(
     if (pos >= a.position && pos <= b.position) {
       const span = b.position - a.position
       const k = span <= 0 ? 0 : (pos - a.position) / span
-      // Lerp in RGB space (alpha included), then apply hue cycling once.
+      // Lerp in RGB space (alpha included) between two adjacent stops.
       const ca = parseColor(a.color) ?? { r: 255, g: 255, b: 255, a: 1 }
       const cb = parseColor(b.color) ?? { r: 255, g: 255, b: 255, a: 1 }
-      const mixed: Rgba = {
+      return rgbaToCss({
         r: ca.r + (cb.r - ca.r) * k,
         g: ca.g + (cb.g - ca.g) * k,
         b: ca.b + (cb.b - ca.b) * k,
         a: (ca.a + (cb.a - ca.a) * k) * (a.alpha + (b.alpha - a.alpha) * k),
-      }
-      return cycle ? rotateRgba(mixed, hueShift) : rgbaToCss(mixed)
+      })
     }
   }
-  return stopColor(last, hueShift, cycle)
-}
-
-function rotateRgba(c: Rgba, deg: number): string {
-  const { h, s, l } = rgbToHsl(c.r, c.g, c.b)
-  const rotated = hslToRgb(h + deg, s, l)
-  return rgbaToCss({ r: rotated.r, g: rotated.g, b: rotated.b, a: c.a })
+  return withAlpha(last.color, last.alpha)
 }
 
 /**
