@@ -1,11 +1,16 @@
 /**
  * Pulse Studio — timed lyric rendering.
  *
- * Paints a two-line karaoke stack: the current line sits bright at the chosen
- * position while the previous line lingers dimmed just above it, so two lines
- * share the screen and each new line appears underneath the last one. A line
- * that is never replaced fades out after `holdTime` seconds instead of
- * sticking around forever.
+ * Scrolling two-line karaoke queue. Each new line fades in at the main
+ * position (underneath the previous one); the moment it arrives, the line it
+ * replaces glides up into the echo slot above and dims — it STAYS there until
+ * the following line arrives, which pushes it off completely. So the newest
+ * line is always at the bottom, the runner-up sits above it, and everything
+ * older is gone.
+ *
+ * A line that is never replaced within `holdTime` seconds (the trailing line,
+ * or a long gap to the next one) fades out on its own instead of sticking
+ * around forever.
  *
  * Text can be filled with a flat color or with a sweep of the visualizer
  * palette (respecting cycle colors, deterministic via frame.styleTime), plus
@@ -28,29 +33,23 @@ export function findActiveLine(lines: LyricLine[], time: number): number {
   return active
 }
 
-/** A line plus the instant its window closes (next line's start or start+hold). */
-interface LyricWindow {
-  line: LyricLine
-  end: number
-}
-
-function lineWindow(lines: LyricLine[], index: number, holdTime: number): LyricWindow {
-  const line = lines[index]
-  const next = index + 1 < lines.length ? lines[index + 1] : null
-  const end = Math.min(next ? next.time : Number.POSITIVE_INFINITY, line.time + holdTime)
-  return { line, end }
-}
-
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v
 }
 
 /**
- * Draw the active lyric line for this frame with the previous line stacked
- * above it. Alpha envelopes: the current line fades in over `fade` seconds at
- * its start and fades out over `fade` seconds as its window closes (the next
- * line's start, or `holdTime` after its own start when nothing replaces it).
- * The previous line lingers dimmed above and leaves together with it.
+ * Draw every live lyric line for this frame.
+ *
+ * Line i's lifecycle (times: T_i = start, R = when line i+1 replaces it):
+ *  - [T_i, R): main slot, full alpha. It never fades early — it stays until
+ *    the next line actually arrives.
+ *  - [R, D): echo slot. Glides up and dims to 0.6 over `fade` seconds.
+ *  - D: departure. If line i+2 arrives before line i+1's hold would expire,
+ *    D = T_{i+2} and the line is pushed off completely (hard cut, masked by
+ *    the new arrival). Otherwise it fades out together with line i+1's
+ *    auto-hide at R + holdTime.
+ *  - Never replaced (no next line, or the gap exceeds holdTime): fades out
+ *    over `fade` seconds ending at T_i + holdTime.
  */
 export function drawLyrics(
   rc: RenderContext,
@@ -59,32 +58,14 @@ export function drawLyrics(
   palette: GradientConfig,
 ): void {
   if (!lyrics.enabled || lyrics.lines.length === 0) return
-  const index = findActiveLine(lyrics.lines, frame.time)
-  if (index === -1) return
-
-  const fade = Math.max(lyrics.fade, 0.001)
-  const hold = Math.max(lyrics.holdTime, 0.5)
-  const cur = lineWindow(lyrics.lines, index, hold)
-  const prev = index > 0 ? lineWindow(lyrics.lines, index - 1, hold) : null
-
-  const curAlpha =
-    clamp01((frame.time - cur.line.time) / fade) * clamp01((cur.end - frame.time) / fade)
-  // Dimmed echo of the previous line, departing together with the current one.
-  const prevAlpha = prev
-    ? 0.55 *
-      clamp01((frame.time - prev.line.time) / fade) *
-      clamp01((cur.end - frame.time) / fade)
-    : 0
 
   const { ctx, width, height } = rc
   const S = height / 720
-  const family =
-    lyrics.font === 'sans'
-      ? 'system-ui, sans-serif'
-      : lyrics.font === 'serif'
-        ? 'Georgia, serif'
-        : 'monospace'
-  const y = (lyrics.positionY / 100) * height
+  const fade = Math.max(lyrics.fade, 0.001)
+  const hold = Math.max(lyrics.holdTime, 0.5)
+  const lines = lyrics.lines
+  const t = frame.time
+  const yMain = (lyrics.positionY / 100) * height
   const gap = lyrics.size * 1.35 * S
 
   const paint = (rawText: string, py: number, alpha: number) => {
@@ -98,12 +79,12 @@ export function drawLyrics(
 
     // Shrink long sentences until they fit 92% of the canvas width.
     let px = lyrics.size * S
-    ctx.font = `${lyrics.weight} ${px}px ${family}`
+    ctx.font = `${lyrics.weight} ${px}px ${family(lyrics.font)}`
     const maxW = width * 0.92
     const measured = ctx.measureText(text).width
     if (measured > maxW && measured > 0) {
       px = Math.max(10, px * (maxW / measured))
-      ctx.font = `${lyrics.weight} ${px}px ${family}`
+      ctx.font = `${lyrics.weight} ${px}px ${family(lyrics.font)}`
     }
 
     // Glow halo: a colored pass under the crisp fill. Double-drawn so the
@@ -130,20 +111,15 @@ export function drawLyrics(
     // Fill: palette sweep or flat color.
     if (lyrics.fill === 'gradient' && palette.stops.length > 0) {
       const tw = Math.max(ctx.measureText(text).width, 1)
-      const g = ctx.createLinearGradient(
-        width / 2 - tw / 2,
-        0,
-        width / 2 + tw / 2,
-        0,
-      )
+      const g = ctx.createLinearGradient(width / 2 - tw / 2, 0, width / 2 + tw / 2, 0)
       const STEPS = 8
       for (let i = 0; i <= STEPS; i++) {
-        const t = i / STEPS
+        const p = i / STEPS
         g.addColorStop(
-          t,
+          p,
           sampleGradient(
             palette.stops,
-            t,
+            p,
             frame.styleTime,
             palette.cycleColors,
             palette.cycleSpeed,
@@ -163,7 +139,47 @@ export function drawLyrics(
     ctx.restore()
   }
 
-  // Previous line first so the current line paints on top of the stack.
-  if (prev) paint(prev.line.text, y - gap, prevAlpha)
-  paint(cur.line.text, y, curAlpha)
+  for (let i = 0; i < lines.length; i++) {
+    const start = lines[i].time
+    if (start > t) continue
+    const next = i + 1 < lines.length ? lines[i + 1] : null
+    const next2 = i + 2 < lines.length ? lines[i + 2] : null
+
+    let alpha = 0
+    let y = yMain
+
+    if (next === null || next.time >= start + hold) {
+      // Never replaced in time: lives at the main slot, fades out after hold.
+      alpha = clamp01((t - start) / fade) * clamp01((start + hold - t) / fade)
+    } else {
+      const replaceAt = next.time
+      if (t < replaceAt) {
+        // Current line: stays fully on screen until the next line arrives.
+        alpha = clamp01((t - start) / fade)
+      } else {
+        // Replaced: glide up to the echo slot while dimming to 0.6.
+        const p = clamp01((t - replaceAt) / fade)
+        y = yMain - gap * p
+        alpha = 1 - 0.4 * p
+        // Departure: pushed off completely the moment the line after this
+        // one arrives (if it does so before the successor's hold expires);
+        // otherwise it leaves together with the successor's auto-hide.
+        const pushed = next2 !== null && next2.time <= replaceAt + hold
+        const departAt = pushed ? next2.time : replaceAt + hold
+        if (t >= departAt) {
+          if (pushed) continue
+          alpha *= clamp01((departAt - t) / fade)
+        }
+      }
+    }
+    paint(lines[i].text, y, alpha)
+  }
+}
+
+function family(font: LyricsConfig['font']): string {
+  return font === 'sans'
+    ? 'system-ui, sans-serif'
+    : font === 'serif'
+      ? 'Georgia, serif'
+      : 'monospace'
 }

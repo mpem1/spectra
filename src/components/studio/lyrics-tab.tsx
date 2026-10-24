@@ -510,8 +510,9 @@ export function LyricsTab() {
           format={(v) => `${v.toFixed(1)}s`}
         />
         <p className="-mt-1 text-[11px] leading-snug text-zinc-600">
-          A line fades out after this many seconds unless a newer line replaces it. The previous
-          line stays on screen above the current one while both are live.
+          Each new line appears underneath and the older line glides up; when the third line
+          arrives the oldest is pushed off. A line that is never replaced fades out after this
+          many seconds.
         </p>
 
         <div className="flex h-7 items-center justify-between">

@@ -539,3 +539,18 @@ Stage Summary:
 - Lyrics: no-reset distribute, explicit add-line flow, 4s auto-hold, 2-line stacked display, gradient/outline/glow styling — all browser-verified.
 - Cycle colors verified functional end-to-end (toggle → palette sweep in bars and lyrics gradient).
 - Files: src/lib/visualizer/types.ts, src/lib/visualizer/lyrics.ts, src/lib/visualizer/renderer.ts, src/components/studio/lyrics-tab.tsx.
+
+---
+Task ID: 5-lyrics-2
+Agent: Z.ai Code (main)
+Task: Fix weird lyric fade choreography — previous line faded out before the new line arrived (dead gap + ghost resurrection); user wants a scrolling queue (new line underneath, previous glides up and STAYS, oldest pushed off completely when the third line arrives).
+
+Work Log:
+- Root causes in old drawLyrics: (a) the whole pair faded out over `fade` seconds ENDING at next.time → text vanished before the new line appeared (dead gap); (b) a line that auto-hid (hold expired) was resurrected dimmed when a later line finally arrived (fade-in/out weirdness the user saw).
+- lyrics.ts rewritten as a per-line lifecycle loop (no more active+prev pair model): line i is fully visible at the main slot until line i+1 actually arrives; at replacement it glides up to the echo slot and dims 1→0.6 over `fade` seconds; departure = next2.time (hard cut, "pushed off completely") when line i+2 arrives before the successor's hold expires, else it fades out together with the successor's auto-hide at replaceAt+hold; never-replaced lines fade out ending at start+holdTime. findActiveLine kept for compat; paint() (glow/outline/gradient/fit) unchanged.
+- lyrics-tab.tsx: Auto-hide hint text updated to describe the queue behavior.
+- Browser verified (paused-playhead technique since the demo clock wraps): lines at 0/2/4s → at 2s line1 dimmed above line2; at 3s line1 STILL visible (no early fade); at 4s line1 completely gone, line2 moved up, line3 below; trailing line auto-hide still clean; long-gap case (line1 at 0:40, line2 at 0:50, paused at 0:50) → line2 alone at main slot, NO ghost of line1. Zero console errors, lint clean, temp screenshots removed.
+
+Stage Summary:
+- Lyric display is now a proper scrolling 2-line queue matching the user's spec: new line underneath → previous glides up and persists → oldest pushed off exactly when the third line lands; 4s auto-hide only for lines nothing replaces (trailing line / gaps > hold).
+- Files: src/lib/visualizer/lyrics.ts, src/components/studio/lyrics-tab.tsx (hint text only).
