@@ -12,10 +12,16 @@ const TWO_PI = Math.PI * 2
 
 /**
  * Deterministic pseudo-spectrum for `barCount` bars at `time` seconds:
- * layered sines with a bass-heavy tilt. Same inputs always yield the same
- * frame — safe for both preview and export code paths.
+ * layered sines with a bass-heavy tilt. `styleTime` drives decorative motion
+ * (defaults to `time`); the preview passes a wall clock so styling keeps
+ * animating while paused. Same inputs always yield the same frame — safe for
+ * both preview and export code paths.
  */
-export function makeIdleFrame(barCount: number, time: number): AudioFrame {
+export function makeIdleFrame(
+  barCount: number,
+  time: number,
+  styleTime: number = time,
+): AudioFrame {
   const count = Math.max(1, Math.floor(barCount))
   const freq = new Float32Array(count)
   for (let i = 0; i < count; i++) {
@@ -39,6 +45,7 @@ export function makeIdleFrame(barCount: number, time: number): AudioFrame {
 
   return {
     time,
+    styleTime,
     freq,
     wave,
     energy: 0.4,

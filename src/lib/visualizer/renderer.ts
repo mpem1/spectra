@@ -135,7 +135,7 @@ function drawBackground(
       line.x1,
       line.y1,
       g.stops,
-      frame.time,
+      frame.styleTime,
       g.cycleColors,
       g.cycleSpeed,
     )
@@ -216,7 +216,7 @@ function drawVisualizer(
 function barColorAt(cfg: VisualizerConfig, frame: AudioFrame, index: number, count: number): string {
   const g = cfg.gradient
   const t = count > 1 ? index / (count - 1) : 0
-  return sampleGradient(g.stops, t, frame.time, g.cycleColors, g.cycleSpeed)
+  return sampleGradient(g.stops, t, frame.styleTime, g.cycleColors, g.cycleSpeed)
 }
 
 /**
@@ -236,7 +236,7 @@ function visualizerFill(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCon
     line.x1,
     line.y1,
     g.stops,
-    frame.time,
+    frame.styleTime,
     g.cycleColors,
     g.cycleSpeed,
   )
@@ -307,7 +307,7 @@ function drawWave(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
     line.x1,
     line.y1,
     g.stops,
-    frame.time,
+    frame.styleTime,
     g.cycleColors,
     g.cycleSpeed,
   )
@@ -327,7 +327,7 @@ function drawWave(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
   ctx.lineCap = 'round'
   ctx.strokeStyle = stroke
   if (cfg.glow) {
-    ctx.shadowColor = sampleGradient(g.stops, 0.5, frame.time, g.cycleColors, g.cycleSpeed)
+    ctx.shadowColor = sampleGradient(g.stops, 0.5, frame.styleTime, g.cycleColors, g.cycleSpeed)
     ctx.shadowBlur = 18 * S
   } else {
     ctx.shadowBlur = 0
@@ -353,7 +353,7 @@ function drawRadial(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
   const cy = H / 2
   const baseRadius = H * 0.18
   const maxLen = H * 0.48 - baseRadius
-  const rotation = frame.time * 0.15
+  const rotation = frame.styleTime * 0.15
   const sens = clamp(cfg.sensitivity, 0, 3)
   const lineWidth = Math.max(2, 3 * S)
 
@@ -405,7 +405,7 @@ function drawRadial(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
   const midColor = sampleGradient(
     cfg.gradient.stops,
     0.5,
-    frame.time,
+    frame.styleTime,
     cfg.gradient.cycleColors,
     cfg.gradient.cycleSpeed,
   )
@@ -434,7 +434,7 @@ function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConf
   const bass = clamp01(frame.bass)
   // Angle-aware canvas gradient — particle colors follow their position.
   const fill = visualizerFill(rc, frame, cfg)
-  const midColor = sampleGradient(g.stops, 0.5, frame.time, g.cycleColors, g.cycleSpeed)
+  const midColor = sampleGradient(g.stops, 0.5, frame.styleTime, g.cycleColors, g.cycleSpeed)
   ctx.fillStyle = fill
 
   for (let i = 0; i < PARTICLE_COUNT; i++) {
@@ -445,7 +445,7 @@ function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConf
     const speed = (rnd() - 0.5) * 0.9
     const size = (1.5 + rnd() * 2.5) * S
 
-    const angle = baseAngle + frame.time * speed * (0.2 + energy * 1.5)
+    const angle = baseAngle + frame.styleTime * speed * (0.2 + energy * 1.5)
     const r = baseR * (1 + bass * 0.25 * sens)
     const x = cx + Math.cos(angle) * r
     const y = cy + Math.sin(angle) * r
@@ -479,7 +479,7 @@ function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConf
  * gently. The body carries the full three-color palette as an angle-aware
  * linear sweep, finished with a soft aura, one halo echo, rim shading, a
  * specular highlight and a rim light. Fully deterministic — every phase
- * derives from frame.time.
+ * derives from frame.styleTime (song time in exports, wall clock in preview).
  */
 function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
@@ -489,7 +489,7 @@ function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
   const bass = clamp01(frame.bass)
   const energy = clamp01(frame.energy)
   const g = cfg.gradient
-  const t = frame.time
+  const t = frame.styleTime
 
   /* ---- fold the (log) spectrum into six zones → harmonic amplitudes ---- */
   const freq = frame.freq

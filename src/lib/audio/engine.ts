@@ -65,6 +65,7 @@ export class AudioEngine {
   /** Reused frame object — consumers must read it synchronously. */
   private liveFrame: AudioFrame = {
     time: 0,
+    styleTime: 0,
     freq: this.outFreq,
     wave: this.outWave,
     energy: 0,
@@ -200,6 +201,10 @@ export class AudioEngine {
   getLiveFrame(): AudioFrame {
     const frame = this.liveFrame
     frame.time = this.currentTime
+    // Decorative clock free-runs on the wall clock (playing or paused) so
+    // gradient cycling / ambient motion stay alive while styling. Exports
+    // use the deterministic offline analyzer instead, where styleTime = time.
+    frame.styleTime = performance.now() / 1000
 
     if (!this.playing || !this.analyser || !this.ctx) {
       frame.freq.fill(0)

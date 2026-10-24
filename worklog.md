@@ -506,3 +506,17 @@ Work Log:
 
 Stage Summary:
 - agent-browser verified: blob morphs smoothly in idle mode (two frames differ) and is beat-driven with the injected 16s test WAV (cyan→pink→purple palette sweep across the liquid body); hex edit in the open picker (#f97316 → #22d3ee) keeps the popover open (expanded=true) and updates the swatch + canvas live; zero console errors; lint clean; test WAV + generator script + screenshots removed.
+
+---
+Task ID: 4-fix-4
+Agent: main orchestrator (Z.ai Code)
+Task: User report — "did the cycle colors stop working?"
+
+Work Log:
+- Diagnosis: cycle was NOT broken, but it was invisible in the most common styling scenario — the palette ping-pong is driven by frame.time, and the preview clock freezes while paused / idle-before-play (demo clock only advances while "playing"). Toggling Cycle colors on a paused preview showed zero motion.
+- Fix: new decorative-motion clock `styleTime` on AudioFrame. Live engine (engine.ts) sets styleTime = performance.now()/1000 every frame (continuous — no phase jump on play/pause); idle.ts makeIdleFrame gained a styleTime param; preview-canvas demo branch passes wall clock; OfflineAnalyzer sets styleTime = time so exports stay frame-exact deterministic.
+- renderer.ts: every sampleGradient/buildGradient call (background, visualizerFill, bars, wave, radial, particles, grid, blob) + ambient motion (radial rotation, particle orbit, blob wobble/rotation) now read frame.styleTime; audio-driven geometry still uses frame.time. Lyrics untouched (song time).
+- Defaults: visualizer cycleSpeed 0.1 → 0.25 (4s per sweep leg, immediately noticeable), background gradient 0.05 → 0.15; gradient-editor FALLBACK matched (0.25).
+
+Stage Summary:
+- agent-browser verified while PAUSED at 0:00 (never pressed play): bars identical height across 2s but palette visibly swept purple→pink→red → orange→pink→purple; blob palette sweep + gentle wobble also alive while paused; zero page errors; lint clean. Export determinism preserved (offline styleTime = song time).

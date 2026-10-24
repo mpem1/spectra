@@ -45,6 +45,7 @@ export class OfflineAnalyzer {
   /** Reused output frame — consumers must read it before the next frame() call. */
   private out: AudioFrame = {
     time: 0,
+    styleTime: 0,
     freq: new Float32Array(1),
     wave: this.waveOut,
     energy: 0,
@@ -142,6 +143,8 @@ export class OfflineAnalyzer {
 
     const frame = this.out
     frame.time = time
+    // Exports must be deterministic: decorative motion is locked to song time.
+    frame.styleTime = time
     if (frame.freq.length !== bc) frame.freq = new Float32Array(bc)
     frame.freq.set(prev)
     frame.energy = rmsEnergy(frame.wave)

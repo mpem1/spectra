@@ -243,7 +243,9 @@ export function PreviewCanvas() {
         }
         currentTimeRef.current = demoTimeRef.current
         durationRef.current = DEMO_DURATION
-        frame = makeIdleFrame(currentConfig.visualizer.barCount, demoTimeRef.current)
+        // Decorative clock (cycle colors, wobbles) free-runs on the wall
+        // clock so styling stays alive even while the demo clock is paused.
+        frame = makeIdleFrame(currentConfig.visualizer.barCount, demoTimeRef.current, now / 1000)
       }
 
       const canvas = canvasRef.current

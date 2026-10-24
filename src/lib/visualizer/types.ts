@@ -112,6 +112,13 @@ export interface StudioConfig {
 export interface AudioFrame {
   /** Song time in seconds */
   time: number
+  /**
+   * Decorative-motion clock: gradient color cycling, ambient wobble, slow
+   * rotation. Free-runs on a wall clock in the live preview (so styling stays
+   * alive while paused) and equals `time` in offline/export frames, keeping
+   * exported video deterministic.
+   */
+  styleTime: number
   /** Frequency magnitudes, normalized 0..1, length = barCount */
   freq: Float32Array
   /** Waveform samples, normalized -1..1, length 2048 */
@@ -217,7 +224,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 48,
       cycleColors: false,
-      cycleSpeed: 0.1,
+      cycleSpeed: 0.25,
     },
   },
   background: {
@@ -230,7 +237,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
       ],
       angle: 160,
       cycleColors: false,
-      cycleSpeed: 0.05,
+      cycleSpeed: 0.15,
     },
     imageSrc: '',
     shade: 0.5,

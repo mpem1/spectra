@@ -24,7 +24,7 @@ const FALLBACK_DEFAULT: GradientConfig = {
   stops: GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s })),
   angle: 48,
   cycleColors: false,
-  cycleSpeed: 0.1,
+  cycleSpeed: 0.25,
 }
 
 const MY_GRADIENTS_KEY = 'spectra-my-gradients'
