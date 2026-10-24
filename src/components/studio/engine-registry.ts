@@ -23,6 +23,8 @@ export interface PreviewControls {
   seek: (time: number) => void
   /** True while the preview is actively playing (audio or demo clock). */
   isPlaying: () => boolean
+  /** Current playhead in seconds (audio position or demo clock). */
+  getTime: () => number
 }
 
 let controls: PreviewControls | null = null

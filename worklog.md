@@ -435,3 +435,27 @@ Overall: WHITE light UI, near-black text, neutral grays. NO dark theme, NO emera
 All functionality stays: 4 visualizer styles, gradient editor behavior, alpha/checkerboard,
 LRC lyrics + overlay, deterministic MP4 (H.264 + AAC/Opus fallback), live WebM recording,
 PNG snapshot, project save/load API. Only the chrome/reskin changes.
+
+---
+Task ID: 4
+Agent: main orchestrator (Z.ai Code)
+Task: Align the rebuilt app with the user's ORIGINAL design screenshots ("Spectra") — 3-color-stop gradient palette, export panel, and everything else visible in the references.
+
+Work Log:
+- User provided the real reference screenshots: app is "Spectra — Audio visualizer editor" with top-bar quick actions (Record / Export video / PNG Seq / Convert), tabs Style/Lyrics/Export/Presets, 6 visualizer types (incl. Blob + Grid), 3-color-stop gradient rows, and the deterministic-export panel.
+- types.ts: VisualizerStyle extended additively with 'blob' | 'grid' (contract otherwise untouched).
+- renderer.ts: added drawBlob (deterministic harmonic-blob, gradient fill + glow + stroke) and drawGrid (LED matrix, columns→spectrum, bottom-up lighting); drawRadial gained the signature thin inner ring + center dot.
+- engine.ts: added GainNode volume (setVolume) and loop-on-natural-end (setLoop) for the player bar.
+- store/studio.ts: tabs renamed to 'style'|'lyrics'|'export'|'presets'; added shared recording slice (start/stop, elapsed, lastRecording blob) and export-job slice (startExport/cancelExport) so top bar and Export tab stay in sync; loop/volume state.
+- New files: style-tab.tsx (VISUALIZER 2-col 6-grid → GRADIENT → SHAPE & MOTION → BACKGROUND), background-section.tsx, player-bar.tsx (play/times/seek/track/upload/repeat/volume), presets-tab.tsx (8 look presets + project save/load/delete moved out of the old top bar), convert-dialog.tsx (WebM→MP4 real-time re-encode w/ honest WebM fallback), load-audio.ts (shared loader), png-seq.ts (fflate zip, OfflineAnalyzer pipeline, alpha preserved, 450-frame cap). Removed visual-tab.tsx / background-tab.tsx.
+- top-bar.tsx: Spectra brand (gradient orb) + Record/Export video/PNG Seq/Convert; icon-only labels on mobile.
+- gradient-editor.tsx: pill presets, angle direction hint text, "My gradients" (name+Save, localStorage 'spectra-my-gradients', apply/delete, empty-state copy).
+- export-tab.tsx: matched reference copy ("original audio file" chip, DaVinci line), dark Export MP4 button, Live recording (WebM/MP4) card, Snapshot PNG.
+- preview-canvas.tsx: drop-anywhere with highlight overlay, Space/←/→ shortcuts, drop-hint line, PlayerBar integration, PreviewControls.getTime added.
+- lyrics-tab.tsx: sync editor — per-row timer button, S shortcut syncs selected row, list stays time-ordered, active-line highlight + auto-scroll at playhead.
+- lint clean; tsc clean for src/ (pre-existing examples/ + skills/ template errors unrelated).
+
+Stage Summary:
+- Browser-verified end-to-end: radial/grid/blob render, LRC parse (4 lines), sync-at-playhead re-sorts (0:28.3→0:16.3), lyrics overlay draws on canvas, Record→saved 0.3MB webm + toast, Space toggles play, My gradients persist across reload, projects API list loads, Convert dialog opens, mobile 390px fits with icon-only top bar.
+- App identity is now Spectra; download filenames use spectra-*. Old "Pulse Studio" references removed from UI/metadata.
+- Known conscious interpretation: "Convert" = video re-encode dialog (original's exact behavior unknown); Presets tab = look presets + cloud projects (original content unknown beyond "presets list").

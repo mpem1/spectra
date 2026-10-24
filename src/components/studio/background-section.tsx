@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { GradientEditor } from '@/components/studio/gradient-editor'
 import { ColorPickerButton } from '@/components/studio/color-picker'
 import { parseColor, toHex6 } from '@/components/studio/color-utils'
-import { OptionCard, SectionTitle, SliderRow } from '@/components/studio/controls'
+import { MicroLabel, OptionCard, SliderRow } from '@/components/studio/controls'
 
 const MODES: { id: BackgroundMode; label: string; icon: typeof Palette }[] = [
   { id: 'solid', label: 'Solid', icon: Palette },
@@ -15,7 +15,8 @@ const MODES: { id: BackgroundMode; label: string; icon: typeof Palette }[] = [
   { id: 'transparent', label: 'Alpha', icon: Grid3x3 },
 ]
 
-export function BackgroundTab() {
+/** Background controls — rendered as the last section of the Style tab. */
+export function BackgroundSection() {
   const background = useStudioStore((s) => s.config.background)
   const patchBackground = useStudioStore((s) => s.patchBackground)
 
@@ -23,9 +24,12 @@ export function BackgroundTab() {
 
   return (
     <div className="space-y-4">
+      <span className="text-[11px] font-medium uppercase tracking-widest text-zinc-500">
+        BACKGROUND
+      </span>
+
       {/* Mode */}
       <section className="space-y-2">
-        <SectionTitle icon={Palette}>Mode</SectionTitle>
         <div className="grid grid-cols-3 gap-2">
           {MODES.map(({ id, label, icon }) => (
             <OptionCard
@@ -42,7 +46,6 @@ export function BackgroundTab() {
       {/* Solid color */}
       {background.mode === 'solid' ? (
         <section className="space-y-2">
-          <SectionTitle icon={Droplets}>Solid color</SectionTitle>
           <div className="flex items-center gap-2">
             <ColorPickerButton
               value={background.color}
@@ -75,7 +78,6 @@ export function BackgroundTab() {
       {/* Gradient */}
       {background.mode === 'gradient' ? (
         <section className="space-y-2">
-          <SectionTitle icon={Blend}>Background gradient</SectionTitle>
           <GradientEditor
             value={background.gradient}
             onChange={(gradient) => patchBackground({ gradient })}
@@ -93,7 +95,6 @@ export function BackgroundTab() {
 
       {/* Vignette / Grain */}
       <section className="space-y-3">
-        <SectionTitle icon={Droplets}>Atmosphere</SectionTitle>
         <SliderRow
           label="Vignette"
           value={background.vignette}

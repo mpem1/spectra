@@ -1,20 +1,29 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Music, Pause, Play } from 'lucide-react'
 import { AudioEngine } from '@/lib/audio/engine'
 import { makeIdleFrame } from '@/lib/visualizer/idle'
 import { renderFrame } from '@/lib/visualizer/renderer'
 import type { AudioFrame } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
-import { Button } from '@/components/ui/button'
-import { Slider } from '@/components/ui/slider'
 import { setPreviewCanvas } from '@/components/studio/canvas-registry'
 import { setEngine, setPreviewControls, type PreviewControls } from '@/components/studio/engine-registry'
-import { formatTime } from '@/components/studio/controls'
+import { loadAudioFile } from '@/components/studio/load-audio'
+import { PlayerBar } from '@/components/studio/player-bar'
+import { cn } from '@/lib/utils'
 
 /** Fallback song length used while no audio is loaded (demo pattern loops). */
 const DEMO_DURATION = 60
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return (
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT' ||
+    target.isContentEditable
+  )
+}
 
 /**
  * Live preview surface.
@@ -22,13 +31,13 @@ const DEMO_DURATION = 60
  * The rAF loop below runs unconditionally (even while paused) so config
  * tweaks repaint instantly; the frame source switches between the
  * AudioEngine analyser and a synthetic idle pattern in demo mode.
+ * Also hosts drop-anywhere audio loading and Space / ←→ shortcuts.
  */
 export function PreviewCanvas() {
   const config = useStudioStore((s) => s.config)
   const audioMeta = useStudioStore((s) => s.audioMeta)
   const barCount = useStudioStore((s) => s.config.visualizer.barCount)
   const smoothing = useStudioStore((s) => s.config.visualizer.smoothing)
-  const backgroundMode = useStudioStore((s) => s.config.background.mode)
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -37,11 +46,13 @@ export function PreviewCanvas() {
   const playingRef = useRef(false)
   const demoTimeRef = useRef(0)
   const currentTimeRef = useRef(0)
+  const durationRef = useRef(DEMO_DURATION)
 
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(DEMO_DURATION)
   const [box, setBox] = useState({ w: 640, h: 360 })
+  const [dragOver, setDragOver] = useState(false)
 
   useEffect(() => {
     configRef.current = config
@@ -85,6 +96,7 @@ export function PreviewCanvas() {
       pause,
       seek,
       isPlaying: () => playingRef.current,
+      getTime: () => currentTimeRef.current,
     }
     setPreviewControls(controls)
     engine.onEnded(() => {
@@ -103,6 +115,50 @@ export function PreviewCanvas() {
   useEffect(() => {
     engineRef.current?.setAnalysisOptions({ barCount, smoothing })
   }, [barCount, smoothing])
+
+  /* ----------------------- drop-anywhere + shortcuts ----------------------- */
+
+  useEffect(() => {
+    const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+        e.preventDefault()
+        setDragOver(true)
+      }
+    }
+    const onDragLeave = (e: DragEvent) => {
+      if (e.relatedTarget === null) setDragOver(false)
+    }
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault()
+      setDragOver(false)
+      const file = Array.from(e.dataTransfer?.files ?? []).find((f) => f.type.startsWith('audio/'))
+      if (file) void loadAudioFile(file)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.code === 'Space') {
+        e.preventDefault()
+        if (playingRef.current) pause()
+        else play()
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault()
+        seek(Math.max(0, currentTimeRef.current - 5))
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault()
+        seek(Math.min(durationRef.current, currentTimeRef.current + 5))
+      }
+    }
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('dragleave', onDragLeave)
+    window.addEventListener('drop', onDrop)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('dragleave', onDragLeave)
+      window.removeEventListener('drop', onDrop)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [play, pause, seek])
 
   /* ------------------------------- sizing ---------------------------------- */
 
@@ -154,6 +210,7 @@ export function PreviewCanvas() {
       if (loaded && engine) {
         frame = engine.getLiveFrame()
         currentTimeRef.current = engine.currentTime
+        durationRef.current = engine.duration
         // Engine is authoritative while audio is loaded (e.g. natural end).
         if (engine.isPlaying !== playingRef.current) {
           playingRef.current = engine.isPlaying
@@ -166,6 +223,7 @@ export function PreviewCanvas() {
           demoTimeRef.current = (demoTimeRef.current + dt) % DEMO_DURATION
         }
         currentTimeRef.current = demoTimeRef.current
+        durationRef.current = DEMO_DURATION
         frame = makeIdleFrame(currentConfig.visualizer.barCount, demoTimeRef.current)
       }
 
@@ -185,7 +243,7 @@ export function PreviewCanvas() {
       if (now - lastUi > 120) {
         lastUi = now
         setCurrentTime(currentTimeRef.current)
-        const d = loaded && engine ? engine.duration : DEMO_DURATION
+        const d = durationRef.current
         setDuration((prev) => (Math.abs(prev - d) > 0.01 ? d : prev))
       }
     }
@@ -196,19 +254,20 @@ export function PreviewCanvas() {
 
   /* --------------------------------- view ---------------------------------- */
 
-  const audioLoaded = audioMeta !== null
-
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div
         ref={containerRef}
-        className="relative flex min-h-[280px] flex-1 items-center justify-center overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40 p-2 sm:p-4"
+        className={cn(
+          'relative flex min-h-[280px] flex-1 items-center justify-center overflow-hidden rounded-xl border bg-zinc-900/40 p-2 transition-colors sm:p-4',
+          dragOver ? 'border-emerald-500 bg-emerald-500/5' : 'border-zinc-800',
+        )}
       >
         <div
           className="relative overflow-hidden rounded-lg shadow-2xl shadow-black/60 ring-1 ring-zinc-800"
           style={{ width: box.w, height: box.h }}
         >
-          {backgroundMode === 'transparent' ? (
+          {config.background.mode === 'transparent' ? (
             <div className="checkerboard absolute inset-0" aria-hidden />
           ) : null}
           <canvas
@@ -217,45 +276,36 @@ export function PreviewCanvas() {
             aria-label="Visualizer live preview"
           />
         </div>
+
+        {/* Drop hint */}
+        <p className="pointer-events-none absolute inset-x-0 bottom-2 text-center text-[11px] text-zinc-500 sm:bottom-3">
+          Drop an audio file anywhere — Space plays/pauses, ←/→ skips 5 seconds
+        </p>
+
+        {dragOver ? (
+          <div
+            className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl bg-zinc-950/60"
+            aria-hidden
+          >
+            <span className="rounded-lg border border-emerald-500/60 bg-zinc-900/90 px-4 py-2 text-sm font-medium text-emerald-400">
+              Drop audio to load
+            </span>
+          </div>
+        ) : null}
       </div>
 
-      {/* Playback bar */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
-        <Button
-          size="icon"
-          onClick={() => (playing ? pause() : play())}
-          aria-label={playing ? 'Pause preview' : 'Play preview'}
-          className="size-10 shrink-0 rounded-full bg-emerald-500 text-zinc-950 shadow-none hover:bg-emerald-400"
-        >
-          {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
-        </Button>
+      <PlayerBar
+        playing={playing}
+        currentTime={currentTime}
+        duration={duration}
+        onPlayToggle={() => (playing ? pause() : play())}
+        onSeek={seek}
+      />
 
-        <div className="hidden min-w-0 max-w-[190px] shrink sm:block">
-          <div className="truncate text-xs text-zinc-200">
-            {audioMeta?.name ?? 'Untitled session'}
-          </div>
-          <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-zinc-600">
-            <Music className="size-3" aria-hidden />
-            {audioLoaded ? 'Audio loaded' : 'Demo pattern'}
-          </div>
-        </div>
-
-        <span className="w-11 shrink-0 text-right text-xs tabular-nums text-zinc-400">
-          {formatTime(currentTime)}
-        </span>
-        <Slider
-          aria-label="Seek"
-          min={0}
-          max={Math.max(1, duration)}
-          step={0.1}
-          value={[Math.min(currentTime, duration)]}
-          onValueChange={(vals: number[]) => seek(vals[0] ?? 0)}
-          className="min-w-[120px] flex-1 py-1"
-        />
-        <span className="w-11 shrink-0 text-xs tabular-nums text-zinc-400">
-          {formatTime(duration)}
-        </span>
-      </div>
+      {/* a11y: audioMeta read so the bar re-renders the track name from the store */}
+      <span className="sr-only" aria-live="polite">
+        {audioMeta ? `Loaded ${audioMeta.name}` : 'No track loaded'}
+      </span>
     </div>
   )
 }

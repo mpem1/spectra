@@ -14,17 +14,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pulse Studio — Music Visualizer",
+  title: "Spectra — Audio visualizer editor",
   description:
     "Turn any audio track into a gradient-driven visual or lyric video. Preview live, tweak every parameter, then export frame-exact MP4.",
-  keywords: ["music visualizer", "lyric video", "Pulse Studio", "audio reactive", "MP4 export"],
+  keywords: ["music visualizer", "lyric video", "Spectra", "audio reactive", "MP4 export"],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
   openGraph: {
-    title: "Pulse Studio — Music Visualizer",
-    description: "Music visualizer & lyric video maker with frame-exact MP4 export.",
-    siteName: "Pulse Studio",
+    title: "Spectra — Audio visualizer editor",
+    description: "Audio visualizer editor with frame-exact MP4 export.",
+    siteName: "Spectra",
     type: "website",
   },
 };

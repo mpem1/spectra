@@ -83,7 +83,7 @@ export function SliderRow({
   )
 }
 
-/** Icon + label selectable card (visualizer style / background mode). */
+/** Icon + label selectable card (visualizer styles / background modes). */
 export function OptionCard({
   icon: Icon,
   label,
@@ -101,14 +101,14 @@ export function OptionCard({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        'flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-lg border px-1 py-2 transition-colors',
+        'flex min-h-[64px] flex-col items-center justify-center gap-1.5 rounded-lg border px-1 py-2.5 transition-colors',
         active
           ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
           : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
       )}
     >
-      <Icon className="size-4" aria-hidden />
-      <span className="text-[10px] font-medium uppercase tracking-wide">{label}</span>
+      <Icon className="size-5" aria-hidden />
+      <span className="text-xs font-medium">{label}</span>
     </button>
   )
 }

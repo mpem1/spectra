@@ -35,11 +35,17 @@ export class AudioEngine {
   /** Lazily created on first user gesture (browser autoplay policy). */
   private ctx: AudioContext | null = null
   private analyser: AnalyserNode | null = null
+  private gain: GainNode | null = null
   private buffer: AudioBuffer | null = null
   private source: AudioBufferSourceNode | null = null
 
   private trackName = ''
   private trackDuration = 0
+
+  /** Output volume 0..1 (player bar slider). */
+  private volume = 1
+  /** Loop playback (player bar repeat toggle). */
+  private loop = false
 
   /** Buffer position playback started from (or is parked at when paused). */
   private offset = 0
@@ -126,6 +132,21 @@ export class AudioEngine {
   /** Fire `cb` when the source reaches the end naturally (not on pause/stop). */
   onEnded(cb: () => void): void {
     if (!this.endedCallbacks.includes(cb)) this.endedCallbacks.push(cb)
+  }
+
+  /** Output volume 0..1. Applies immediately (gain node persists). */
+  setVolume(v: number): void {
+    this.volume = clamp(v, 0, 1)
+    if (this.gain) this.gain.gain.value = this.volume
+  }
+
+  get getVolume(): number {
+    return this.volume
+  }
+
+  /** When true, natural end restarts playback from the top. */
+  setLoop(loop: boolean): void {
+    this.loop = loop
   }
 
   /* --------------------------------- Getters -------------------------------- */
@@ -236,11 +257,15 @@ export class AudioEngine {
     const analyser = ctx.createAnalyser()
     analyser.fftSize = FFT_SIZE
     analyser.smoothingTimeConstant = clamp(this.smoothing, 0, 1)
-    // Analyser passes audio through to the speakers.
-    analyser.connect(ctx.destination)
+    // Analyser → gain → speakers (gain drives the volume slider).
+    const gain = ctx.createGain()
+    gain.gain.value = this.volume
+    analyser.connect(gain)
+    gain.connect(ctx.destination)
 
     this.ctx = ctx
     this.analyser = analyser
+    this.gain = gain
     this.byteFreq = new Uint8Array(analyser.frequencyBinCount)
     this.normFreq = new Float32Array(analyser.frequencyBinCount)
     this.floatTime = new Float32Array(analyser.fftSize)
@@ -258,6 +283,12 @@ export class AudioEngine {
       // Natural end only — manual stops clear `this.source` first.
       if (this.source === src && this.playing) {
         this.source = null
+        if (this.loop) {
+          // Repeat: wrap to the top and keep going.
+          this.offset = 0
+          this.startSource(0)
+          return
+        }
         this.playing = false
         this.offset = this.trackDuration
         this.fireEnded()

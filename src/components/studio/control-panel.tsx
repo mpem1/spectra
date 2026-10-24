@@ -1,18 +1,19 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { Bookmark, Captions, Download, SlidersHorizontal } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useStudioStore, type StudioTab } from '@/store/studio'
-import { VisualTab } from '@/components/studio/visual-tab'
-import { BackgroundTab } from '@/components/studio/background-tab'
+import { StyleTab } from '@/components/studio/style-tab'
 import { LyricsTab } from '@/components/studio/lyrics-tab'
 import { ExportTab } from '@/components/studio/export-tab'
+import { PresetsTab } from '@/components/studio/presets-tab'
 
-const TABS: { id: StudioTab; label: string }[] = [
-  { id: 'visual', label: 'Visual' },
-  { id: 'background', label: 'Background' },
-  { id: 'lyrics', label: 'Lyrics' },
-  { id: 'export', label: 'Export' },
+const TABS: { id: StudioTab; label: string; icon: typeof SlidersHorizontal }[] = [
+  { id: 'style', label: 'Style', icon: SlidersHorizontal },
+  { id: 'lyrics', label: 'Lyrics', icon: Captions },
+  { id: 'export', label: 'Export', icon: Download },
+  { id: 'presets', label: 'Presets', icon: Bookmark },
 ]
 
 export function ControlPanel() {
@@ -38,24 +39,28 @@ export function ControlPanel() {
               <TabsTrigger
                 key={tab.id}
                 value={tab.id}
-                className="text-xs text-zinc-400 hover:text-zinc-200 data-[state=active]:bg-zinc-800 data-[state=active]:text-emerald-400 data-[state=active]:hover:text-emerald-400"
+                className="gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 data-[state=active]:bg-zinc-800 data-[state=active]:text-emerald-400 data-[state=active]:hover:text-emerald-400"
               >
+                <tab.icon className="size-3.5" aria-hidden />
                 {tab.label}
               </TabsTrigger>
             ))}
           </TabsList>
-          <div ref={scrollRef} className="slim-scrollbar min-h-0 flex-1 overflow-y-auto pr-1 lg:max-h-[calc(100vh-150px)]">
-            <TabsContent value="visual">
-              <VisualTab />
-            </TabsContent>
-            <TabsContent value="background">
-              <BackgroundTab />
+          <div
+            ref={scrollRef}
+            className="slim-scrollbar min-h-0 flex-1 overflow-y-auto pr-1 lg:max-h-[calc(100vh-150px)]"
+          >
+            <TabsContent value="style">
+              <StyleTab />
             </TabsContent>
             <TabsContent value="lyrics">
               <LyricsTab />
             </TabsContent>
             <TabsContent value="export">
               <ExportTab />
+            </TabsContent>
+            <TabsContent value="presets">
+              <PresetsTab />
             </TabsContent>
           </div>
         </Tabs>

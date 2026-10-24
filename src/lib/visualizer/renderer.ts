@@ -180,6 +180,12 @@ function drawVisualizer(
     case 'particles':
       drawParticles(rc, frame, cfg, S)
       break
+    case 'blob':
+      drawBlob(rc, frame, cfg, S)
+      break
+    case 'grid':
+      drawGrid(rc, frame, cfg, S)
+      break
     default:
       break
   }
@@ -347,9 +353,27 @@ function drawRadial(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
     }
   }
   ctx.shadowBlur = 0
-}
 
-/* ---------------------------------- particles -------------------------------- */
+  // Thin inner ring + center dot (signature radial look).
+  const midColor = sampleGradient(
+    cfg.gradient.stops,
+    0.5,
+    frame.time,
+    cfg.gradient.cycleColors,
+    cfg.gradient.cycleSpeed,
+  )
+  ctx.globalAlpha = 0.85
+  ctx.lineWidth = Math.max(1, 1.5 * S)
+  ctx.strokeStyle = midColor
+  ctx.beginPath()
+  ctx.arc(cx, cy, baseRadius * 0.82, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.globalAlpha = 1
+  ctx.fillStyle = midColor
+  ctx.beginPath()
+  ctx.arc(cx, cy, Math.max(2, 3.5 * S), 0, Math.PI * 2)
+  ctx.fill()
+}
 
 const PARTICLE_COUNT = 90
 
@@ -393,4 +417,116 @@ function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConf
   glow.addColorStop(1, withAlpha(glowColor, 0))
   ctx.fillStyle = glow
   ctx.fillRect(cx - glowRadius, cy - glowRadius, glowRadius * 2, glowRadius * 2)
+}
+
+/* ------------------------------------ blob ----------------------------------- */
+
+/**
+ * Organic blob: closed smooth path around the center whose radius is
+ * modulated by harmonic sums of the spectrum — fully deterministic
+ * (phases derive from frame.time, never the wall clock).
+ */
+function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+  const { ctx, width: W, height: H } = rc
+  const cx = W / 2
+  const cy = H / 2
+  const sens = clamp(cfg.sensitivity, 0, 3)
+  const bass = clamp01(frame.bass)
+  const energy = clamp01(frame.energy)
+  const g = cfg.gradient
+
+  const baseR = H * 0.16 * (1 + bass * 0.22 * sens + energy * 0.08)
+  const HARMONICS = 5
+  const K = 96
+
+  const line = gradientLine(g.angle, W, H)
+  const fill = buildGradient(
+    ctx,
+    line.x0,
+    line.y0,
+    line.x1,
+    line.y1,
+    g.stops,
+    frame.time,
+    g.cycleColors,
+    g.cycleSpeed,
+  )
+
+  const path = new Path2D()
+  for (let i = 0; i <= K; i++) {
+    const a = (i / K) * Math.PI * 2
+    let r = baseR
+    for (let h = 1; h <= HARMONICS; h++) {
+      const bin = Math.min(
+        frame.freq.length - 1,
+        Math.floor(((h - 1) / HARMONICS) * frame.freq.length),
+      )
+      const v = clamp01((frame.freq[bin] ?? 0) * sens)
+      r += Math.sin(a * h + frame.time * (0.4 + h * 0.17)) * v * baseR * (0.55 / Math.sqrt(h))
+    }
+    r = Math.max(baseR * 0.35, r)
+    const x = cx + Math.cos(a) * r
+    const y = cy + Math.sin(a) * r
+    if (i === 0) path.moveTo(x, y)
+    else path.lineTo(x, y)
+  }
+  path.closePath()
+
+  if (cfg.glow) {
+    ctx.shadowColor = sampleGradient(g.stops, 0.5, frame.time, g.cycleColors, g.cycleSpeed)
+    ctx.shadowBlur = 30 * S
+  } else {
+    ctx.shadowBlur = 0
+  }
+  ctx.fillStyle = fill
+  ctx.fill(path)
+
+  ctx.shadowBlur = 0
+  ctx.lineWidth = Math.max(1.5, 2.5 * S)
+  ctx.strokeStyle = sampleGradient(g.stops, 0.85, frame.time, g.cycleColors, g.cycleSpeed)
+  ctx.stroke(path)
+}
+
+/* ------------------------------------ grid ----------------------------------- */
+
+/**
+ * LED-matrix grid: columns map onto the spectrum, cells light bottom-up when
+ * their band magnitude crosses the row threshold.
+ */
+function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+  const { ctx, width: W, height: H } = rc
+  const cols = Math.round(clamp(cfg.barCount / 4, 8, 48))
+  const rows = 12
+  const margin = W * 0.055
+  const cellW = (W - margin * 2) / cols
+  const cellH = (H - margin * 2) / rows
+  const gapRatio = clamp(cfg.gap, 0, 0.8)
+  const sens = clamp(cfg.sensitivity, 0, 3)
+  const radius = clamp01(cfg.roundness) * Math.min(cellW, cellH) * 0.45
+
+  for (let c = 0; c < cols; c++) {
+    const bin = Math.floor((c / cols) * frame.freq.length)
+    const v = clamp01((frame.freq[bin] ?? 0) * sens)
+    const litRows = Math.round(v * rows)
+    const color = barColorAt(cfg, frame, c, cols)
+    const x = margin + c * cellW
+
+    for (let r = 0; r < rows; r++) {
+      const rowFromBottom = rows - 1 - r
+      const lit = rowFromBottom < litRows
+      const y = margin + r * cellH
+      const w = cellW * (1 - gapRatio)
+      const h = cellH * (1 - gapRatio)
+
+      ctx.fillStyle = lit ? color : withAlpha(color, 0.07)
+      if (lit && cfg.glow) {
+        ctx.shadowColor = color
+        ctx.shadowBlur = 10 * S
+      } else {
+        ctx.shadowBlur = 0
+      }
+      fillRoundRect(ctx, x + (cellW - w) / 2, y + (cellH - h) / 2, w, h, radius)
+    }
+  }
+  ctx.shadowBlur = 0
 }
