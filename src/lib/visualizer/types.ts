@@ -62,6 +62,12 @@ export interface BackgroundConfig {
   gradient: GradientConfig
   /** Image data URL (used when mode = image), drawn cover-fit */
   imageSrc: string
+  /** Horizontal image offset as a fraction of canvas width (0 = centered) */
+  x: number
+  /** Vertical image offset as a fraction of canvas height (0 = centered) */
+  y: number
+  /** Zoom multiplier on top of cover-fit (1 = image just covers the canvas) */
+  scale: number
   /** Darkening overlay over the image, 0..1 ("shade fader") */
   shade: number
   /** Vignette strength 0..1 (darkens edges) */
@@ -254,6 +260,9 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
       cycleSpeed: 0.15,
     },
     imageSrc: '',
+    x: 0,
+    y: 0,
+    scale: 1,
     shade: 0.5,
     vignette: 0.35,
     grain: 0.08,

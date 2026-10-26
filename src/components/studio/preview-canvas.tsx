@@ -10,6 +10,7 @@ import { setPreviewCanvas } from '@/components/studio/canvas-registry'
 import { setEngine, setPreviewControls, type PreviewControls } from '@/components/studio/engine-registry'
 import { loadAudioFile } from '@/components/studio/load-audio'
 import { PlayerBar } from '@/components/studio/player-bar'
+import { BgImageTransform } from '@/components/studio/bg-image-transform'
 import { cn } from '@/lib/utils'
 
 /** Fallback song length used while no audio is loaded (demo pattern loops). */
@@ -296,6 +297,8 @@ export function PreviewCanvas() {
             className="absolute inset-0 block h-full w-full"
             aria-label="Visualizer live preview"
           />
+          {/* Image-background move / resize surface (image mode only) */}
+          <BgImageTransform />
         </div>
 
         {/* Drop hint */}

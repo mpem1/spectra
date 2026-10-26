@@ -106,11 +106,17 @@ function drawBackground(
   if (bg.mode === 'image') {
     const img = getBackgroundImage(bg.imageSrc)
     if (img) {
-      // Cover-fit: scale until the image covers the canvas, then center.
-      const scale = Math.max(W / img.naturalWidth, H / img.naturalHeight)
+      // Cover-fit base scale, then user zoom on top. Position is a normalized
+      // offset from the canvas center (0/0 = centered) so previews and exports
+      // at any resolution land identically.
+      const fit = Math.max(W / img.naturalWidth, H / img.naturalHeight)
+      const zoom = Math.max(0.05, bg.scale ?? 1)
+      const scale = fit * zoom
       const dw = img.naturalWidth * scale
       const dh = img.naturalHeight * scale
-      ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh)
+      const cx = W / 2 + (bg.x ?? 0) * W
+      const cy = H / 2 + (bg.y ?? 0) * H
+      ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh)
       // Shade fader — darkens the photo so the visualizer pops.
       const shade = clamp01(bg.shade ?? 0)
       if (shade > 0) {

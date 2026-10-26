@@ -608,3 +608,28 @@ Stage Summary:
 - App fully functional after recovery
 - FUTURE SESSIONS ROLLBOOK: if project looks old/missing files or page 500s with module-not-found: (1) git fetch origin && git reset --hard origin/main (2) bun install (3) restart dev if needed
 - Source of truth: https://github.com/mpem1/spectra
+
+---
+Task ID: bg-image-move-resize
+Agent: Z.ai Code (main)
+Task: Restore background-image move/resize feature (lost in sandbox rollback)
+
+Work Log:
+- Confirmed committed code had no transform support: renderer hard-coded cover-fit centered; BackgroundConfig had no x/y/scale
+- types.ts: added x, y (normalized 0-centered offset, fraction of canvas W/H) + scale (zoom multiplier on cover-fit) to BackgroundConfig + defaults
+- renderer.ts drawBackground: applies fit * zoom and center + offset; uses ?? fallbacks so old saved projects still load
+- NEW src/components/studio/bg-image-transform.tsx: pointer overlay — drag to move, corner handle (44px hit area) to zoom (distance-from-center factor), wheel zoom (non-passive native listener); dashed frame + hint chip on hover; clamps x/y [-1,1], scale [0.1,5]
+- preview-canvas.tsx: mounts BgImageTransform inside canvas wrapper (image mode only)
+- background-section.tsx: Zoom slider (0.1–5×), "Reset position & zoom" button (shows when transform dirty), updated hint text
+- Browser E2E: injected test image → cover-fit ✓; drag moved image ✓; corner handle zoomed (2.39×) ✓; wheel zoom fixed + verified (exp math exact: e^1.0 → 2.72×) ✓; reset button ✓; 0 console errors
+
+Bugs found & fixed during verification:
+1. Wheel listener never attached: component mounts with mode='solid' (ref null → effect exited early); deps [patchBackground] never changed after mode switch → removed deps array (re-attach every render)
+2. Stale text selection caused pointercancel during drag → pointerdown now clears selection
+
+Testing artifact (not a bug): "1 Issue" toast was from eval-injected synthetic pointerdown with invalid pointerId (setPointerCapture throws); real user pointer events unaffected.
+
+Stage Summary:
+- Feature fully restored: move (drag), resize (corner handle / scroll / panel slider), reset button
+- Transform is resolution-independent (normalized), so MP4/PNG exports match preview framing exactly
+- lint clean; ready to commit + push

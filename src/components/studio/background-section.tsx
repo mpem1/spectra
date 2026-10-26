@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef } from 'react'
-import { Blend, Grid3x3, ImagePlus, ImageIcon, Palette, Trash2 } from 'lucide-react'
+import { Blend, Grid3x3, ImagePlus, ImageIcon, Palette, RotateCcw, Trash2 } from 'lucide-react'
 import type { BackgroundMode } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Input } from '@/components/ui/input'
@@ -36,6 +36,9 @@ function ImageBackgroundSection() {
   const background = useStudioStore((s) => s.config.background)
   const patchBackground = useStudioStore((s) => s.patchBackground)
   const inputRef = useRef<HTMLInputElement | null>(null)
+
+  const transformDirty =
+    Math.abs(background.x) > 0.001 || Math.abs(background.y) > 0.001 || Math.abs(background.scale - 1) > 0.001
 
   const handleFile = async (file: File | undefined): Promise<void> => {
     if (!file || !file.type.startsWith('image/')) return
@@ -110,8 +113,30 @@ function ImageBackgroundSection() {
         onChange={(shade) => patchBackground({ shade })}
         format={(v) => `${Math.round(v * 100)}%`}
       />
+      <SliderRow
+        label="Zoom"
+        value={background.scale}
+        min={0.1}
+        max={5}
+        step={0.05}
+        onChange={(scale) => patchBackground({ scale })}
+        format={(v) => `${v.toFixed(2)}×`}
+      />
+      {transformDirty ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 justify-start px-2 text-xs text-zinc-400 hover:text-emerald-400"
+          onClick={() => patchBackground({ x: 0, y: 0, scale: 1 })}
+        >
+          <RotateCcw className="size-3" aria-hidden />
+          Reset position & zoom
+        </Button>
+      ) : null}
       <p className="text-[11px] leading-snug text-zinc-500">
-        The shade fader darkens the image so the visualizer and lyrics stay readable.
+        On the preview: drag the image to move it, drag the corner handle or
+        scroll to zoom. The shade fader darkens the image so the visualizer
+        and lyrics stay readable.
       </p>
     </section>
   )
