@@ -17,13 +17,17 @@ export interface ColorStop {
 
 export interface GradientConfig {
   stops: ColorStop[]
-  /** Gradient angle in degrees (0-360) */
+  /** Gradient angle in degrees (0-360) — linear shape only */
   angle: number
+  /** Gradient geometry: linear sweep at `angle`, or radial from the center outward */
+  shape: GradientShape
   /** When true, the palette sweeps smoothly back and forth (colors stay in the palette) */
   cycleColors: boolean
   /** Sweep speed — one full back-and-forth pass per 1/speed seconds */
   cycleSpeed: number
 }
+
+export type GradientShape = 'linear' | 'radial'
 
 export type GradientPresetId = 'sunset' | 'aurora' | 'ember' | 'neon' | 'mono'
 
@@ -251,6 +255,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 48,
+      shape: 'linear',
       cycleColors: false,
       cycleSpeed: 0.25,
     },
@@ -264,6 +269,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
         { color: '#0a0a0a', position: 100, opacity: 100 },
       ],
       angle: 160,
+      shape: 'linear',
       cycleColors: false,
       cycleSpeed: 0.15,
     },
@@ -293,6 +299,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 90,
+      shape: 'linear',
       cycleColors: false,
       cycleSpeed: 0.25,
     },

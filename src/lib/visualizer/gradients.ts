@@ -175,6 +175,26 @@ function normalizeStops(stops: ColorStop[]): NormalizedStop[] {
 }
 
 /**
+ * Add palette stops to a canvas gradient (linear or radial — geometry is the
+ * caller's business). Canvas stop positions stay fixed; with cycling on, the
+ * COLOR at each position slides smoothly back and forth through the palette,
+ * so only palette colors (and blends between adjacent stops) are ever shown.
+ */
+function addPaletteStops(
+  gradient: CanvasGradient,
+  normalized: NormalizedStop[],
+  time: number,
+  cycle: boolean,
+  cycleSpeed: number,
+): void {
+  const phase = cycle ? cyclePhase(time, cycleSpeed) : 0
+  for (const stop of normalized) {
+    const pos01 = stop.position / 100
+    gradient.addColorStop(pos01, sampleStops(normalized, cycle ? reflect(pos01 + phase) : pos01))
+  }
+}
+
+/**
  * Build a linear canvas gradient. Callers convert the config angle to canvas
  * coordinates themselves (see gradientLine) and pass the endpoints here.
  */
@@ -196,14 +216,33 @@ export function buildGradient(
     gradient.addColorStop(1, '#ffffff')
     return gradient
   }
-  // Canvas stop positions stay fixed; with cycling on, the COLOR at each
-  // position slides smoothly back and forth through the palette, so only
-  // palette colors (and blends between adjacent stops) are ever shown.
-  const phase = cycle ? cyclePhase(time, cycleSpeed) : 0
-  for (const stop of normalized) {
-    const pos01 = stop.position / 100
-    gradient.addColorStop(pos01, sampleStops(normalized, cycle ? reflect(pos01 + phase) : pos01))
+  addPaletteStops(gradient, normalized, time, cycle, cycleSpeed)
+  return gradient
+}
+
+/**
+ * Build a radial canvas gradient: palette radiates from (cx, cy) outward to
+ * `radius` (stop 0 at the center, stop 100 at the rim). Same cycling
+ * behavior as buildGradient.
+ */
+export function buildRadialGradient(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  radius: number,
+  stops: ColorStop[],
+  time: number,
+  cycle: boolean,
+  cycleSpeed: number,
+): CanvasGradient {
+  const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(1, radius))
+  const normalized = normalizeStops(stops)
+  if (normalized.length === 0) {
+    gradient.addColorStop(0, '#ffffff')
+    gradient.addColorStop(1, '#ffffff')
+    return gradient
   }
+  addPaletteStops(gradient, normalized, time, cycle, cycleSpeed)
   return gradient
 }
 

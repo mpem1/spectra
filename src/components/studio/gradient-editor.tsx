@@ -23,6 +23,7 @@ const PRESET_IDS = Object.keys(GRADIENT_PRESETS) as GradientPresetId[]
 const FALLBACK_DEFAULT: GradientConfig = {
   stops: GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s })),
   angle: 48,
+  shape: 'linear',
   cycleColors: false,
   cycleSpeed: 0.25,
 }
@@ -230,22 +231,52 @@ export function GradientEditor({
         + Add color stop
       </Button>
 
-      {/* Angle */}
-      <div className="space-y-1">
-        <SliderRow
-          label="Angle"
-          value={value.angle}
-          min={0}
-          max={360}
-          step={1}
-          onChange={(angle) => onChange({ ...value, angle })}
-          format={(v) => `${Math.round(v)}°`}
-        />
-        <p className="text-[11px] leading-snug text-zinc-500">
-          Direction the gradient runs across the canvas — 0° left to right, 90° top to bottom,
-          270° bottom to top.
-        </p>
+      {/* Shape: linear sweep vs radial fade (Angle only applies to linear) */}
+      <div className="space-y-1.5">
+        <MicroLabel>Shape</MicroLabel>
+        <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+          {(['linear', 'radial'] as const).map((shape) => (
+            <button
+              key={shape}
+              type="button"
+              aria-pressed={value.shape === shape}
+              onClick={() => onChange({ ...value, shape })}
+              className={cn(
+                'h-7 rounded-md text-xs capitalize transition-colors',
+                value.shape === shape
+                  ? 'bg-emerald-500/15 text-emerald-300'
+                  : 'text-zinc-400 hover:text-zinc-200',
+              )}
+            >
+              {shape}
+            </button>
+          ))}
+        </div>
+        {value.shape === 'radial' ? (
+          <p className="text-[11px] leading-snug text-zinc-500">
+            Colors radiate from the center outward (stop 1 at the core, last stop at the rim).
+          </p>
+        ) : null}
       </div>
+
+      {/* Angle (linear only — radial ignores it) */}
+      {value.shape !== 'radial' ? (
+        <div className="space-y-1">
+          <SliderRow
+            label="Angle"
+            value={value.angle}
+            min={0}
+            max={360}
+            step={1}
+            onChange={(angle) => onChange({ ...value, angle })}
+            format={(v) => `${Math.round(v)}°`}
+          />
+          <p className="text-[11px] leading-snug text-zinc-500">
+            Direction the gradient runs across the canvas — 0° left to right, 90° top to bottom,
+            270° bottom to top.
+          </p>
+        </div>
+      ) : null}
 
       {/* Cycle colors */}
       <div className="flex h-7 items-center justify-between">

@@ -15,7 +15,7 @@ import type {
   StudioConfig,
   VisualizerConfig,
 } from './types'
-import { buildGradient, gradientLine, sampleGradient, withAlpha } from './gradients'
+import { buildGradient, buildRadialGradient, gradientLine, sampleGradient, withAlpha } from './gradients'
 import { getBackgroundImage } from './image-cache'
 import { drawLyrics } from './lyrics'
 
@@ -138,18 +138,32 @@ function drawBackground(
     ctx.fillRect(0, 0, W, H)
   } else if (bg.mode === 'gradient') {
     const g = bg.gradient
-    const line = gradientLine(g.angle, W, H)
-    ctx.fillStyle = buildGradient(
-      ctx,
-      line.x0,
-      line.y0,
-      line.x1,
-      line.y1,
-      g.stops,
-      frame.styleTime,
-      g.cycleColors,
-      g.cycleSpeed,
-    )
+    if (g.shape === 'radial') {
+      // Palette radiates from the canvas center out to the farthest corner.
+      ctx.fillStyle = buildRadialGradient(
+        ctx,
+        W / 2,
+        H / 2,
+        Math.hypot(W, H) / 2,
+        g.stops,
+        frame.styleTime,
+        g.cycleColors,
+        g.cycleSpeed,
+      )
+    } else {
+      const line = gradientLine(g.angle, W, H)
+      ctx.fillStyle = buildGradient(
+        ctx,
+        line.x0,
+        line.y0,
+        line.x1,
+        line.y1,
+        g.stops,
+        frame.styleTime,
+        g.cycleColors,
+        g.cycleSpeed,
+      )
+    }
     ctx.fillRect(0, 0, W, H)
   }
   // 'transparent': leave the canvas alpha untouched.
@@ -223,22 +237,45 @@ function drawVisualizer(
   ctx.restore()
 }
 
-/** Shared bar-color sampler: gradient sampled by bar position (glow tints). */
-function barColorAt(cfg: VisualizerConfig, frame: AudioFrame, index: number, count: number): string {
+/** Shared bar-color sampler: gradient sampled by bar position (glow tints).
+ *  In radial shape mode, pass `at` — the sampled point's distance from the
+ *  canvas center picks the palette position (concentric color rings). */
+function barColorAt(
+  cfg: VisualizerConfig,
+  frame: AudioFrame,
+  index: number,
+  count: number,
+  at?: { x: number; y: number; W: number; H: number },
+): string {
   const g = cfg.gradient
-  const t = count > 1 ? index / (count - 1) : 0
+  let t = count > 1 ? index / (count - 1) : 0
+  if (g.shape === 'radial' && at) {
+    const maxR = Math.hypot(at.W, at.H) / 2
+    t = clamp01(Math.hypot(at.x - at.W / 2, at.y - at.H / 2) / maxR)
+  }
   return sampleGradient(g.stops, t, frame.styleTime, g.cycleColors, g.cycleSpeed)
 }
 
 /**
- * Canvas-space linear gradient across the WHOLE canvas at the configured
- * angle. Used as the fill for every visualizer style, which is what makes
- * the Angle slider visibly rotate the coloring (e.g. green bottom-left →
- * orange top-right, like the reference).
+ * Gradient fill across the whole canvas for every visualizer style: LINEAR
+ * sweeps at the configured angle, RADIAL radiates from the canvas center —
+ * which is what makes the Shape switch visibly restyle the coloring.
  */
 function visualizerFill(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig): CanvasGradient {
   const { ctx, width: W, height: H } = rc
   const g = cfg.gradient
+  if (g.shape === 'radial') {
+    return buildRadialGradient(
+      ctx,
+      W / 2,
+      H / 2,
+      Math.hypot(W, H) / 2,
+      g.stops,
+      frame.styleTime,
+      g.cycleColors,
+      g.cycleSpeed,
+    )
+  }
   const line = gradientLine(g.angle, W, H)
   return buildGradient(
     ctx,
@@ -276,7 +313,12 @@ function drawBars(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
     const v = clamp01((i < freq.length ? freq[i] : 0) * sens)
     const h = Math.max(minH, v * maxH)
     const x = i * slot + (slot - barW) / 2
-    const color = barColorAt(cfg, frame, i, n)
+    const color = barColorAt(cfg, frame, i, n, {
+      x: x + barW / 2,
+      y: cfg.mirror === 'center' ? centerY : H - h / 2,
+      W,
+      H,
+    })
 
     if (cfg.glow) {
       ctx.shadowColor = color
@@ -310,18 +352,7 @@ function drawWave(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
   const centerY = H / 2
   const amp = Math.min(H * 0.22 * clamp(cfg.sensitivity, 0, 3), H * 0.42)
   const g = cfg.gradient
-  const line = gradientLine(g.angle, W, H)
-  const stroke = buildGradient(
-    ctx,
-    line.x0,
-    line.y0,
-    line.x1,
-    line.y1,
-    g.stops,
-    frame.styleTime,
-    g.cycleColors,
-    g.cycleSpeed,
-  )
+  const stroke = visualizerFill(rc, frame, cfg)
 
   const tracePath = (sign: number): void => {
     ctx.beginPath()
@@ -387,7 +418,12 @@ function drawRadial(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
     const angle = rotation + t * Math.PI * 2
     const v = clamp01((i < freq.length ? freq[i] : 0) * sens)
     const len = Math.min(4 * S + v * H * 0.22, maxLen)
-    const color = barColorAt(cfg, frame, i, n)
+    const color = barColorAt(cfg, frame, i, n, {
+      x: cx + Math.cos(angle) * (baseRadius + len / 2),
+      y: cy + Math.sin(angle) * (baseRadius + len / 2),
+      W,
+      H,
+    })
 
     if (cfg.glow) {
       ctx.shadowColor = color
@@ -487,10 +523,11 @@ function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConf
  * outline, which keeps the silhouette smooth and elegant instead of spiky.
  * Harmonic phases drift slowly so the deformation travels around the body,
  * an idle wobble keeps it alive in silence, and the whole shape rotates
- * gently. The body carries the full three-color palette as an angle-aware
- * linear sweep, finished with a soft aura, one halo echo, rim shading, a
- * specular highlight and a rim light. Fully deterministic — every phase
- * derives from frame.styleTime (song time in exports, wall clock in preview).
+ * gently. The body carries the full palette as a linear sweep (angle-aware)
+ * or a radial center-out fade, finished with a soft aura, one halo echo, rim
+ * shading, a specular highlight and a rim light. Fully deterministic — every
+ * phase derives from frame.styleTime (song time in exports, wall clock in
+ * preview).
  */
 function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
@@ -578,29 +615,34 @@ function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
   ctx.fillStyle = withAlpha(cMid, 0.1)
   ctx.fill(buildPath(1.16))
 
-  /* ---- main body: full palette swept across the blob at the configured
-   * angle (gradient line spans the body's bounding square), so the Angle
-   * slider visibly rotates the three colors around the form. ---- */
+  /* ---- main body: the full palette across the blob — LINEAR sweeps it at
+   * the configured angle (gradient line spans the body's bounding square) so
+   * the Angle slider rotates the colors; RADIAL radiates from the blob's
+   * center out to its rim (stop 0 = core, stop 100 = edge). ---- */
   const mainPath = buildPath(1)
   const span = Math.min(baseR * 1.35, H * 0.44)
-  const line = gradientLine(g.angle, span * 2, span * 2)
   if (cfg.glow) {
     ctx.shadowColor = withAlpha(cMid, 0.8)
     ctx.shadowBlur = 30 * S
   } else {
     ctx.shadowBlur = 0
   }
-  ctx.fillStyle = buildGradient(
-    ctx,
-    cx - span + line.x0,
-    cy - span + line.y0,
-    cx - span + line.x1,
-    cy - span + line.y1,
-    g.stops,
-    t,
-    g.cycleColors,
-    g.cycleSpeed,
-  )
+  if (g.shape === 'radial') {
+    ctx.fillStyle = buildRadialGradient(ctx, cx, cy, span, g.stops, t, g.cycleColors, g.cycleSpeed)
+  } else {
+    const line = gradientLine(g.angle, span * 2, span * 2)
+    ctx.fillStyle = buildGradient(
+      ctx,
+      cx - span + line.x0,
+      cy - span + line.y0,
+      cx - span + line.x1,
+      cy - span + line.y1,
+      g.stops,
+      t,
+      g.cycleColors,
+      g.cycleSpeed,
+    )
+  }
   ctx.fill(mainPath)
   ctx.shadowBlur = 0
 
@@ -666,7 +708,12 @@ function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
     const level = v * rows
 
     if (cfg.glow) {
-      ctx.shadowColor = barColorAt(cfg, frame, c, cols)
+      ctx.shadowColor = barColorAt(cfg, frame, c, cols, {
+        x: x0 + c * cell + cell / 2,
+        y: H / 2,
+        W,
+        H,
+      })
       ctx.shadowBlur = 7 * S
     } else {
       ctx.shadowBlur = 0
