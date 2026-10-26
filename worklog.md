@@ -633,3 +633,19 @@ Stage Summary:
 - Feature fully restored: move (drag), resize (corner handle / scroll / panel slider), reset button
 - Transform is resolution-independent (normalized), so MP4/PNG exports match preview framing exactly
 - lint clean; ready to commit + push
+
+---
+Task ID: bg-image-flip
+Agent: Z.ai Code (main)
+Task: Add background image mirror/flip option (also lost in sandbox rollback)
+
+Work Log:
+- types.ts: added flipX / flipY booleans to BackgroundConfig (+ defaults false, ?? fallbacks for old projects)
+- renderer.ts: drawImage wrapped in save/translate(image-center)/scale(±1)/restore — flips around the image center, composes with move/zoom transform
+- background-section.tsx: MIRROR row with two toggle buttons (Flip horizontal / Flip vertical, h-11 touch targets, aria-pressed, emerald active style); cn import added
+- Browser E2E: flipH → blue/red swap ✓; +flipV → quadrants inverted (both = 180°) ✓; aria-pressed states correct ✓; drag regression with flips active ✓; toggling off restores orientation while keeping offset ✓; 0 console errors; lint clean
+
+Stage Summary:
+- Mirror feature complete: two independent toggles compose none/H/V/both
+- Works with move/zoom/shade/export pipeline (renderer-level, so MP4/PNG exports match)
+- Committed + pushed

@@ -116,7 +116,12 @@ function drawBackground(
       const dh = img.naturalHeight * scale
       const cx = W / 2 + (bg.x ?? 0) * W
       const cy = H / 2 + (bg.y ?? 0) * H
-      ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh)
+      // Mirror around the image center (flipX/flipY, old configs default off).
+      ctx.save()
+      ctx.translate(cx, cy)
+      ctx.scale(bg.flipX ? -1 : 1, bg.flipY ? -1 : 1)
+      ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
+      ctx.restore()
       // Shade fader — darkens the photo so the visualizer pops.
       const shade = clamp01(bg.shade ?? 0)
       if (shade > 0) {

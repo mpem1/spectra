@@ -68,6 +68,10 @@ export interface BackgroundConfig {
   y: number
   /** Zoom multiplier on top of cover-fit (1 = image just covers the canvas) */
   scale: number
+  /** Mirror the image horizontally (around its center) */
+  flipX: boolean
+  /** Mirror the image vertically (around its center) */
+  flipY: boolean
   /** Darkening overlay over the image, 0..1 ("shade fader") */
   shade: number
   /** Vignette strength 0..1 (darkens edges) */
@@ -263,6 +267,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     x: 0,
     y: 0,
     scale: 1,
+    flipX: false,
+    flipY: false,
     shade: 0.5,
     vignette: 0.35,
     grain: 0.08,

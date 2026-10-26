@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef } from 'react'
-import { Blend, Grid3x3, ImagePlus, ImageIcon, Palette, RotateCcw, Trash2 } from 'lucide-react'
+import { Blend, FlipHorizontal2, FlipVertical2, Grid3x3, ImagePlus, ImageIcon, Palette, RotateCcw, Trash2 } from 'lucide-react'
 import type { BackgroundMode } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,7 @@ import { GradientEditor } from '@/components/studio/gradient-editor'
 import { ColorPickerButton } from '@/components/studio/color-picker'
 import { parseColor, toHex6 } from '@/components/studio/color-utils'
 import { MicroLabel, OptionCard, SliderRow } from '@/components/studio/controls'
+import { cn } from '@/lib/utils'
 
 const MODES: { id: BackgroundMode; label: string; icon: typeof Palette }[] = [
   { id: 'solid', label: 'Solid', icon: Palette },
@@ -122,6 +123,40 @@ function ImageBackgroundSection() {
         onChange={(scale) => patchBackground({ scale })}
         format={(v) => `${v.toFixed(2)}×`}
       />
+      {/* Mirror toggles — compose to none / H / V / both */}
+      <section className="space-y-1.5">
+        <MicroLabel>Mirror</MicroLabel>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            aria-pressed={background.flipX}
+            onClick={() => patchBackground({ flipX: !background.flipX })}
+            className={cn(
+              'flex h-11 items-center justify-center gap-2 rounded-lg border text-xs font-medium transition-colors',
+              background.flipX
+                ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200',
+            )}
+          >
+            <FlipHorizontal2 className="size-4" aria-hidden />
+            Flip horizontal
+          </button>
+          <button
+            type="button"
+            aria-pressed={background.flipY}
+            onClick={() => patchBackground({ flipY: !background.flipY })}
+            className={cn(
+              'flex h-11 items-center justify-center gap-2 rounded-lg border text-xs font-medium transition-colors',
+              background.flipY
+                ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200',
+            )}
+          >
+            <FlipVertical2 className="size-4" aria-hidden />
+            Flip vertical
+          </button>
+        </div>
+      </section>
       {transformDirty ? (
         <Button
           variant="ghost"
