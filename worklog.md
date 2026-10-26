@@ -649,3 +649,22 @@ Stage Summary:
 - Mirror feature complete: two independent toggles compose none/H/V/both
 - Works with move/zoom/shade/export pipeline (renderer-level, so MP4/PNG exports match)
 - Committed + pushed
+
+---
+Task ID: 8
+Agent: Z.ai Code (main)
+Task: Add gradient color controls for lyrics after selecting gradient fill (user: "i dont have an option to change the gradient colors on lyrics after selecting gradient fill")
+
+Work Log:
+- Root cause: lyrics.fill='gradient' hardcoded the visualizer palette — LyricsTab showed only a hint sentence, no color controls
+- types.ts: LyricsConfig gained gradientMode ('visualizer' | 'custom', default 'visualizer') + gradient: GradientConfig (default sunset stops @ angle 90); old saved projects migrate via setConfig shallow-merge defaults
+- lyrics.ts: drawLyrics now picks fillPalette = custom lyrics gradient OR visualizer palette param; text fill rebuilt on buildGradient + gradientLine over the text box (honors stop positions — old even-8-step sampling ignored them — and angle: 90°=L→R horizontal, 0°=bottom→top; same ping-pong cycleColors as bars)
+- lyrics-tab.tsx: gradient fill now shows a "Match visualizer / Custom" segmented toggle; Custom renders the full GradientEditor (presets, stops, add/delete, angle, cycle, My gradients) + "Copy visualizer palette" ghost button (structuredClone of visualizer gradient); Match mode keeps the explanatory hint
+- gradient-editor.tsx: added defaultLyricsGradient() factory (reset target)
+- Browser E2E (agent-browser): added line "GRADIENT TEST" → gradient fill → toggle renders ✓; Custom → editor appears ✓; set stops #ff0000/#00ff00/#0000ff via hex popovers → screenshot shows red→green→blue text sweep ✓; Match visualizer → sunset text matching bars ✓; Copy visualizer palette → stops become f97316/ec4899/8b5cf6 ✓; angle slider → 0° → vertical orange-bottom→purple-top text ✓; 0 console errors; lint clean
+- Gotcha noted: lyric auto-hide (holdTime 4s) made the line invisible during testing — use the Sync button to re-pin it to the playhead before sampling; bars behind text contaminate naive pixel sampling — verify via screenshots
+
+Stage Summary:
+- Lyrics can now own their gradient palette (custom mode) or follow the visualizer (back-compat default); renderer change flows into MP4/PNG exports automatically (single renderFrame path)
+- Committed + pushed: 80ccd83 "Lyrics gradient colors: Match visualizer / Custom source toggle with full gradient editor"
+- Known pre-existing gap (not fixed here): Radix slider thumbs app-wide have no accessible name (SliderRow passes aria-label to Slider root, which Radix drops; needs aria-label on Thumb)
