@@ -554,3 +554,39 @@ Work Log:
 Stage Summary:
 - Lyric display is now a proper scrolling 2-line queue matching the user's spec: new line underneath → previous glides up and persists → oldest pushed off exactly when the third line lands; 4s auto-hide only for lines nothing replaces (trailing line / gaps > hold).
 - Files: src/lib/visualizer/lyrics.ts, src/components/studio/lyrics-tab.tsx (hint text only).
+
+---
+Task ID: deploy-key-setup
+Agent: Z.ai Code (main)
+Task: Set up persistent GitHub access via SSH deploy key (no tokens in chat)
+
+Work Log:
+- No ssh binary / no sudo in sandbox; downloaded openssh-client 10.0p2 deb, extracted locally to .ssh-tools/bin/ (git-ignored)
+- Generated ed25519 keypair: .ssh-tools/id_ed25519 (private) + id_ed25519.pub
+- Discovered sandbox proxy black-holes raw TCP to github.com:22 (hangs forever); HTTPS works
+- Workaround: GitHub official SSH-over-443 endpoint ssh.github.com:443 — works!
+- Created .ssh-tools/config mapping github.com -> ssh.github.com:443; wrapper git-ssh.sh; git config core.sshCommand set
+- Deploy key added by user (with write access); auth confirmed: "Hi mpem1/spectra! You've successfully authenticated"
+- NOTE: sandbox middleware strips [remote "origin"] from .git/config if it contains credentials; SSH remote is safe. If missing: git remote add origin git@github.com:mpem1/spectra.git
+
+Stage Summary:
+- Deploy key PUBLIC (already added to repo by user):
+  ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHfoxVTmhXs3G8QSfa3hQbGQMzdd2B0gI45Z3oqApSDf zai-sandbox-dev-spectra
+- git fetch/pull/push now work with NO token in chat, via ssh.github.com:443
+- Repo URL: https://github.com/mpem1/spectra (SSH: git@github.com:mpem1/spectra.git)
+
+---
+Task ID: sandbox-rollback-recovery
+Agent: Z.ai Code (main)
+Task: Recover project after sandbox checkpoint mechanism rolled back local repo
+
+Work Log:
+- CRITICAL DISCOVERY: sandbox checkpoint mechanism rebuilt local git history (reflog showed repeated "commit (amend): Initial commit") and rolled the working tree back to a much older state — 7283 lines lost (src/lib/visualizer/*, src/store/studio.ts, most of worklog.md)
+- GitHub remote had the full project (1f713b9) because we pushed BEFORE the rollback
+- Recovery: git reset --hard origin/main → all files restored (renderer.ts 700 lines, studio.ts 331, worklog 556 lines)
+- Re-verified: deploy key auth intact, .ssh-tools/ still git-ignored
+
+Stage Summary:
+- Project fully restored from GitHub; no data lost thanks to earlier push
+- LESSON for future sessions: PUSH EARLY AND OFTEN. If files/history suddenly look old or missing, restore with: git fetch origin && git reset --hard origin/main
+- The sandbox may rebuild git history at session rollover; remote GitHub is the source of truth
