@@ -590,3 +590,21 @@ Stage Summary:
 - Project fully restored from GitHub; no data lost thanks to earlier push
 - LESSON for future sessions: PUSH EARLY AND OFTEN. If files/history suddenly look old or missing, restore with: git fetch origin && git reset --hard origin/main
 - The sandbox may rebuild git history at session rollover; remote GitHub is the source of truth
+
+---
+Task ID: recovery-verification
+Agent: Z.ai Code (main)
+Task: Verify full recovery and deploy key end-to-end access
+
+Work Log:
+- After reset to origin/main, page returned 500: Module not found 'mp4-muxer' (node_modules was stale from rollback; package.json already had it)
+- Fixed with bun install (mp4-muxer@5.2.2, fflate restored)
+- Committed worklog updates, pushed via deploy key: 1f713b9..0c63e2d main -> main (fast-forward, SUCCESS)
+- Local main == origin/main == 0c63e2d
+- Browser verification: Spectra app renders fully (visualizer canvas, style/lyrics/export/presets tabs, all controls) — no page errors
+
+Stage Summary:
+- Deploy key access CONFIRMED end-to-end: fetch ✓ push ✓ (no tokens needed)
+- App fully functional after recovery
+- FUTURE SESSIONS ROLLBOOK: if project looks old/missing files or page 500s with module-not-found: (1) git fetch origin && git reset --hard origin/main (2) bun install (3) restart dev if needed
+- Source of truth: https://github.com/mpem1/spectra

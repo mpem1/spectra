@@ -55,3 +55,6 @@ server.log
 # session tooling artifacts
 tool-results/
 agent-ctx/
+
+# SSH tools & deploy key (NEVER commit)
+.ssh-tools/
