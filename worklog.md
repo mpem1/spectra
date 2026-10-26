@@ -668,3 +668,22 @@ Stage Summary:
 - Lyrics can now own their gradient palette (custom mode) or follow the visualizer (back-compat default); renderer change flows into MP4/PNG exports automatically (single renderFrame path)
 - Committed + pushed: 80ccd83 "Lyrics gradient colors: Match visualizer / Custom source toggle with full gradient editor"
 - Known pre-existing gap (not fixed here): Radix slider thumbs app-wide have no accessible name (SliderRow passes aria-label to Slider root, which Radix drops; needs aria-label on Thumb)
+
+---
+Task ID: 9
+Agent: Z.ai Code (main)
+Task: Gradient shape switch (Linear / Radial) for every visualizer style (user: "blob has a radial fade but if i change the colors and angle it changes to linear, can i have an option for any visualizer to switch between the styles")
+
+Work Log:
+- Root cause: every style colored via an angle-based LINEAR canvas sweep; blob only looked radial thanks to its fixed aura/depth shading
+- types.ts: GradientShape = 'linear' | 'radial'; GradientConfig gained required shape field; all 3 DEFAULT_STUDIO_CONFIG gradients default 'linear' (old saved configs migrate via setConfig merge; undefined shape falls back to linear at runtime)
+- gradients.ts: extracted addPaletteStops (shared stop/cycle logic) + new buildRadialGradient(ctx, cx, cy, radius, stops, time, cycle, cycleSpeed) — stop 0 at core, stop 100 at rim, same ping-pong cycling
+- renderer.ts: visualizerFill branches radial (canvas center, half-diagonal radius) — bars/particles/grid fills + wave/radial strokes get it for free; drawWave now reuses visualizerFill (was duplicated); barColorAt takes optional {x,y,W,H} → radial glow tint by distance from center (bars: bar center, radial spokes: spoke midpoint, grid: column center at mid-height); blob body: radial = buildRadialGradient from blob center to span radius; background gradient mode supports radial too
+- lyrics.ts: radial text fill centered on the text, radius = max(textWidth, fontSize)/2
+- gradient-editor.tsx: SHAPE segmented toggle (Linear/Radial, same style as Fill/Mode toggles) placed after Add stop; Angle slider + hint HIDDEN while radial (dead control otherwise); radial hint explains core→rim; FALLBACK_DEFAULT got shape
+- Browser E2E (all six styles, radial on): bars = center orange→pink→purple edges ✓; wave = purple ends→orange center ✓; grid = concentric column rings ✓; blob = orange core→pink→purple rim + aura ✓; radial style spokes = uniform ring color (geometrically correct: ring samples a narrow radial band) ✓; particles = color varies with distance from center ✓; Linear round-trip restores 48° angle sweep + Angle slider reappears (13 sliders) ✓; 0 console errors; tsc clean for changed files (pre-existing unrelated errors in examples/, skills/, api/projects untouched); lint clean
+
+Stage Summary:
+- One Shape switch in the shared GRADIENT editor now restyles ALL visualizer styles (and background/lyrics gradients, whose editors share the component) — no dead controls anywhere
+- Exports pick it up automatically (single renderFrame path)
+- Committed + pushed: 35b1625; note: sandbox auto-checkpoint inserted worklog-only commit bf01a37 between 80ccd83 and this push (harmless, linear history)
