@@ -104,8 +104,12 @@ export interface LyricsConfig {
   uppercase: boolean
   /** Seconds a line stays before fading out when no newer line replaces it */
   holdTime: number
-  /** Text fill: flat color or a sweep of the visualizer palette */
+  /** Text fill: flat color or a gradient sweep */
   fill: 'solid' | 'gradient'
+  /** Where the gradient sweep gets its colors: the visualizer palette or lyrics' own */
+  gradientMode: 'visualizer' | 'custom'
+  /** Lyrics' own gradient (used when fill = gradient and gradientMode = custom) */
+  gradient: GradientConfig
   /** Outline stroke behind the text */
   outline: boolean
   /** Outline stroke width, px relative to 720p canvas */
@@ -285,6 +289,13 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     uppercase: false,
     holdTime: 4,
     fill: 'solid',
+    gradientMode: 'visualizer',
+    gradient: {
+      stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
+      angle: 90,
+      cycleColors: false,
+      cycleSpeed: 0.25,
+    },
     outline: false,
     outlineWidth: 3,
     outlineColor: '#000000',

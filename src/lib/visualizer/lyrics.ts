@@ -12,14 +12,14 @@
  * or a long gap to the next one) fades out on its own instead of sticking
  * around forever.
  *
- * Text can be filled with a flat color or with a sweep of the visualizer
- * palette (respecting cycle colors, deterministic via frame.styleTime), plus
+ * Text can be filled with a flat color, a sweep of the visualizer palette,
+ * or the lyrics' own gradient (angle-aware, respects stop positions), plus
  * optional outline stroke and glow halo. Long lines auto-shrink to fit.
  *
  * Deterministic — a pure function of (rc, frame, lyrics, palette).
  */
 import type { AudioFrame, GradientConfig, LyricLine, LyricsConfig, RenderContext } from './types'
-import { sampleGradient } from './gradients'
+import { buildGradient, gradientLine } from './gradients'
 
 /**
  * Index of the last line whose start time is <= `time`, or -1 if none yet.
@@ -68,6 +68,11 @@ export function drawLyrics(
   const yMain = (lyrics.positionY / 100) * height
   const gap = lyrics.size * 1.35 * S
 
+  // Gradient sweep source: the visualizer palette, or the lyrics' own
+  // gradient when the user picked Custom in the Lyrics tab.
+  const fillPalette =
+    lyrics.fill === 'gradient' && lyrics.gradientMode === 'custom' ? lyrics.gradient : palette
+
   const paint = (rawText: string, py: number, alpha: number) => {
     const text = lyrics.uppercase ? rawText.toUpperCase() : rawText
     if (!text || alpha <= 0.002) return
@@ -109,24 +114,25 @@ export function drawLyrics(
     }
 
     // Fill: palette sweep or flat color.
-    if (lyrics.fill === 'gradient' && palette.stops.length > 0) {
+    if (lyrics.fill === 'gradient' && fillPalette.stops.length > 0) {
+      // Gradient line across the text's box (width = measured text, height =
+      // current font size), rotated by the palette angle — 90° sweeps left to
+      // right, 0° bottom to top. buildGradient honors stop positions and
+      // applies the same ping-pong color cycling as everywhere else.
       const tw = Math.max(ctx.measureText(text).width, 1)
-      const g = ctx.createLinearGradient(width / 2 - tw / 2, 0, width / 2 + tw / 2, 0)
-      const STEPS = 8
-      for (let i = 0; i <= STEPS; i++) {
-        const p = i / STEPS
-        g.addColorStop(
-          p,
-          sampleGradient(
-            palette.stops,
-            p,
-            frame.styleTime,
-            palette.cycleColors,
-            palette.cycleSpeed,
-          ),
-        )
-      }
-      ctx.fillStyle = g
+      const th = px
+      const ln = gradientLine(fillPalette.angle, tw, th)
+      ctx.fillStyle = buildGradient(
+        ctx,
+        width / 2 + ln.x0 - tw / 2,
+        py + ln.y0 - th / 2,
+        width / 2 + ln.x1 - tw / 2,
+        py + ln.y1 - th / 2,
+        fillPalette.stops,
+        frame.styleTime,
+        fillPalette.cycleColors,
+        fillPalette.cycleSpeed,
+      )
     } else {
       ctx.fillStyle = lyrics.color
     }

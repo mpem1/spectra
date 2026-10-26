@@ -345,3 +345,8 @@ export function GradientEditor({
 export function defaultVisualizerGradient(): GradientConfig {
   return structuredClone(DEFAULT_STUDIO_CONFIG.visualizer.gradient)
 }
+
+/** Convenience: the factory default LYRICS gradient (reset target in the Lyrics tab). */
+export function defaultLyricsGradient(): GradientConfig {
+  return structuredClone(DEFAULT_STUDIO_CONFIG.lyrics.gradient)
+}

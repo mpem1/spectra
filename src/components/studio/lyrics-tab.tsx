@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Captions, Plus, Timer, Trash2, Type } from 'lucide-react'
+import { Captions, Copy, Plus, Timer, Trash2, Type } from 'lucide-react'
 import type { LyricLine } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { getPreviewControls } from '@/components/studio/engine-registry'
@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { ColorPickerButton } from '@/components/studio/color-picker'
+import { GradientEditor, defaultLyricsGradient } from '@/components/studio/gradient-editor'
 import { parseColor, toHex6 } from '@/components/studio/color-utils'
 import { MicroLabel, SectionTitle, SliderRow } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
@@ -157,6 +158,7 @@ function LyricRow({
 
 export function LyricsTab() {
   const lyrics = useStudioStore((s) => s.config.lyrics)
+  const visualizerGradient = useStudioStore((s) => s.config.visualizer.gradient)
   const audioMeta = useStudioStore((s) => s.audioMeta)
   const patchLyrics = useStudioStore((s) => s.patchLyrics)
   const [raw, setRaw] = useState('')
@@ -546,10 +548,55 @@ export function LyricsTab() {
             ))}
           </div>
           {lyrics.fill === 'gradient' ? (
-            <p className="text-[11px] leading-snug text-zinc-600">
-              Sweeps the visualizer palette across the text — follows Cycle colors in the Style
-              tab.
-            </p>
+            <div className="space-y-2">
+              {/* Gradient source: ride along with the visualizer palette or use lyrics' own */}
+              <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+                {(['visualizer', 'custom'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={lyrics.gradientMode === mode}
+                    onClick={() => patchLyrics({ gradientMode: mode })}
+                    className={cn(
+                      'h-7 rounded-md text-xs transition-colors',
+                      lyrics.gradientMode === mode
+                        ? 'bg-emerald-500/15 text-emerald-300'
+                        : 'text-zinc-400 hover:text-zinc-200',
+                    )}
+                  >
+                    {mode === 'visualizer' ? 'Match visualizer' : 'Custom'}
+                  </button>
+                ))}
+              </div>
+              {lyrics.gradientMode === 'custom' ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <MicroLabel>Lyrics palette</MicroLabel>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 gap-1 rounded-md px-2 text-[11px] text-zinc-500 hover:text-emerald-400"
+                      aria-label="Copy visualizer palette to lyrics"
+                      title="Copy the visualizer palette as a starting point"
+                      onClick={() => patchLyrics({ gradient: structuredClone(visualizerGradient) })}
+                    >
+                      <Copy className="size-3" aria-hidden />
+                      Copy visualizer palette
+                    </Button>
+                  </div>
+                  <GradientEditor
+                    value={lyrics.gradient}
+                    onChange={(gradient) => patchLyrics({ gradient })}
+                    default={defaultLyricsGradient()}
+                  />
+                </div>
+              ) : (
+                <p className="text-[11px] leading-snug text-zinc-600">
+                  Sweeps the visualizer palette across the text — edit it in the Style tab, or
+                  switch to Custom to give the lyrics their own colors.
+                </p>
+              )}
+            </div>
           ) : (
             <div className="flex h-8 items-center gap-2">
               <MicroLabel className="flex-1">Color</MicroLabel>
