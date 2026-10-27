@@ -746,3 +746,18 @@ Stage Summary:
 - Export quality pipeline reworked: 1080p default + quality tiers + VBR/quality-first rate control + legal H.264 levels; live recording now bitrate-controlled. Files: types.ts, exporter.ts, studio.ts, export-tab.tsx. Lint clean, E2E verified (config + decoded frames + mobile UI).
 - Note: VBR undershoots target on low-complexity content by design; Max tier shows its value with background images/particles.
 - Known leftover: Radix slider thumbs still lack aria-labels (from Task 10 worklog).
+
+---
+Task ID: 12
+Agent: Z.ai Code (main)
+Task: User asked "how compressed is this file the audio also loses quality?" — answer + fix audio fidelity issues found.
+
+Work Log:
+- Answered: video = H.264 VBR (~12.4 Mbps target @1080p High); audio = AAC 192 kbps lossy re-encode, plus two real defects: (a) audio track was the OfflineAnalyzer MONO mixdown duplicated to L=R (stereo image destroyed), (b) audio not truncated for 15s/30s exports (video 15s + audio full-song mismatch).
+- exporter.ts rework: extractStereoAudio() takes true stereo straight from the original AudioBuffer (ch0→L, ch1→R, mono→duplicate, >2ch→first two), zero-copy subarray views on the AAC path; truncated to export length (ceil(durationSeconds×sampleRate)); negotiateAudioCodec now stereo (resamples both channels for Opus 48 kHz); AAC bitrate 192→256 kbps (Apple-tier), Opus stays 192 kbps (already transparent); audio pass packs chL/chR planes.
+- export-tab.tsx copy updated: "original audio in true stereo (256 kbps AAC)".
+- E2E (agent-browser): generated 20s stereo-asymmetric WAV (L=330Hz melody, R=660Hz), exported 15s clip, decoded the MP4's audio via decodeAudioData in-page → { channels: 2, duration: 15.01, sampleRate: 44100, rmsL: 0.193, rmsR: 0.275, lrCorrelation: 0.248 } — stereo preserved, truncation correct, sample rate kept. Lint clean. Temp public/stereo-demo.wav removed.
+
+Stage Summary:
+- Export audio now: true stereo from source, 256 kbps AAC (192 kbps Opus fallback), correct length for preview exports. Files: exporter.ts, export-tab.tsx. Verified by decoding the exported MP4.
+- Compression summary for user: video H.264 VBR bpp-tuned; audio AAC-LC 256k ≈ 5.5:1 vs CD, effectively transparent; Opus fallback 192k.

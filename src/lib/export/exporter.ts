@@ -4,8 +4,9 @@
  * Browser-side, fully offline: renders every frame with the pure renderFrame()
  * at the export resolution, encodes H.264 (WebCodecs VideoEncoder) + AAC
  * (AudioEncoder) and muxes both into a single MP4 via mp4-muxer. The audio
- * track is the ORIGINAL loaded audio (mono mixdown duplicated to stereo), so
- * the result is sample-accurate to the source file.
+ * track is TRUE STEREO taken straight from the original decoded AudioBuffer
+ * (left → L, right → R, mono duplicated), encoded at 256 kbps AAC and
+ * truncated to the exported length, so it stays faithful to the source file.
  *
  * Determinism rules:
  *  - OfflineAnalyzer.frame() is called strictly sequentially 0,1,2,… so its
@@ -112,16 +113,45 @@ const RATE_CONTROL_SETS: Array<Partial<EncoderConfig>> = [
  * Audio codec negotiation, tried in order of compatibility:
  *  - AAC (best player support: DaVinci, QuickTime, VLC) — unavailable in some
  *    Chromium builds (headless, some Linux distros) because it is proprietary.
+ *    256 kbps AAC-LC stereo is effectively transparent (Apple Music tier).
  *  - Opus (royalty-free, widely supported in Chromium) — but Opus only runs at
  *    8/12/16/24/48 kHz, so 44.1 kHz sources must be resampled to 48 kHz.
+ *    192 kbps Opus is already transparent for music (it is more efficient
+ *    than AAC), so it keeps the lower rate.
  * If neither is available the export continues with a silent video track.
  */
 type NegotiatedAudio =
-  | { kind: 'aac'; sampleRate: number; data: Float32Array }
-  | { kind: 'opus'; sampleRate: number; data: Float32Array }
+  | { kind: 'aac'; sampleRate: number; chL: Float32Array; chR: Float32Array }
+  | { kind: 'opus'; sampleRate: number; chL: Float32Array; chR: Float32Array }
   | { kind: 'silent' }
 
-/** Deterministic linear-interpolation resampler (mono). */
+/**
+ * True-stereo source extraction, truncated to the exported length.
+ * Channel views reference the decoded AudioBuffer directly (no copy) so the
+ * common AAC path costs zero extra memory. Mono sources are duplicated to
+ * both planes; >2-channel sources use the first two channels.
+ */
+function extractStereoAudio(buffer: AudioBuffer, maxSeconds: number): {
+  chL: Float32Array
+  chR: Float32Array
+  sampleRate: number
+  truncated: boolean
+} {
+  const maxSamples = Math.min(
+    buffer.length,
+    Math.max(1, Math.ceil(maxSeconds * buffer.sampleRate)),
+  )
+  const left = buffer.getChannelData(0)
+  const right = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : left
+  return {
+    chL: left.subarray(0, maxSamples),
+    chR: right.subarray(0, maxSamples),
+    sampleRate: buffer.sampleRate,
+    truncated: maxSamples < buffer.length,
+  }
+}
+
+/** Deterministic linear-interpolation resampler (per channel). */
 function resampleLinear(src: Float32Array, srcRate: number, dstRate: number): Float32Array {
   if (srcRate === dstRate) return src
   const ratio = srcRate / dstRate
@@ -137,26 +167,30 @@ function resampleLinear(src: Float32Array, srcRate: number, dstRate: number): Fl
   return out
 }
 
-async function negotiateAudioCodec(
-  mono: Float32Array,
-  sampleRate: number,
-): Promise<NegotiatedAudio> {
+async function negotiateAudioCodec(audio: {
+  chL: Float32Array
+  chR: Float32Array
+  sampleRate: number
+}): Promise<NegotiatedAudio> {
   const aacConfig: AudioEncoderConfig = {
     codec: 'mp4a.40.2',
-    sampleRate,
+    sampleRate: audio.sampleRate,
     numberOfChannels: 2,
-    bitrate: 192_000,
+    bitrate: 256_000,
   }
   try {
     const support = await AudioEncoder.isConfigSupported(aacConfig)
-    if (support.supported) return { kind: 'aac', sampleRate, data: mono }
+    if (support.supported) {
+      return { kind: 'aac', sampleRate: audio.sampleRate, chL: audio.chL, chR: audio.chR }
+    }
   } catch {
     /* fall through to Opus */
   }
 
   // Opus requires 48 kHz (or lower standard rates) — resample if needed.
   const opusRate = 48_000
-  const opusData = resampleLinear(mono, sampleRate, opusRate)
+  const opusL = resampleLinear(audio.chL, audio.sampleRate, opusRate)
+  const opusR = resampleLinear(audio.chR, audio.sampleRate, opusRate)
   const opusConfig: AudioEncoderConfig = {
     codec: 'opus',
     sampleRate: opusRate,
@@ -165,7 +199,9 @@ async function negotiateAudioCodec(
   }
   try {
     const support = await AudioEncoder.isConfigSupported(opusConfig)
-    if (support.supported) return { kind: 'opus', sampleRate: opusRate, data: opusData }
+    if (support.supported) {
+      return { kind: 'opus', sampleRate: opusRate, chL: opusL, chR: opusR }
+    }
   } catch {
     /* fall through to silent video */
   }
@@ -226,8 +262,11 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
 
   // Negotiate the audio codec BEFORE creating the muxer (its config must match
   // the encoded chunks: AAC as-is, Opus resampled to 48 kHz, or video-only).
-  const mono = analyzer.monoChannelData
-  const audio = mono.length > 0 ? await negotiateAudioCodec(mono, analyzer.sampleRate) : { kind: 'silent' as const }
+  // Audio is taken straight from the original decoded buffer (true stereo) and
+  // truncated to the exported length so 15s/30s previews stay in sync.
+  const stereoSource = extractStereoAudio(audioBuffer, durationSeconds)
+  const audio =
+    stereoSource.chL.length > 0 ? await negotiateAudioCodec(stereoSource) : { kind: 'silent' as const }
   if (audio.kind === 'silent') {
     onNotice?.(
       'No supported audio encoder (AAC/Opus) in this browser — exporting a silent video.',
@@ -362,8 +401,7 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
 
   if (audio.kind !== 'silent') {
     const sampleRate = audio.sampleRate
-    const samples = audio.data
-    const totalSamples = samples.length
+    const totalSamples = audio.chL.length
 
     const audioEncoder = new AudioEncoder({
       output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
@@ -373,7 +411,7 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
       codec: audio.kind === 'aac' ? 'mp4a.40.2' : 'opus',
       sampleRate,
       numberOfChannels: 2,
-      bitrate: 192_000,
+      bitrate: audio.kind === 'aac' ? 256_000 : 192_000,
     })
 
     const CHUNK_FRAMES = 1024
@@ -386,9 +424,9 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
         if (failure) throw failure
 
         const n = Math.min(CHUNK_FRAMES, totalSamples - offset)
-        // Duplicate the mixdown onto both stereo planes.
-        planar.set(samples.subarray(offset, offset + n), 0)
-        planar.set(samples.subarray(offset, offset + n), n)
+        // Left and right planes come from the original stereo mix.
+        planar.set(audio.chL.subarray(offset, offset + n), 0)
+        planar.set(audio.chR.subarray(offset, offset + n), n)
 
         const audioData = new AudioData({
           format: 'f32-planar',

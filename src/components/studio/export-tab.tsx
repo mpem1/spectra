@@ -188,9 +188,9 @@ export function ExportTab() {
         <p className="text-[11px] leading-relaxed text-zinc-500">
           Renders offline frame-by-frame and muxes your{' '}
           <span className="inline-block rounded border border-zinc-700 bg-zinc-950 px-1 py-px font-medium text-zinc-300">
-            original audio file
+            original audio in true stereo
           </span>{' '}
-          — no clicks, no drift, perfect sync. Opens directly in DaVinci Resolve.
+          (256 kbps AAC) — no clicks, no drift, perfect sync. Opens directly in DaVinci Resolve.
         </p>
         <p className="text-[11px] leading-relaxed text-zinc-500">
           Glow and gradient-heavy visuals need bitrate — if the file looks soft, raise{' '}
