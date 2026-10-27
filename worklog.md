@@ -687,3 +687,23 @@ Stage Summary:
 - One Shape switch in the shared GRADIENT editor now restyles ALL visualizer styles (and background/lyrics gradients, whose editors share the component) — no dead controls anywhere
 - Exports pick it up automatically (single renderFrame path)
 - Committed + pushed: 35b1625; note: sandbox auto-checkpoint inserted worklog-only commit bf01a37 between 80ccd83 and this push (harmless, linear history)
+
+---
+Task ID: 10
+Agent: Z.ai Code (main)
+Task: Fix "linear on grid: top color leaks at the bottom at 180° angle"
+
+Work Log:
+- Reproduced in agent-browser (grid + linear + sunset palette + angle 180°, generated spectrum-rich /tmp/demo.wav injected via fetch→DataTransfer→input[type=file] since no demo audio existed): canvas-space FILL was CSS-correct (orange top → purple bottom), but zooming the bottom-left revealed ORANGE glow halos around purple dots = the "top color" leaking at the bottom
+- Root cause: barColorAt (drives per-bar/per-column/per-spoke glow shadow tints) sampled the palette by BAR INDEX (i/(count-1), i.e. always left→right) in linear shape mode, ignoring gradient.angle — at 180° the fill sweeps top→bottom while glows still swept left→right, so leftmost (stop-0 = "top") color glowed at the bottom
+- renderer.ts barColorAt: linear mode now PROJECTS the sample point {x,y} onto the gradient line (same dir/len math as gradientLine: t = ((P−center)·dir)/len + 0.5, clamped) → glow tints sweep at the exact fill angle for any angle; radial branch unchanged; index fallback kept when no point passed
+- renderer.ts drawGrid: glow sample point moved from canvas middle (H/2) to the column's LIT-EXTENT midpoint (per mirror mode: none → (rows−1−level + rows−1)/2, mirror → midpoint of [rows−1−level, min(rows−1, level)], center → centerRow) so at vertical angles the glow matches where dots actually light
+- gradient-editor.tsx: Angle help text was describing a DIFFERENT convention than implemented (said "0° left to right, 90° top to bottom") — renderer is CSS-convention; corrected to "0° bottom to top, 90° left to right, 180° top to bottom"
+- E2E verification: 180° rows now left-right uniform (y30%: 124,47,62 vs 122,47,63; y50%: 159,51,105 vs 154,51,105; y70%: 141,57,131 vs 137,57,131); 4x zoom of bottom 45% = uniform violet, zero orange; 90° regression = orange left → pink → violet right with matching halos ✓; Bars@180° = per-bar glow matches own vertical fill ✓; 0 console errors; lint clean
+- E2E gotchas: config resets on page reload (must re-select style + re-set angle each time; angle slider only reliably driven via thumb focus + 1° ArrowRight presses — track clicks don't register); repeat toggles off on reload; 12s test track ends mid-verification if repeat not re-enabled
+
+Stage Summary:
+- Glow tints now follow the linear gradient angle for EVERY style (bars/grid/radial spokes) — the 180° "top color at the bottom" artifact is gone; fix flows into exports via the single renderFrame path
+- Angle help text now matches actual behavior (CSS convention)
+- Committed + pushed: 5b6bac7 (origin/main = 5b6bac7085dfbfe89868be15cf0e57f28c43fb74)
+- Pre-existing known gap (unchanged): Radix slider thumbs have no accessible name
