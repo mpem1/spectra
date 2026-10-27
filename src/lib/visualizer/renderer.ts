@@ -318,7 +318,8 @@ function drawBars(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
   const minH = 3 * S
   const radius = clamp01(cfg.roundness) * (barW / 2)
   const sens = clamp(cfg.sensitivity, 0, 3)
-  const centerY = H / 2
+  // Mirror/center anchor: H * mirrorOffset (0 = top edge, 0.5 = middle, 1 = bottom).
+  const anchor = H * clamp01(cfg.mirrorOffset ?? 0.5)
   // One canvas-space gradient for all bars → the Angle slider rotates the
   // coloring across the whole visualizer (fill is continuous in canvas space).
   const fill = visualizerFill(rc, frame, cfg)
@@ -330,7 +331,7 @@ function drawBars(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
     const x = i * slot + (slot - barW) / 2
     const color = barColorAt(cfg, frame, i, n, {
       x: x + barW / 2,
-      y: cfg.mirror === 'center' ? centerY : H - h / 2,
+      y: cfg.mirror === 'center' ? anchor : H - h / 2,
       W,
       H,
     })
@@ -343,14 +344,16 @@ function drawBars(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
     }
 
     if (cfg.mirror === 'center') {
-      // Bars grow from the vertical center both ways.
-      fillRoundRect(ctx, x, centerY - h, barW, h * 2, radius)
+      // Bars grow from the anchor line both ways.
+      fillRoundRect(ctx, x, anchor - h, barW, h * 2, radius)
     } else {
       // Bottom bars grow up from the floor.
       fillRoundRect(ctx, x, H - h, barW, h, radius)
       if (cfg.mirror === 'mirror') {
-        // Flipped copy growing down from the ceiling.
-        fillRoundRect(ctx, x, 0, barW, h, radius)
+        // Flipped copy = the floor bars reflected across the offset axis
+        // (at the default 0.5 axis this is the ceiling copy).
+        const refY = 2 * anchor - H
+        if (refY < H && refY + h > 0) fillRoundRect(ctx, x, refY, barW, h, radius)
       }
     }
   }
@@ -364,7 +367,10 @@ function drawWave(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
   const wave = frame.wave
   const count = wave.length
   if (count < 2) return
-  const centerY = H / 2
+  // Mirror/center anchor: the waveform folds around H * mirrorOffset
+  // (plain 'none' waves stay canvas-centered).
+  const centerY =
+    cfg.mirror !== 'none' ? H * clamp01(cfg.mirrorOffset ?? 0.5) : H / 2
   const amp = Math.min(H * 0.22 * clamp(cfg.sensitivity, 0, 3), H * 0.42)
   const g = cfg.gradient
   const stroke = visualizerFill(rc, frame, cfg)
@@ -711,7 +717,8 @@ function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
   const sens = clamp(cfg.sensitivity, 0, 3)
   const radius = cell * (0.1 + 0.18 * clamp01(cfg.roundness)) * (1 - 0.5 * clamp01(cfg.gap))
   const freq = frame.freq
-  const centerRow = (rows - 1) / 2
+  // Mirror/center axis row: (rows-1) * mirrorOffset (0 = top row, 0.5 = middle).
+  const axisRow = (rows - 1) * clamp01(cfg.mirrorOffset ?? 0.5)
   const fill = visualizerFill(rc, frame, cfg)
 
   ctx.fillStyle = fill
@@ -727,12 +734,11 @@ function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
       // the canvas middle) so it matches the dots that are actually showing —
       // e.g. at 180° the bottom-lit columns glow with their own fill color.
       let midRow: number
-      if (cfg.mirror === 'center') {
-        midRow = centerRow
-      } else if (cfg.mirror === 'mirror') {
-        midRow = (Math.max(0, rows - 1 - level) + Math.min(rows - 1, level)) / 2
-      } else {
+      if (cfg.mirror === 'none') {
         midRow = (Math.max(0, rows - 1 - level) + (rows - 1)) / 2
+      } else {
+        // Lit extent is symmetric around the axis for center/mirror modes.
+        midRow = clamp(axisRow, 0, rows - 1)
       }
       ctx.shadowColor = barColorAt(cfg, frame, c, cols, {
         x: x0 + c * cell + cell / 2,
@@ -754,9 +760,11 @@ function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
       // coverage: ≥1 fully lit · 0..1 frontier fade · ≤0 dark
       let coverage: number
       if (cfg.mirror === 'center') {
-        coverage = level / 2 - Math.abs(r - centerRow)
+        coverage = level / 2 - Math.abs(r - axisRow)
       } else if (cfg.mirror === 'mirror') {
-        coverage = Math.max(level - (rows - 1 - r), level - r)
+        // Bottom-up growth plus its reflection across the offset axis
+        // (at the default 0.5 axis this is the top-down copy).
+        coverage = Math.max(level - (rows - 1 - r), level - rows + 1 + 2 * axisRow - r)
       } else {
         coverage = level - (rows - 1 - r)
       }

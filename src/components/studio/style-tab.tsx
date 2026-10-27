@@ -130,6 +130,22 @@ export function StyleTab() {
             </div>
           </div>
         </div>
+
+        {/* Mirror/center axis position (styles with a vertical mirror axis) */}
+        {visualizer.mirror !== 'none' &&
+        (visualizer.style === 'bars' ||
+          visualizer.style === 'wave' ||
+          visualizer.style === 'grid') ? (
+          <SliderRow
+            label="Mirror offset"
+            value={visualizer.mirrorOffset}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(mirrorOffset) => patchVisualizer({ mirrorOffset })}
+            format={(v) => `${Math.round(v * 100)}%`}
+          />
+        ) : null}
       </section>
 
       {/* Background */}

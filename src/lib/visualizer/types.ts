@@ -49,6 +49,9 @@ export interface VisualizerConfig {
   /** Gap between bars, 0..1 (fraction of slot width) */
   gap: number
   mirror: MirrorMode
+  /** Vertical anchor of the mirror/center axis, 0 = top edge · 0.5 = middle
+   *  (default) · 1 = bottom edge. Used by bars / wave / grid. */
+  mirrorOffset: number
   /** Draw gradient behind bars as filled background glow */
   glow: boolean
   gradient: GradientConfig
@@ -251,6 +254,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     roundness: 0.6,
     gap: 0.35,
     mirror: 'none',
+    mirrorOffset: 0.5,
     glow: true,
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
