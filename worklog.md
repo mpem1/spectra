@@ -707,3 +707,22 @@ Stage Summary:
 - Angle help text now matches actual behavior (CSS convention)
 - Committed + pushed: 5b6bac7 (origin/main = 5b6bac7085dfbfe89868be15cf0e57f28c43fb74)
 - Pre-existing known gap (unchanged): Radix slider thumbs have no accessible name
+
+---
+Task ID: 11
+Agent: Z.ai Code (main)
+Task: Mirror/center offset control (user: "is there a way to offset the mirror effect/center effect")
+
+Work Log:
+- Surveyed all mirror usages: bars (center straddle at H/2, mirror = reflection across H/2), wave (fold line H/2 for both mirror+center), grid (centerRow, mirror = bottom-up ∪ top-down across middle row), radial (left-right spoke reflection — no vertical axis, skipped), particles (ignores mirror)
+- types.ts: VisualizerConfig.mirrorOffset (0..1, default 0.5 = old behavior); setConfig's defaults-merge auto-migrates old saved projects; renderer additionally uses `?? 0.5` fallback
+- renderer.ts drawBars: anchor = H*offset; center mode grows both ways from anchor; mirror mode reflection = floor bars reflected across the anchor (refY = 2*anchor − H, at 0.5 = old ceiling copy; skipped when fully off-canvas); glow sample follows anchor
+- renderer.ts drawWave: centerY = H*offset when mirror ≠ none (plain 'none' waves stay centered)
+- renderer.ts drawGrid: axisRow = (rows−1)*offset; center coverage = level/2 − |r − axisRow|; mirror coverage = max(bottom-up, reflection across axisRow: level − rows + 1 + 2*axisRow − r) — at default axis both reduce exactly to the old formulas; glow midRow = axisRow for center/mirror
+- style-tab.tsx: "Mirror offset" slider (0-100%) appears when mirror ≠ none AND style ∈ bars/wave/grid
+- E2E (agent-browser, generated WAV re-served): bars+center@25% = bars straddle a line a quarter down ✓; bars+mirror@75% = reflection + original merge exactly at the facing point (math verified visually) ✓; grid+center@25% = symmetric dot band around top-quarter axis ✓; wave+center@25% = waveform folds around upper line ✓; offset back to 50% = pixel-identical old behavior (regression) ✓; 0 console errors; lint clean
+- E2E gotchas: refs go stale after Radix Select interactions (re-snapshot); offset thumb has no aria-label (known Radix gap) — locate by aria-valuenow + max=1; config resets on reload so audio + style + mirror must be re-set each session; keep demo.wav in public/ during testing, remove before commit
+
+Stage Summary:
+- Mirror/Center modes gain a movable vertical axis (0% = top edge, 50% = middle default, 100% = bottom edge) for bars/wave/grid; radial & particles unaffected (slider hidden); exports inherit via the single renderFrame path
+- Committed + pushed: 00461d3 (origin/main = 00461d3)
