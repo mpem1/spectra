@@ -237,9 +237,13 @@ function drawVisualizer(
   ctx.restore()
 }
 
-/** Shared bar-color sampler: gradient sampled by bar position (glow tints).
- *  In radial shape mode, pass `at` — the sampled point's distance from the
- *  canvas center picks the palette position (concentric color rings). */
+/** Shared bar-color sampler: gradient sampled at a canvas point (glow tints).
+ *  Radial shape: the point's distance from the canvas center picks the palette
+ *  position (concentric color rings). Linear shape: the point is PROJECTED
+ *  onto the gradient line, so glow tints sweep at the same angle as the fill —
+ *  without this, glows always swept left→right and at 180° the "top" palette
+ *  color leaked into the bottom glow. Falls back to index-based sampling when
+ *  no point is given. */
 function barColorAt(
   cfg: VisualizerConfig,
   frame: AudioFrame,
@@ -249,9 +253,20 @@ function barColorAt(
 ): string {
   const g = cfg.gradient
   let t = count > 1 ? index / (count - 1) : 0
-  if (g.shape === 'radial' && at) {
-    const maxR = Math.hypot(at.W, at.H) / 2
-    t = clamp01(Math.hypot(at.x - at.W / 2, at.y - at.H / 2) / maxR)
+  if (at) {
+    if (g.shape === 'radial') {
+      const maxR = Math.hypot(at.W, at.H) / 2
+      t = clamp01(Math.hypot(at.x - at.W / 2, at.y - at.H / 2) / maxR)
+    } else {
+      // Same direction + length math as gradientLine, evaluated as a scalar
+      // projection: t = 0 at the gradient line's start, 1 at its end.
+      const rad = (g.angle * Math.PI) / 180
+      const dx = Math.sin(rad)
+      const dy = -Math.cos(rad)
+      const len = Math.abs(at.W * dx) + Math.abs(at.H * dy)
+      const proj = (at.x - at.W / 2) * dx + (at.y - at.H / 2) * dy
+      t = clamp01(proj / len + 0.5)
+    }
   }
   return sampleGradient(g.stops, t, frame.styleTime, g.cycleColors, g.cycleSpeed)
 }
@@ -708,9 +723,20 @@ function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
     const level = v * rows
 
     if (cfg.glow) {
+      // Sample the glow tint at the center of this column's LIT extent (not
+      // the canvas middle) so it matches the dots that are actually showing —
+      // e.g. at 180° the bottom-lit columns glow with their own fill color.
+      let midRow: number
+      if (cfg.mirror === 'center') {
+        midRow = centerRow
+      } else if (cfg.mirror === 'mirror') {
+        midRow = (Math.max(0, rows - 1 - level) + Math.min(rows - 1, level)) / 2
+      } else {
+        midRow = (Math.max(0, rows - 1 - level) + (rows - 1)) / 2
+      }
       ctx.shadowColor = barColorAt(cfg, frame, c, cols, {
         x: x0 + c * cell + cell / 2,
-        y: H / 2,
+        y: y0 + midRow * cell + cell / 2,
         W,
         H,
       })

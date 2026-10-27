@@ -272,8 +272,8 @@ export function GradientEditor({
             format={(v) => `${Math.round(v)}°`}
           />
           <p className="text-[11px] leading-snug text-zinc-500">
-            Direction the gradient runs across the canvas — 0° left to right, 90° top to bottom,
-            270° bottom to top.
+            Direction the gradient runs across the canvas — 0° bottom to top, 90° left to right,
+            180° top to bottom.
           </p>
         </div>
       ) : null}
