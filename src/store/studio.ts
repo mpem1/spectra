@@ -6,6 +6,7 @@ import {
   GRADIENT_PRESETS,
   type BackgroundConfig,
   type ExportProgress,
+  type ExportQuality,
   type ExportSettings,
   type GradientConfig,
   type GradientPresetId,
@@ -28,8 +29,25 @@ export interface AudioMeta {
 export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   format: 'mp4',
   fps: 30,
-  resolution: '1280x720',
+  resolution: '1920x1080',
   length: 'full',
+  quality: 'high',
+}
+
+/**
+ * Live-recording video bitrate (MediaRecorder defaults to ~1 Mbps, which looks
+ * terrible). Sized like the MP4 export: 0.2 bits/pixel/frame at 30 fps,
+ * clamped to a sane range for the preview canvas backing store.
+ */
+export function recordingVideoBitrate(width: number, height: number): number {
+  return Math.min(20_000_000, Math.max(4_000_000, Math.round(width * height * 30 * 0.2)))
+}
+
+/** Human labels for the export quality tiers (shared by the Export tab). */
+export const EXPORT_QUALITY_LABELS: Record<ExportQuality, string> = {
+  standard: 'Standard · smaller file',
+  high: 'High · recommended',
+  max: 'Max · largest file',
 }
 
 /** Live-recording state shared by the top-bar Record button and the Export tab. */
@@ -227,7 +245,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
     const mimeType = pickRecorderMime(alpha)
     let recorder: MediaRecorder
     try {
-      recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+      const options: MediaRecorderOptions = {
+        videoBitsPerSecond: recordingVideoBitrate(canvas.width, canvas.height),
+      }
+      if (mimeType) options.mimeType = mimeType
+      recorder = new MediaRecorder(stream, options)
     } catch {
       toast.error('MediaRecorder could not start in this browser')
       return

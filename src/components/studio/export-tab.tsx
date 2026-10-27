@@ -2,8 +2,12 @@
 
 import { Camera, Circle, Download, Square } from 'lucide-react'
 import { toast } from 'sonner'
-import type { ExportLength, ExportResolution } from '@/lib/visualizer/types'
-import { useStudioStore, downloadBlob } from '@/store/studio'
+import type { ExportLength, ExportQuality, ExportResolution } from '@/lib/visualizer/types'
+import {
+  useStudioStore,
+  downloadBlob,
+  EXPORT_QUALITY_LABELS,
+} from '@/store/studio'
 import { getPreviewCanvas } from '@/components/studio/canvas-registry'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -160,6 +164,25 @@ export function ExportTab() {
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-1.5">
+            <MicroLabel>Quality</MicroLabel>
+            <Select
+              value={exportSettings.quality ?? 'high'}
+              onValueChange={(quality) => setExportSettings({ quality: quality as ExportQuality })}
+              disabled={exporting}
+            >
+              <SelectTrigger size="sm" className="w-full" aria-label="Export quality">
+                <SelectValue placeholder="Quality" />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(EXPORT_QUALITY_LABELS) as ExportQuality[]).map((q) => (
+                  <SelectItem key={q} value={q}>
+                    {EXPORT_QUALITY_LABELS[q]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <p className="text-[11px] leading-relaxed text-zinc-500">
@@ -168,6 +191,10 @@ export function ExportTab() {
             original audio file
           </span>{' '}
           — no clicks, no drift, perfect sync. Opens directly in DaVinci Resolve.
+        </p>
+        <p className="text-[11px] leading-relaxed text-zinc-500">
+          Glow and gradient-heavy visuals need bitrate — if the file looks soft, raise{' '}
+          <span className="font-medium text-zinc-400">Quality</span> before dropping resolution.
         </p>
 
         {exporting && progress ? (

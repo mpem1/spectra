@@ -726,3 +726,23 @@ Work Log:
 Stage Summary:
 - Mirror/Center modes gain a movable vertical axis (0% = top edge, 50% = middle default, 100% = bottom edge) for bars/wave/grid; radial & particles unaffected (slider hidden); exports inherit via the single renderFrame path
 - Committed + pushed: 00461d3 (origin/main = 00461d3)
+
+---
+Task ID: 11
+Agent: Z.ai Code (main)
+Task: User reported "the exported video quality is pretty bad" — diagnose and fix export quality.
+
+Work Log:
+- Diagnosed both video paths: deterministic MP4 export (WebCodecs) used bitrate = W×H×fps×0.12 capped at 16 Mbps → only 3.3 Mbps at the old 720p default; live WebM recording created MediaRecorder with NO videoBitsPerSecond → Chrome VP9 default ~1 Mbps (very bad).
+- types.ts: added ExportQuality ('standard' | 'high' | 'max') + required quality field on ExportSettings.
+- exporter.ts: QUALITY_PRESETS bpp factors (0.10/0.20/0.35 with 16/40/80 Mbps clamps); h264LevelHex() derives minimal legal High-profile level (4.0/4.2/5.1) from macroblocks×fps so 1080p60 is no longer mislabeled level 4.0; encoder config chosen via VideoEncoder.isConfigSupported() across codec × rate-control candidates (latencyMode 'quality' + bitrateMode 'variable' first, graceful fallback); default quality fallback 'high'.
+- store/studio.ts: DEFAULT_EXPORT_SETTINGS → resolution 1920x1080 + quality 'high'; added recordingVideoBitrate() (0.2 bpp @30fps, clamp 4–20 Mbps) and EXPORT_QUALITY_LABELS; live recording now passes videoBitsPerSecond (fixes ~1 Mbps default).
+- export-tab.tsx: added Quality select (Standard/High/Max) + hint copy; verified layout at 390px mobile width.
+- E2E (agent-browser): injected 12s spectrum-rich demo.wav; instrumented URL.createObjectURL + VideoEncoder.configure; confirmed config {codec avc1.640028, bitrate 12,441,600, latencyMode quality, bitrateMode variable}; export completes, MP4 decodes 1920×1080, 1:1 pixel crop clean (no banding/blocking); VBR undershoots target on simple dark content (4.3 Mbps actual — bits allocated by complexity; Max tier = same size on simple content, matters on complex content). Mobile layout OK. No console/page errors; lint clean.
+- Learned: removing React-managed sonner toasts via DOM querySelectorAll crashes the app (insertBefore NotFoundError) — let toasts auto-dismiss instead.
+- Removed temporary public/demo.wav before commit.
+
+Stage Summary:
+- Export quality pipeline reworked: 1080p default + quality tiers + VBR/quality-first rate control + legal H.264 levels; live recording now bitrate-controlled. Files: types.ts, exporter.ts, studio.ts, export-tab.tsx. Lint clean, E2E verified (config + decoded frames + mobile UI).
+- Note: VBR undershoots target on low-complexity content by design; Max tier shows its value with background images/particles.
+- Known leftover: Radix slider thumbs still lack aria-labels (from Task 10 worklog).

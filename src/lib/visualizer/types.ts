@@ -185,11 +185,19 @@ export type ExportFormat = 'mp4'
 export type ExportLength = 'full' | '30s' | '15s'
 export type ExportResolution = '1280x720' | '1920x1080' | '1080x1080' | '720x1280'
 
+/**
+ * Encoder quality tier. Drives the H.264 target bitrate (bits per pixel per
+ * frame factor + clamp range) — neon/glow/gradient content needs far more
+ * bitrate than camera footage to avoid banding and blocking.
+ */
+export type ExportQuality = 'standard' | 'high' | 'max'
+
 export interface ExportSettings {
   format: ExportFormat
   fps: 24 | 30 | 60
   resolution: ExportResolution
   length: ExportLength
+  quality: ExportQuality
 }
 
 export interface ExportProgress {

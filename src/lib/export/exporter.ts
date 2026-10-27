@@ -21,6 +21,7 @@ import { renderFrame } from '../visualizer/renderer'
 import { loadBackgroundImage } from '../visualizer/image-cache'
 import type {
   ExportProgress,
+  ExportQuality,
   ExportResolution,
   ExportSettings,
   StudioConfig,
@@ -56,8 +57,56 @@ const RESOLUTIONS: Record<ExportResolution, { width: number; height: number }> =
   '720x1280': { width: 720, height: 1280 },
 }
 
-/** H.264 configs tried in order: High 4.0 first, constrained-baseline fallback. */
-const AVC_CODEC_FALLBACKS = ['avc1.640028', 'avc1.42001f'] as const
+/**
+ * Per-quality bitrate tuning, expressed as bits-per-pixel-per-frame (bpp).
+ * Synthetic visualizer content (glow, gradients, saturated neon on dark)
+ * compresses poorly at camera-style rates — banding shows up fast — so the
+ * factors here are deliberately generous:
+ *  - standard ≈ 0.10 bpp: 1080p30 →  6.2 Mbps (small files, still decent)
+ *  - high     ≈ 0.20 bpp: 1080p30 → 12.4 Mbps (recommended default)
+ *  - max      ≈ 0.35 bpp: 1080p30 → 21.8 Mbps (near transparent)
+ * The clamp keeps short/low-res exports from dropping below usable rates and
+ * full-length 1080p60 "max" runs from becoming absurdly large.
+ */
+const QUALITY_PRESETS: Record<ExportQuality, { bpp: number; min: number; max: number }> = {
+  standard: { bpp: 0.1, min: 4_000_000, max: 16_000_000 },
+  high: { bpp: 0.2, min: 6_000_000, max: 40_000_000 },
+  max: { bpp: 0.35, min: 8_000_000, max: 80_000_000 },
+}
+
+/**
+ * Smallest H.264 High-profile level that legally carries this stream
+ * (macroblocks/second limits from Annex A). Encoding 1080p60 while declaring
+ * level 4.0 makes strict decoders refuse or degrade the file, so the level is
+ * derived from the actual resolution × fps.
+ */
+function h264LevelHex(width: number, height: number, fps: number): string {
+  const macroblocksPerSec = ((width + 15) >> 4) * ((height + 15) >> 4) * fps
+  if (macroblocksPerSec <= 245_760) return '28' // level 4.0 — 1080p30 and below
+  if (macroblocksPerSec <= 522_240) return '2a' // level 4.2 — up to 1080p60
+  return '33' // level 5.1 — headroom beyond
+}
+
+/** H.264 High profile configs tried in order, then a constrained-baseline fallback. */
+function avcCodecCandidates(width: number, height: number, fps: number): string[] {
+  const high = `avc1.6400${h264LevelHex(width, height, fps)}`
+  return [high, 'avc1.640033', 'avc1.42001f']
+}
+
+/**
+ * Rate-control option sets, tried in order. `latencyMode: 'quality'` tells the
+ * encoder it is encoding offline (spend more time per frame) and VBR squeezes
+ * visibly more quality out of dark, high-contrast content than a fixed rate.
+ * Older WebCodecs builds that reject the extra knobs fall back to plain CBR.
+ */
+type EncoderConfig = VideoEncoderConfig & {
+  bitrateMode?: 'constant' | 'variable' | 'quantitative'
+}
+const RATE_CONTROL_SETS: Array<Partial<EncoderConfig>> = [
+  { latencyMode: 'quality', bitrateMode: 'variable' },
+  { latencyMode: 'quality' },
+  {},
+]
 
 /**
  * Audio codec negotiation, tried in order of compatibility:
@@ -219,8 +268,9 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
     if (!failure) failure = err instanceof Error ? err : new Error(String(err))
   }
 
-  const bitrate = Math.round(width * height * fps * 0.12)
-  const encoderBitrate = Math.min(16_000_000, Math.max(2_000_000, bitrate))
+  const bitratePreset = QUALITY_PRESETS[settings.quality ?? 'high']
+  const requestedBitrate = Math.round(width * height * fps * bitratePreset.bpp)
+  const encoderBitrate = Math.min(bitratePreset.max, Math.max(bitratePreset.min, requestedBitrate))
   const keyFrameInterval = Math.max(1, fps * 2) // one keyframe every 2 seconds
   const frameDurationMicros = Math.round(1e6 / fps)
 
@@ -229,28 +279,38 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
     error: fail,
   })
 
-  let configured = false
-  let lastConfigureError: Error | null = null
-  for (const codec of AVC_CODEC_FALLBACKS) {
-    try {
-      videoEncoder.configure({
+  // Pick the best supported (codec × rate-control) configuration up front via
+  // isConfigSupported, so a browser that dislikes VBR/quality-latency still
+  // gets the highest bitrate it can encode rather than a failed export.
+  let chosenConfig: EncoderConfig | null = null
+  for (const codec of avcCodecCandidates(width, height, fps)) {
+    for (const rateControl of RATE_CONTROL_SETS) {
+      const candidate: EncoderConfig = {
         codec,
         width,
         height,
         bitrate: encoderBitrate,
         framerate: fps,
         avc: { format: 'avc' },
-      })
-      configured = true
-      break
-    } catch (err) {
-      lastConfigureError = err instanceof Error ? err : new Error(String(err))
+        ...rateControl,
+      }
+      try {
+        const support = await VideoEncoder.isConfigSupported(candidate)
+        if (support.supported) {
+          chosenConfig = candidate
+          break
+        }
+      } catch {
+        /* try the next, simpler configuration */
+      }
     }
+    if (chosenConfig) break
   }
-  if (!configured) {
+  if (!chosenConfig) {
     videoEncoder.close()
-    throw lastConfigureError ?? new Error('No supported H.264 encoder configuration available.')
+    throw new Error('No supported H.264 encoder configuration available.')
   }
+  videoEncoder.configure(chosenConfig)
 
   try {
     for (let i = 0; i < totalFrames; i++) {
