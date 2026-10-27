@@ -761,3 +761,16 @@ Work Log:
 Stage Summary:
 - Export audio now: true stereo from source, 256 kbps AAC (192 kbps Opus fallback), correct length for preview exports. Files: exporter.ts, export-tab.tsx. Verified by decoding the exported MP4.
 - Compression summary for user: video H.264 VBR bpp-tuned; audio AAC-LC 256k ≈ 5.5:1 vs CD, effectively transparent; Opus fallback 192k.
+
+---
+Task ID: 13
+Agent: Z.ai Code (main)
+Task: User ending today's session — "make any notes of this in the github if needed".
+
+Work Log:
+- Created README.md (repo had none): project overview, feature list, full export-pipeline documentation (quality-tier bitrate table, VBR/level/audio details, MediaRecorder bitrate), dev commands, session-notes section.
+- Session notes include: verified E2E state, known minor issues (Radix slider aria-labels, toast ephemerality), next-up ideas (WAV mixdown download, alpha MP4/WebM deterministic export, pre-export size estimate, bundled presets).
+- Appended this worklog entry; commit + push to origin/main.
+
+Stage Summary:
+- GitHub repo now has a proper front page documenting the post-overhaul export pipeline and a handoff note for the next session. Commit: docs(readme).
