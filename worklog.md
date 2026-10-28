@@ -853,3 +853,20 @@ Work Log:
 Stage Summary:
 - Looks are now portable: one click copies a ~700-char link that reconstructs the exact setup for anyone, anywhere — no server, works on GitHub Pages.
 - Known edge: background image pixels intentionally don't travel (documented in toast + README).
+---
+Task ID: 18
+Agent: Z.ai Code (main)
+Task: Verify share-links work on the LIVE site; answer user's "how do I share?"
+
+Work Log:
+- Confirmed commit 1b82b38 (Task 17 share feature) is pushed and deployed: workflow badge "passing", "Shared look loaded" string present in production chunk b1ce63eccf9e6b57.js.
+- Live-site E2E via agent-browser on https://mpem1.github.io/spectra/:
+  - Applied Grid style + Mono gradient on the live site.
+  - Patched navigator.clipboard.writeText, clicked "Copy share link for this look" → captured URL of form https://mpem1.github.io/spectra/?p=p1.H4sI... (gzip+base64url token, ~640 chars).
+  - Opened the captured URL: "Shared look loaded" toast appeared, Grid style aria-pressed=true, Mono chip active, canvas visibly drawing the mono dot-grid (screenshot), address bar cleaned of ?p=.
+  - Note: Share button only mounts while the Presets tab is active (initial eval searches on Style tab correctly found nothing — the "Save" seen there is the custom-gradients save row).
+- 0 page errors.
+
+Stage Summary:
+- Share-links verified working end-to-end on production; feature is live for users.
+- No code changes this task (verification + docs only).
