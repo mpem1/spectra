@@ -896,3 +896,19 @@ Work Log:
 
 Stage Summary:
 - Repo landing page now leads with title → live link → one-paragraph description.
+---
+Task ID: 21
+Agent: Z.ai Code (main)
+Task: Fix grid bar-count silently capping at 96
+
+Work Log:
+- User report: Grid style stops responding to bar count above ~80-96.
+- Root cause: drawGrid clamped columns to 8..96 (`clamp(cfg.barCount, 8, 96)`) while the slider runs 16..256 — the only style with a hard cap; past 96 the grid froze.
+- Fix: raised the clamp to 256 in renderer.ts so Grid tracks the slider across its full range (one-line change; dots scale down naturally into a fine LED-matrix look at high counts).
+- Verified in sandbox via pixel measurement (scanline lit-run counting on the preview canvas):
+  - 64 → 64 runs · 96 → 92 (idle-dark edge columns) · 128 → 128 runs (the previously-broken boundary) · 256 → dense full-width fine matrix, 70% lit coverage at bottom scanline, screenshot confirmed.
+- Measurement note: run-counting saturates at 256 (sub-2px dots + glow) — used coverage % + visual check there.
+- Lint clean, 0 console errors. Pushed → CI auto-deploys.
+
+Stage Summary:
+- Grid now honors bar count 16..256 like every other style; fix live after deploy.

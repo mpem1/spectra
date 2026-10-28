@@ -706,7 +706,7 @@ function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
  */
 function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
-  const cols = Math.round(clamp(cfg.barCount, 8, 96))
+  const cols = Math.round(clamp(cfg.barCount, 8, 256))
   const marginX = W * 0.045
   const cell = (W - marginX * 2) / cols
   const rows = Math.max(4, Math.floor((H * 0.9) / cell))
