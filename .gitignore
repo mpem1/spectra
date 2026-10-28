@@ -58,3 +58,6 @@ agent-ctx/
 
 # SSH tools & deploy key (NEVER commit)
 .ssh-tools/
+
+# chat-gateway scratch files (auto-saved pastes) — never ship these
+upload/

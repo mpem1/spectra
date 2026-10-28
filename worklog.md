@@ -912,3 +912,16 @@ Work Log:
 
 Stage Summary:
 - Grid now honors bar count 16..256 like every other style; fix live after deploy.
+---
+Task ID: 22
+Agent: Z.ai Code (main)
+Task: Explain UUID-message commits; stop chat-platform auto-commits from landing in the public repo
+
+Work Log:
+- Investigated commit 09793e4 (message = UUID): authored by the chat gateway's auto-save, contains ONLY my Task 18 worklog append (17 lines) — content is mine, commit wrapper was the platform's.
+- Found the same pattern earlier: 562f98f auto-committed a user-pasted screenshot (upload/pasted_image_*.png).
+- upload/ = chat scratch (8 pasted images), not referenced by the app; only one had been auto-committed.
+- Cleanup: added upload/ to .gitignore and git rm --cached the stray image (forward-looking only — no history rewrite/force-push on a public repo for a cosmetic issue).
+
+Stage Summary:
+- All UUID commits are benign platform artifacts with known contents; public repo tree now excludes chat scratch files going forward.
