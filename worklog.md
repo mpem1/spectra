@@ -815,3 +815,25 @@ Stage Summary:
 - App is now a pure static site: GitHub Actions builds & publishes to https://mpem1.github.io/spectra/ on every push to main.
 - Single future seam for cross-device sync: swap `src/lib/project-store.ts` (Vercel + hosted DB option documented in README).
 - Private-repo caveat documented: Pages on a private repo needs GitHub Pro, else make the repo public.
+
+---
+Task ID: 16
+Agent: Z.ai Code (main)
+Task: Go live on GitHub Pages — debug CI, verify production site
+
+Work Log:
+- Pushed trigger commit 674f146 after repo went public; site stayed 404 ~10 min.
+- Discovered the repo is public → Actions logs are anonymously browsable; read the failed run via agent-browser (API was IP-rate-limited).
+- Diagnosis from logs: build PASSED fully (install, STATIC_EXPORT build, .nojekyll); only `actions/configure-pages` failed with "Create Pages site failed: Resource not accessible by integration" — GitHub blocks the workflow token from creating a Pages site that was never enabled.
+- Fix: user set Settings → Pages → Source = "GitHub Actions" (one-time).
+- Trigger commit 55d802b → site returned HTTP 200 on the first poll ~40s later.
+- Production verification (https://mpem1.github.io/spectra/):
+  - Title + basePath assets resolve (/spectra/_next/... → 200)
+  - Full studio UI renders; canvas actively draws the visualizer (screenshot)
+  - Presets tab works; project "Live Site Test" saved to IndexedDB on the live origin
+  - 0 console errors
+- Deploy-key pushes DO trigger Actions workflows (confirmed via run history).
+
+Stage Summary:
+- Site is LIVE at https://mpem1.github.io/spectra/ — every push to main auto-deploys.
+- Root-cause note for future: Pages must be enabled once (Source: GitHub Actions) before the token can create/GET the site; enablement:true alone can 403.
