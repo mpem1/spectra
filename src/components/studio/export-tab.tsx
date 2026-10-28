@@ -3,6 +3,7 @@
 import { Camera, Circle, Download, Square } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ExportLength, ExportQuality, ExportResolution } from '@/lib/visualizer/types'
+import { resolutionShape } from '@/lib/visualizer/types'
 import {
   useStudioStore,
   downloadBlob,
@@ -22,6 +23,20 @@ const RESOLUTION_LABELS: Record<ExportResolution, string> = {
   '1920x1080': '1920 × 1080',
   '1080x1080': '1080 × 1080',
   '720x1280': '720 × 1280',
+}
+
+/** Tiny rectangle glyph drawn at the resolution's real aspect ratio. */
+function OrientationGlyph({ res, long = 12 }: { res: ExportResolution; long?: number }) {
+  const { aspect, orientation } = resolutionShape(res)
+  const w = orientation === 'portrait' ? Math.round(long * aspect) : long
+  const h = orientation === 'landscape' ? Math.round(long / aspect) : long
+  return (
+    <span
+      aria-hidden
+      className="inline-block shrink-0 rounded-[2px] border border-current opacity-70"
+      style={{ width: w, height: h }}
+    />
+  )
 }
 
 const LENGTH_LABELS: Record<ExportLength, string> = {
@@ -60,6 +75,11 @@ export function ExportTab() {
   const progress = exportJob.progress
   const hasAudio = audioMeta !== null
   const alphaRecording = backgroundMode === 'transparent'
+  const shape = resolutionShape(exportSettings.resolution)
+  // Orientation outline: a scaled rectangle of the selected export shape.
+  const OUTLINE_MAX = 64
+  const outlineW = shape.orientation === 'portrait' ? Math.round(OUTLINE_MAX * shape.aspect) : OUTLINE_MAX
+  const outlineH = shape.orientation === 'landscape' ? Math.round(OUTLINE_MAX / shape.aspect) : OUTLINE_MAX
 
   const handleSnapshot = () => {
     const canvas = getPreviewCanvas()
@@ -139,7 +159,10 @@ export function ExportTab() {
               <SelectContent>
                 {(Object.keys(RESOLUTION_LABELS) as ExportResolution[]).map((res) => (
                   <SelectItem key={res} value={res}>
-                    {RESOLUTION_LABELS[res]}
+                    <span className="flex items-center gap-2">
+                      <OrientationGlyph res={res} />
+                      {RESOLUTION_LABELS[res]}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -182,6 +205,28 @@ export function ExportTab() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+        </div>
+
+        {/* Orientation outline — shows the frame shape the export will use */}
+        <div
+          className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-2.5"
+          aria-label={`Export frame shape: ${shape.orientation}, ratio ${shape.ratioLabel}`}
+        >
+          <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center">
+            <div
+              className="rounded-md border-2 border-emerald-500/60 bg-emerald-500/5 shadow-[0_0_14px_-4px] shadow-emerald-500/50 transition-all duration-300"
+              style={{ width: outlineW, height: outlineH }}
+            />
+          </div>
+          <div className="min-w-0 space-y-0.5">
+            <p className="text-xs font-medium capitalize text-zinc-200">
+              {shape.orientation} · {shape.ratioLabel}
+            </p>
+            <p className="text-[11px] leading-relaxed text-zinc-500">
+              The preview canvas follows this shape — portrait and square exports are composed
+              exactly as they will render.
+            </p>
           </div>
         </div>
 

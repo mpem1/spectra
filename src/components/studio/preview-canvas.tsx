@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AudioEngine } from '@/lib/audio/engine'
 import { makeIdleFrame } from '@/lib/visualizer/idle'
 import { renderFrame } from '@/lib/visualizer/renderer'
-import type { AudioFrame } from '@/lib/visualizer/types'
+import { resolutionShape, type AudioFrame } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { setPreviewCanvas } from '@/components/studio/canvas-registry'
 import { setEngine, setPreviewControls, type PreviewControls } from '@/components/studio/engine-registry'
@@ -40,6 +40,9 @@ export function PreviewCanvas() {
   const barCount = useStudioStore((s) => s.config.visualizer.barCount)
   const smoothing = useStudioStore((s) => s.config.visualizer.smoothing)
   const patchBackground = useStudioStore((s) => s.patchBackground)
+  // The preview mirrors the export resolution's shape, so a portrait/square
+  // export is composed on screen exactly as it will render — no surprises.
+  const exportResolution = useStudioStore((s) => s.exportSettings.resolution)
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -185,21 +188,22 @@ export function PreviewCanvas() {
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
+    const { aspect } = resolutionShape(exportResolution)
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect
         let w = width
-        let h = (width * 9) / 16
+        let h = width / aspect
         if (h > height) {
           h = height
-          w = (height * 16) / 9
+          w = height * aspect
         }
         if (w > 2 && h > 2) setBox({ w: Math.floor(w), h: Math.floor(h) })
       }
     })
     ro.observe(container)
     return () => ro.disconnect()
-  }, [])
+  }, [exportResolution])
 
   useEffect(() => {
     const canvas = canvasRef.current

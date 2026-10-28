@@ -18,6 +18,10 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
   Neon, Mono) and user-saved gradients.
 - **Mirror / Center modes** — with a movable offset axis (added in
   `00461d3`), so the reflection axis no longer has to be the canvas center.
+- **Orientation-true preview** — the preview canvas takes the exact shape of
+  the selected export resolution (landscape 16:9, square 1:1, portrait 9:16),
+  and the Export tab shows a live outline of the frame format — what you
+  compose is what renders.
 - **Backgrounds** — solid, gradient, image (pan/zoom/scale), or transparent
   (alpha recording).
 - **Lyrics tab** — synced lyric lines rendered into the visualizer.

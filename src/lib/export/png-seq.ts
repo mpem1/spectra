@@ -12,18 +12,11 @@ import { renderFrame } from '../visualizer/renderer'
 import { loadBackgroundImage } from '../visualizer/image-cache'
 import type {
   ExportProgress,
-  ExportResolution,
   ExportSettings,
   StudioConfig,
 } from '../visualizer/types'
+import { RESOLUTION_DIMS as RESOLUTIONS } from '../visualizer/types'
 import { ExportCancelledError } from './exporter'
-
-const RESOLUTIONS: Record<ExportResolution, { width: number; height: number }> = {
-  '1280x720': { width: 1280, height: 720 },
-  '1920x1080': { width: 1920, height: 1080 },
-  '1080x1080': { width: 1080, height: 1080 },
-  '720x1280': { width: 720, height: 1280 },
-}
 
 /** Safety cap — 15s @ 30fps. Keeps the zip (and the browser tab) alive. */
 export const PNG_SEQ_MAX_FRAMES = 450

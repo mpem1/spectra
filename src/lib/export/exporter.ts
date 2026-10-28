@@ -23,10 +23,10 @@ import { loadBackgroundImage } from '../visualizer/image-cache'
 import type {
   ExportProgress,
   ExportQuality,
-  ExportResolution,
   ExportSettings,
   StudioConfig,
 } from '../visualizer/types'
+import { RESOLUTION_DIMS as RESOLUTIONS } from '../visualizer/types'
 
 export interface ExportMP4Options {
   /** Studio configuration to render (visualizer/background/lyrics). */
@@ -49,13 +49,6 @@ export class ExportCancelledError extends Error {
     super('Export cancelled')
     this.name = 'ExportCancelledError'
   }
-}
-
-const RESOLUTIONS: Record<ExportResolution, { width: number; height: number }> = {
-  '1280x720': { width: 1280, height: 720 },
-  '1920x1080': { width: 1920, height: 1080 },
-  '1080x1080': { width: 1080, height: 1080 },
-  '720x1280': { width: 720, height: 1280 },
 }
 
 /**

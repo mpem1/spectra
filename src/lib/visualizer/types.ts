@@ -185,6 +185,35 @@ export type ExportFormat = 'mp4'
 export type ExportLength = 'full' | '30s' | '15s'
 export type ExportResolution = '1280x720' | '1920x1080' | '1080x1080' | '720x1280'
 
+/** Pixel dimensions for every export resolution (single source of truth). */
+export const RESOLUTION_DIMS: Record<ExportResolution, { width: number; height: number }> = {
+  '1280x720': { width: 1280, height: 720 },
+  '1920x1080': { width: 1920, height: 1080 },
+  '1080x1080': { width: 1080, height: 1080 },
+  '720x1280': { width: 720, height: 1280 },
+}
+
+export type Orientation = 'landscape' | 'portrait' | 'square'
+
+/**
+ * Shape summary for an export resolution — aspect ratio, orientation name and
+ * a human ratio label ("16:9", "1:1", "9:16"). Drives the preview canvas
+ * fitting and the orientation outline in the Export tab.
+ */
+export function resolutionShape(res: ExportResolution): {
+  /** width / height (≤1 portrait, 1 square, ≥1 landscape) */
+  aspect: number
+  orientation: Orientation
+  ratioLabel: string
+} {
+  const { width, height } = RESOLUTION_DIMS[res]
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
+  const g = gcd(width, height)
+  const orientation: Orientation =
+    width > height ? 'landscape' : width < height ? 'portrait' : 'square'
+  return { aspect: width / height, orientation, ratioLabel: `${width / g}:${height / g}` }
+}
+
 /**
  * Encoder quality tier. Drives the H.264 target bitrate (bits per pixel per
  * frame factor + clamp range) — neon/glow/gradient content needs far more

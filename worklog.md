@@ -925,3 +925,19 @@ Work Log:
 
 Stage Summary:
 - All UUID commits are benign platform artifacts with known contents; public repo tree now excludes chat scratch files going forward.
+---
+Task ID: 23
+Agent: Z.ai Code (main)
+Task: Preview canvas follows export resolution shape + orientation outline in Export tab
+
+Work Log:
+- User report: picking 720x1280 (portrait) drastically changes the output but nothing on screen hints at it.
+- Added RESOLUTION_DIMS (single source of truth) + resolutionShape() helper (aspect, orientation, ratioLabel) to visualizer/types.ts.
+- preview-canvas.tsx: sizing now fits the export resolution's aspect ratio (was hardcoded 16:9); effect re-runs on resolution change → preview instantly flips landscape/portrait/square. Snapshot PNG inherits the same shape.
+- export-tab.tsx: new OrientationGlyph (mini rect at true aspect) inside each resolution option + an orientation outline panel (green frame morphing to the selected shape, 300ms transition) labeled e.g. "Portrait · 9:16" with an explainer.
+- Deduped: exporter.ts + png-seq.ts now import RESOLUTION_DIMS instead of their own copies.
+- Browser E2E (localhost): 1920x1080 → 675x380 landscape ✓; 720x1280 → 213x380 portrait ✓ (exact 9:16) with "portrait, ratio 9:16" outline; 1080x1080 → 380x380 square ✓ with "Square · 1:1" panel (screenshot). Renderer draws bars correctly in all three shapes.
+- Lint clean; 0 console errors; dev server compiles clean.
+
+Stage Summary:
+- WYSIWYG orientation: what you frame in the preview is the shape you export. Docs not yet updated (folded into README next commit).
