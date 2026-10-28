@@ -6,9 +6,16 @@ import { toast } from 'sonner'
 import {
   GRADIENT_PRESETS,
   type GradientPresetId,
-  type StudioConfig,
   type VisualizerStyle,
 } from '@/lib/visualizer/types'
+import {
+  deleteProject,
+  getProject,
+  listProjects,
+  looksLikeConfig,
+  saveProject,
+  type ProjectSummary,
+} from '@/lib/project-store'
 import { useStudioStore } from '@/store/studio'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,47 +46,11 @@ const LOOK_PRESETS: LookPreset[] = [
 
 /* ----------------------------------- projects ---------------------------------- */
 
-interface ProjectSummary {
-  id: string
-  name: string
-  updatedAt: string | null
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null
-}
-
-function extractProjectList(json: unknown): ProjectSummary[] {
-  const root = asRecord(json)
-  const arr = Array.isArray(json)
-    ? json
-    : root && Array.isArray(root.projects)
-      ? root.projects
-      : null
-  if (!arr) return []
-  const out: ProjectSummary[] = []
-  for (const item of arr) {
-    const rec = asRecord(item)
-    if (!rec) continue
-    const id =
-      typeof rec.id === 'string' ? rec.id : typeof rec.id === 'number' ? String(rec.id) : null
-    if (!id) continue
-    out.push({
-      id,
-      name: typeof rec.name === 'string' ? rec.name : 'Untitled project',
-      updatedAt: typeof rec.updatedAt === 'string' ? rec.updatedAt : null,
-    })
-  }
-  return out
-}
-
-function looksLikeConfig(value: unknown): value is StudioConfig {
-  const rec = asRecord(value)
-  return rec !== null && 'visualizer' in rec && 'background' in rec && 'lyrics' in rec
-}
-
 /**
- * Presets tab: one-click look presets + cloud project save / open / delete.
+ * Presets tab: one-click look presets + local (browser) project save / open / delete.
+ *
+ * Projects live in IndexedDB via @/lib/project-store — no server, no account,
+ * which is what lets the whole app ship as a static GitHub Pages site.
  */
 export function PresetsTab() {
   const patchVisualizer = useStudioStore((s) => s.patchVisualizer)
@@ -101,10 +72,7 @@ export function PresetsTab() {
   const fetchProjects = async () => {
     setListLoading(true)
     try {
-      const res = await fetch('/api/projects')
-      if (!res.ok) throw new Error(`Server responded ${res.status}`)
-      const json: unknown = await res.json()
-      setProjects(extractProjectList(json))
+      setProjects(await listProjects())
     } catch (err) {
       setProjects([])
       toast.error('Could not load saved projects', {
@@ -118,29 +86,18 @@ export function PresetsTab() {
   const handleSave = async () => {
     const { config } = useStudioStore.getState()
     const projectName = (name.trim() || audioMeta?.name || 'Untitled project').slice(0, 80)
+    const updating = Boolean(projectId)
     setSaving(true)
     try {
-      const res = await fetch(projectId ? `/api/projects/${projectId}` : '/api/projects', {
-        method: projectId ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: projectName, config }),
+      const saved = await saveProject({ id: projectId, name: projectName, config })
+      setProjectId(saved.id)
+      toast.success(updating ? 'Project updated' : 'Project saved', {
+        description: `${projectName} — stored in this browser.`,
       })
-      if (!res.ok) throw new Error(`Server responded ${res.status}`)
-      const json: unknown = await res.json()
-      const rec = asRecord(json)
-      const project = rec ? asRecord(rec.project) : null
-      const id =
-        rec && typeof rec.id === 'string'
-          ? rec.id
-          : project && typeof project.id === 'string'
-            ? project.id
-            : projectId
-      if (id) setProjectId(id)
-      toast.success(projectId ? 'Project updated' : 'Project saved', { description: projectName })
       void fetchProjects()
     } catch (err) {
       toast.error('Could not save project', {
-        description: err instanceof Error ? err.message : 'Save API not available yet.',
+        description: err instanceof Error ? err.message : 'Unknown error.',
       })
     } finally {
       setSaving(false)
@@ -149,16 +106,12 @@ export function PresetsTab() {
 
   const handleLoad = async (id: string) => {
     try {
-      const res = await fetch(`/api/projects/${id}`)
-      if (!res.ok) throw new Error(`Server responded ${res.status}`)
-      const json: unknown = await res.json()
-      const rec = asRecord(json)
-      const project = rec ? (asRecord(rec.project) ?? rec) : null
-      const config = project ? project.config : null
-      if (!looksLikeConfig(config)) throw new Error('Saved project has no valid config')
-      setConfig(config)
+      const project = await getProject(id)
+      if (!project) throw new Error('Project not found')
+      if (!looksLikeConfig(project.config)) throw new Error('Saved project has no valid config')
+      setConfig(project.config)
       setProjectId(id)
-      toast.success('Project loaded')
+      toast.success('Project loaded', { description: project.name })
     } catch (err) {
       toast.error('Could not load project', {
         description: err instanceof Error ? err.message : 'Unknown error.',
@@ -168,8 +121,7 @@ export function PresetsTab() {
 
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error(`Server responded ${res.status}`)
+      await deleteProject(id)
       setProjects((prev) => prev.filter((p) => p.id !== id))
       if (projectId === id) setProjectId(null)
       toast.success('Project deleted')
@@ -263,7 +215,8 @@ export function PresetsTab() {
           </div>
         ) : projects.length === 0 ? (
           <p className="rounded-lg border border-dashed border-zinc-800 p-4 text-center text-[11px] text-zinc-600">
-            No saved projects yet — tune the style and hit Save.
+            No saved projects yet — tune the style and hit Save. Projects are stored in this
+            browser, no account needed.
           </p>
         ) : (
           <div className="slim-scrollbar max-h-72 space-y-1.5 overflow-y-auto pr-1">

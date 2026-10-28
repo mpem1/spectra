@@ -792,3 +792,26 @@ Work Log:
 Stage Summary:
 - GitHub link fully restored: fetch + push both work through the Bun/ssh2 shim with the new deploy key. Local main == origin/main at fc0f09e before this commit.
 - If the sandbox rolls back again: recreate .ssh-tools (shim + key) only if wiped; the shim source may survive but assume the keypair must be re-issued and re-added on GitHub (Settings → Deploy keys → Allow write access).
+
+---
+Task ID: 15
+Agent: Z.ai Code (main)
+Task: Make the app live online through GitHub — GitHub Pages static deployment
+
+Work Log:
+- Verified deploy-key round trip: `git ls-remote origin` OK, local main == origin/main (04a7d8c).
+- Audited server dependencies: only the Projects save/load API (2 route files + Prisma SQLite); export pipeline and visualizer are already 100% client-side.
+- Created `src/lib/project-store.ts`: IndexedDB project store (list/save/get/delete) with the same validation semantics as the old API (`normalizeConfigInput`, `resolveName` from `@/lib/projects`), 50-project cap, quota-friendly error messages.
+- Rewired `presets-tab.tsx`: all 4 fetch('/api/projects…') calls replaced with the local store; removed response-parsing helpers; copy updated ("stored in this browser, no account needed").
+- Deleted `src/app/api/` entirely (projects routes + template health route) — app is now fully static.
+- `next.config.ts`: dual-mode — default keeps `output: 'standalone'`; `STATIC_EXPORT=1` → `output: 'export'`, `basePath: '/spectra'` (repo name), `trailingSlash: true`, `images.unoptimized`.
+- `package.json`: `build` is now mode-aware (`next build`); standalone copy step moved to `build:standalone`.
+- Added `.github/workflows/deploy-pages.yml`: push to main → bun install (frozen lockfile) → STATIC_EXPORT=1 build → `.nojekyll` → configure-pages(enablement:true) → upload/deploy-pages. First run auto-enables Pages.
+- README: new "Deploying (GitHub Pages)" section, stack line + Projects bullet updated to IndexedDB, dev section trimmed (no db:push).
+- E2E verified in agent-browser: save "CI Deploy Test" → appears in list; full page reload → still listed (real persistence); Load → toast + config applied; Delete → IndexedDB count = 0. Note: a transient false "deleted" read happened when clicking under a toast overlay (harness quirk, not an app bug — waited for toast and re-verified at DB level).
+- Lint clean; no console/page errors.
+
+Stage Summary:
+- App is now a pure static site: GitHub Actions builds & publishes to https://mpem1.github.io/spectra/ on every push to main.
+- Single future seam for cross-device sync: swap `src/lib/project-store.ts` (Vercel + hosted DB option documented in README).
+- Private-repo caveat documented: Pages on a private repo needs GitHub Pro, else make the repo public.

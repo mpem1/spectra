@@ -4,7 +4,7 @@ A browser-based music visualizer studio: load a track, design the look in real
 time, and export frame-exact MP4 videos — fully offline, no server rendering.
 
 Built with Next.js 16 (App Router) · TypeScript · Zustand · Canvas 2D ·
-Tailwind CSS 4 · shadcn/ui · WebCodecs · Prisma (SQLite).
+Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
 
 ## Features
 
@@ -19,7 +19,8 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · Prisma (SQLite).
 - **Backgrounds** — solid, gradient, image (pan/zoom/scale), or transparent
   (alpha recording).
 - **Lyrics tab** — synced lyric lines rendered into the visualizer.
-- **Projects** — save/load studio configurations (Prisma + SQLite).
+- **Projects** — save/load studio configurations, stored locally in the
+  visitor's browser (IndexedDB) — no account, no server.
 
 ## Export pipeline (current state after session of 2026-10-26)
 
@@ -62,20 +63,41 @@ perfect sync.
 - **Convert dialog** — re-encodes a WebM recording (or any video) to MP4 in
   real time with its audio track.
 
+## Deploying (GitHub Pages)
+
+The app is **100% client-side** — the visualizer, the export pipeline, and
+project storage all run in the browser — so it ships as a static site and
+GitHub itself hosts it:
+
+- `.github/workflows/deploy-pages.yml` runs on every push to `main`: installs
+  deps with Bun, runs `STATIC_EXPORT=1 bun run build` (→ `output: 'export'`,
+  `basePath: '/spectra'`, `trailingSlash: true` in `next.config.ts`), and
+  publishes the `out/` folder to GitHub Pages. The first run also **enables
+  Pages automatically** (`configure-pages` with `enablement: true`).
+- Live URL once the workflow is green:
+  **https://mpem1.github.io/spectra/**
+- GitHub builds this in CI — never build locally in the dev sandbox.
+- ⚠️ Pages for a **private** repo requires GitHub Pro. If the workflow fails
+  at *Configure Pages* or the site 404s, make the repo public
+  (Settings → General → Danger Zone → Change visibility) and re-run the
+  workflow (Actions → Deploy to GitHub Pages → Run workflow).
+- Future option for cross-device "cloud" projects: deploy the same repo to
+  Vercel and add a hosted DB — the UI would only need its storage layer
+  swapped (`src/lib/project-store.ts` is the single seam).
+
 ## Development
 
 ```bash
 bun install
 bun run dev        # dev server on :3000 (logs in dev.log)
 bun run lint       # eslint
-bun run db:push    # push prisma schema to sqlite
 ```
 
 - Dev server must run on port 3000; never run `bun run build` in this
-  sandbox.
-- z-ai-web-dev-sdk calls are backend-only.
-- `worklog.md` at the repo root is the detailed per-task engineering log
-  (Tasks 1–12 so far).
+  sandbox — CI builds the static site.
+- `bun run build` is mode-aware: `STATIC_EXPORT=1` → static export (used by
+  CI); `bun run build:standalone` → the old self-hosted standalone build.
+- `worklog.md` at the repo root is the detailed per-task engineering log.
 
 ## Session notes / picking this up next time
 
