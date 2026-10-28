@@ -1,5 +1,7 @@
 # Spectra — Audio Visualizer Editor
 
+**▶ Try it live: <https://mpem1.github.io/spectra/>** — free, no account, nothing to install.
+
 A browser-based music visualizer studio: load a track, design the look in real
 time, and export frame-exact MP4 videos — fully offline, no server rendering.
 

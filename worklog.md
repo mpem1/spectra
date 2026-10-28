@@ -883,3 +883,16 @@ Work Log:
 
 Stage Summary:
 - GitHub repo landing page now teaches the share feature to visitors in plain language.
+---
+Task ID: 20
+Agent: Z.ai Code (main)
+Task: Put the live app URL at the very top of the README
+
+Work Log:
+- User feedback: visitors had to scroll to the Deploying section to discover there is a live site.
+- Added a prominent line directly under the title: "**Try it live: https://mpem1.github.io/spectra/** — free, no account, nothing to install." (GitHub autolink, URL visible in raw text too).
+- Kept the URL mention in Deploying section (still accurate in its CI context).
+- Committed and pushed; verified the section via raw.githubusercontent.com.
+
+Stage Summary:
+- Repo landing page now leads with title → live link → one-paragraph description.
