@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { FolderOpen, Loader2, Save, Trash2, Upload, Wand2 } from 'lucide-react'
+import { FolderOpen, Link2, Loader2, Save, Trash2, Upload, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   GRADIENT_PRESETS,
@@ -17,6 +17,7 @@ import {
   type ProjectSummary,
 } from '@/lib/project-store'
 import { useStudioStore } from '@/store/studio'
+import { buildShareUrl } from '@/lib/share-link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { gradientCss } from '@/components/studio/color-utils'
@@ -132,6 +133,40 @@ export function PresetsTab() {
     }
   }
 
+  /** Copy a URL that reconstructs the current look for anyone who opens it. */
+  const handleShare = async () => {
+    const { config } = useStudioStore.getState()
+    const { url, imageDropped, tooLong } = buildShareUrl(config)
+    const description = tooLong
+      ? 'Lyrics were too long for a link, so they were left out — the look itself travels.'
+      : imageDropped
+        ? 'Background images can’t travel in a link — it opens with a solid color instead.'
+        : 'Anyone who opens it gets this exact look. Paste it in a chat, post, or forum.'
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success('Share link copied', { description })
+    } catch {
+      // Clipboard API unavailable (permissions / older browser) — legacy fallback.
+      const helper = document.createElement('textarea')
+      helper.value = url
+      helper.setAttribute('readonly', '')
+      helper.style.position = 'fixed'
+      helper.style.opacity = '0'
+      document.body.appendChild(helper)
+      helper.select()
+      try {
+        if (!document.execCommand('copy')) throw new Error('copy rejected')
+        toast.success('Share link copied', { description })
+      } catch {
+        toast.error('Could not copy automatically', {
+          description: 'Open the link once — then copy it from the address bar.',
+        })
+      } finally {
+        helper.remove()
+      }
+    }
+  }
+
   const applyLook = (preset: LookPreset) => {
     const stops = GRADIENT_PRESETS[preset.gradient].stops.map((s) => ({ ...s }))
     patchVisualizer({
@@ -194,6 +229,16 @@ export function PresetsTab() {
             className="h-9 flex-1 text-xs"
             aria-label="Project name"
           />
+          <Button
+            size="icon"
+            variant="outline"
+            className="size-9 shrink-0 border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-900 hover:text-zinc-100"
+            aria-label="Copy share link for this look"
+            title="Copy share link for this look"
+            onClick={() => void handleShare()}
+          >
+            <Link2 className="size-4" aria-hidden />
+          </Button>
           <Button
             size="sm"
             className="h-9 bg-zinc-100 font-medium text-zinc-900 shadow-none hover:bg-white"

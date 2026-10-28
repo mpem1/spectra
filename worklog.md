@@ -837,3 +837,19 @@ Work Log:
 Stage Summary:
 - Site is LIVE at https://mpem1.github.io/spectra/ — every push to main auto-deploys.
 - Root-cause note for future: Pages must be enabled once (Source: GitHub Actions) before the token can create/GET the site; enablement:true alone can 403.
+
+---
+Task ID: 17
+Agent: Z.ai Code (main)
+Task: Shareable looks — encode a look into the URL for posts/forums
+
+Work Log:
+- Created `src/lib/share-link.ts`: gzipSync(fflate, level 9) + base64url + `p1.` version prefix; `makePortable` strips background.imageSrc (image pixels can't fit a URL — mode falls back to solid color); `buildShareUrl` keeps origin+basePath, drops oversized lyrics (6000-char cap) as fallback; safe decode returns null on any garbage.
+- Presets tab: new link-icon button next to Save — builds URL from current config, copies via clipboard API with execCommand fallback, toast explains image-drop/lyric-drop cases.
+- New `SharedLookLoader` (mounted in page.tsx): reads `?p=`, decodes, `setConfig` (merges over defaults → forward compatible), clears projectId, strips the param via history.replaceState.
+- Found + fixed a real UX bug during E2E: toasts fired in the same commit where <Toaster> first mounts never become visible → toast deferred 150ms; config application stays synchronous.
+- Verification: bun roundtrip script (full config → 605-char token, identical decode; image strip ✓; garbage rejected ✓; 400 lyric lines → 3.6k chars ✓). Browser E2E: applied Mono Matrix → Share → captured clipboard write (patched writeText) → opened URL → canvas rendered mono grid, Grid+Mono selected, "Shared look loaded" toast, address bar cleaned. Corrupted `?p=p1.GARBAGE` → friendly error toast, app loads fine.
+
+Stage Summary:
+- Looks are now portable: one click copies a ~700-char link that reconstructs the exact setup for anyone, anywhere — no server, works on GitHub Pages.
+- Known edge: background image pixels intentionally don't travel (documented in toast + README).

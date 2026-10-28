@@ -21,6 +21,11 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
 - **Lyrics tab** — synced lyric lines rendered into the visualizer.
 - **Projects** — save/load studio configurations, stored locally in the
   visitor's browser (IndexedDB) — no account, no server.
+- **Shareable looks** — the Presets tab's link button compresses the whole
+  setup (style, gradient, background, glow, lyrics styling) into the URL
+  itself (gzip + base64url, ~600 chars). Paste it in a chat, post, or forum:
+  whoever opens it gets that exact look. Background image *pixels* can't fit
+  in a link and fall back to a solid color; everything else travels.
 
 ## Export pipeline (current state after session of 2026-10-26)
 
