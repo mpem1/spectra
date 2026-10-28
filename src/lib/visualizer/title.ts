@@ -12,6 +12,10 @@
  * glow halo. The card is positioned freely via positionX/positionY (0..100,
  * 50/50 = dead center).
  *
+ * Motion: `pulse` swells the px size with the track's loudness (energy-driven,
+ * deterministic in exports), and `swivel` swings the whole block rotationally
+ * around its own center axis on the decorative clock.
+ *
  * Deterministic — a pure function of (rc, frame, title, palette).
  */
 import type { AudioFrame, GradientConfig, RenderContext, TitleConfig } from './types'
@@ -50,10 +54,17 @@ export function drawTitle(
     title.fill === 'gradient' && title.gradientMode === 'custom' ? title.gradient : palette
 
   const cx = (title.positionX / 100) * width
-  const lineH = title.size * 1.25 * S
   const cy = (title.positionY / 100) * height
 
-  // Auto-shrink the block until its widest line fits 92% of the canvas.
+  // Audio-reactive size ("pulse"): the text swells with the track's loudness.
+  // Real music RMS lands ~0.1–0.4, so it's stretched to full scale by 0.5 to
+  // make the slider feel alive. Deterministic — identical in exports.
+  const level = clamp01(frame.energy * 2)
+  const pulseScale = 1 + clamp01(title.pulse) * level
+
+  // Auto-shrink the block until its widest line fits 92% of the canvas (fit is
+  // computed at the base size so layout stays stable — the pulse then swells
+  // from there).
   const fontFor = (size: number) => `${title.weight} ${size}px ${family(title.font)}`
   let px = title.size * S
   ctx.save()
@@ -62,8 +73,10 @@ export function drawTitle(
   const widest = Math.max(...lines.map((l) => ctx.measureText(l).width), 1)
   if (widest > maxW && widest > 0) {
     px = Math.max(10, px * (maxW / widest))
-    ctx.font = fontFor(px)
   }
+  px *= pulseScale
+  ctx.font = fontFor(px)
+  const lineH = px * 1.25
 
   const paint = (text: string, x: number, py: number) => {
     ctx.save()
@@ -72,20 +85,20 @@ export function drawTitle(
     ctx.textBaseline = 'middle'
 
     // Glow halo: a colored pass under the crisp fill. Double-drawn so the
-    // halo reads at low strengths too.
+    // halo reads at low strengths too. Breathes with the pulse.
     if (title.glow) {
       ctx.save()
       ctx.shadowColor = title.glowColor
-      ctx.shadowBlur = (6 + 34 * clamp01(title.glowStrength)) * S
+      ctx.shadowBlur = (6 + 34 * clamp01(title.glowStrength)) * S * pulseScale
       ctx.fillStyle = title.glowColor
       ctx.fillText(text, x, py)
       ctx.fillText(text, x, py)
       ctx.restore()
     }
 
-    // Outline stroke behind the fill.
+    // Outline stroke behind the fill (scales with the pulse).
     if (title.outline && title.outlineWidth > 0) {
-      ctx.lineWidth = title.outlineWidth * S
+      ctx.lineWidth = title.outlineWidth * S * pulseScale
       ctx.strokeStyle = title.outlineColor
       ctx.lineJoin = 'round'
       ctx.miterLimit = 2
@@ -137,6 +150,16 @@ export function drawTitle(
   }
 
   // Stack lines around the vertical anchor so the block stays centered.
+  // Swivel: the block swings rotationally around its own center axis. Runs on
+  // the decorative clock so it keeps moving while paused; exports lock it to
+  // song time (see AudioFrame.styleTime) so video stays deterministic.
+  if (title.swivel && title.swivelRange > 0.05) {
+    const swing = (title.swivelRange * Math.PI) / 180
+    const ang = swing * Math.sin(2 * Math.PI * Math.max(0.01, title.swivelSpeed) * frame.styleTime)
+    ctx.translate(cx, cy)
+    ctx.rotate(ang)
+    ctx.translate(-cx, -cy)
+  }
   const blockH = (lines.length - 1) * lineH
   for (let i = 0; i < lines.length; i++) {
     paint(lines[i], cx, cy - blockH / 2 + i * lineH)

@@ -958,3 +958,17 @@ Work Log:
 
 Stage Summary:
 - Title cards are live in the Lyrics tab: timed intro text that moves, glows, and can ride the visualizer palette or carry its own colors — exported deterministically like everything else.
+---
+Task ID: 25
+Agent: Z.ai Code (main)
+Task: Title card — audio-reactive px size (pulse) + swivel motion around center axis
+
+Work Log:
+- types.ts: TitleConfig gains `pulse` (0..1 audio-reactive size), `swivel` (bool), `swivelRange` (2..180 degrees), `swivelSpeed` (0.1..2 swings/s) + defaults (pulse 0, swivel off, 12 deg, 0.4/s). Store setConfig merge auto-defaults old saves/share links.
+- title.ts: pulseScale = 1 + pulse * clamp01(energy*2) — RMS stretched to full scale by 0.5 so real-music levels (0.1–0.4) feel alive; deterministic in exports (same offline rmsEnergy). Scales px after the 92%-width auto-shrink (layout stays stable), and the glow blur + outline width breathe with it. Swivel: rotate around the block's own center (cx, cy) on the decorative clock (styleTime — free-runs while paused, locked to song time in exports).
+- lyrics-tab.tsx: "Pulse with music" slider under Size (Off/+N% format + explainer hint), "Swivel" switch + conditional Swing/Swivel-speed sliders under Position Y; description updated.
+- README: title-card bullet now mentions pulse + swivel.
+- Browser E2E (localhost, idle demo frame energy=0.4): title bbox 231x41 with pulse Off -> 394x60 at pulse max (~1.7x, matches expected 1.8x) ✓; swivel on (180 deg, 2/s): bbox changes between samples (302 vs 236 px wide) and screenshot shows "SONG TITLE" mid-swing at ~135 deg with gradient+glow rotating with the text ✓; conditional sliders appear/disappear with the switch ✓. No console errors; lint clean.
+
+Stage Summary:
+- The title now performs: its px size swells with the loudness of the track, and the whole block can swivel around its own center axis with adjustable swing and speed — all deterministic in MP4/PNG exports and included in share links and saved projects.

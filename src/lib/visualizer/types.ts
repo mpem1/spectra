@@ -157,6 +157,14 @@ export interface TitleConfig {
   positionX: number
   /** Vertical position 0..100 (50 = center) */
   positionY: number
+  /** Audio-reactive size: 0 = fixed px · 1 = up to +100% bigger on the loudest sound */
+  pulse: number
+  /** Swivel — the block swings rotationally around its own center axis */
+  swivel: boolean
+  /** Swing amplitude in degrees (0..180) */
+  swivelRange: number
+  /** Full back-and-forth swings per second */
+  swivelSpeed: number
   /** Text fill: flat color or a gradient sweep */
   fill: 'solid' | 'gradient'
   color: string
@@ -409,6 +417,10 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     uppercase: true,
     positionX: 50,
     positionY: 38,
+    pulse: 0,
+    swivel: false,
+    swivelRange: 12,
+    swivelSpeed: 0.4,
     fill: 'gradient',
     gradientMode: 'visualizer',
     gradient: {

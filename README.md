@@ -27,7 +27,9 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
 - **Lyrics tab** — synced lyric lines rendered into the visualizer, plus a
   **title card**: a free-positioned intro title that fades in at a set time,
   holds for a set duration, and fades out — with glow, outline, and either
-  the visualizer palette or its own custom gradient.
+  the visualizer palette or its own custom gradient. The size can **pulse
+  with the music** (text swells on loud hits) and the whole block can
+  **swivel** around its center axis with adjustable swing and speed.
 - **Projects** — save/load studio configurations, stored locally in the
   visitor's browser (IndexedDB) — no account, no server.
 - **Shareable looks** — one click turns your whole setup into a link that

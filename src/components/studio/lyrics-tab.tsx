@@ -691,7 +691,8 @@ export function LyricsTab() {
         </div>
         <p className="text-[11px] leading-snug text-zinc-600">
           A big intro title — fades in at its start time, holds for the set duration, then
-          fades out. One line per row; extra lines stack downwards.
+          fades out. One line per row; extra lines stack downwards. Pulse swells the size
+          with the music; Swivel swings it around its center axis.
         </p>
 
         <Textarea
@@ -764,6 +765,21 @@ export function LyricsTab() {
           format={(v) => `${Math.round(v)}px`}
         />
         <SliderRow
+          label="Pulse with music"
+          value={title.pulse}
+          min={0}
+          max={1}
+          step={0.05}
+          onChange={(pulse) => patchTitle({ pulse })}
+          format={(v) => (v <= 0 ? 'Off' : `+${Math.round(v * 100)}%`)}
+        />
+        {title.pulse > 0 ? (
+          <p className="text-[11px] leading-snug text-zinc-600">
+            Size breathes with the loudness — quiet passages stay near the set size, loud
+            hits swell it up to the shown percentage.
+          </p>
+        ) : null}
+        <SliderRow
           label="Weight"
           value={title.weight}
           min={300}
@@ -799,6 +815,38 @@ export function LyricsTab() {
           onChange={(positionY) => patchTitle({ positionY })}
           format={(v) => `${Math.round(v)}%`}
         />
+
+        {/* Swivel — rotational swing around the block's own center axis */}
+        <div className="flex h-8 items-center gap-2">
+          <MicroLabel className="flex-1">Swivel</MicroLabel>
+          <Switch
+            aria-label="Swivel title around its center axis"
+            checked={title.swivel}
+            onCheckedChange={(swivel) => patchTitle({ swivel })}
+          />
+        </div>
+        {title.swivel ? (
+          <>
+            <SliderRow
+              label="Swing"
+              value={title.swivelRange}
+              min={2}
+              max={180}
+              step={1}
+              onChange={(swivelRange) => patchTitle({ swivelRange })}
+              format={(v) => `${Math.round(v)}°`}
+            />
+            <SliderRow
+              label="Swivel speed"
+              value={title.swivelSpeed}
+              min={0.1}
+              max={2}
+              step={0.05}
+              onChange={(swivelSpeed) => patchTitle({ swivelSpeed })}
+              format={(v) => `${v.toFixed(2)}/s`}
+            />
+          </>
+        ) : null}
 
         {/* Fill: flat color or palette sweep */}
         <div className="space-y-1.5">
