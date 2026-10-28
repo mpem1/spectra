@@ -870,3 +870,16 @@ Work Log:
 Stage Summary:
 - Share-links verified working end-to-end on production; feature is live for users.
 - No code changes this task (verification + docs only).
+---
+Task ID: 19
+Agent: Z.ai Code (main)
+Task: Document share-links in the public README so repo visitors know the feature exists
+
+Work Log:
+- README already had a one-line Features bullet from Task 17, but no user-facing how-to.
+- Added a dedicated "Sharing a look (one-click link)" section: 3-step instructions (design → Presets tab link button → paste anywhere), plus the practical notes (config compressed into the URL ~600-700 chars, links are snapshots, background image pixels fall back to a solid color with a toast warning).
+- Trimmed the Features bullet to a one-liner with an anchor link to the new section.
+- Committed and pushed to main (README-only change; CI will rebuild and redeploy the identical site).
+
+Stage Summary:
+- GitHub repo landing page now teaches the share feature to visitors in plain language.

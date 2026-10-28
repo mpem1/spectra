@@ -21,11 +21,27 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
 - **Lyrics tab** — synced lyric lines rendered into the visualizer.
 - **Projects** — save/load studio configurations, stored locally in the
   visitor's browser (IndexedDB) — no account, no server.
-- **Shareable looks** — the Presets tab's link button compresses the whole
-  setup (style, gradient, background, glow, lyrics styling) into the URL
-  itself (gzip + base64url, ~600 chars). Paste it in a chat, post, or forum:
-  whoever opens it gets that exact look. Background image *pixels* can't fit
-  in a link and fall back to a solid color; everything else travels.
+- **Shareable looks** — one click turns your whole setup into a link that
+  anyone can open. See [Sharing a look](#sharing-a-look-one-click-link) below.
+
+## Sharing a look (one-click link)
+
+Any setup — visualizer style, colors, background, glow, lyrics styling — can
+be turned into a plain web link that rebuilds it exactly, on any device:
+
+1. Design your look in the studio.
+2. Open the **Presets** tab and click the **link button** next to *Save* —
+   the link is copied to your clipboard.
+3. Paste it anywhere: chat, post, forum. Whoever opens it sees that exact
+   look, loads their own audio, and hits play.
+
+- The whole config is compressed into the URL itself (`?p=…`, gzip +
+  base64url, ~600–700 chars) — no server, no account, no sign-up.
+- Links are **snapshots**: changing your look later never changes links you
+  already shared.
+- Background **image pixels** are the one thing that can't fit in a URL —
+  they fall back to a solid color on the receiving end (the app tells you in
+  a toast). Everything else, including lyric styling, travels.
 
 ## Export pipeline (current state after session of 2026-10-26)
 
