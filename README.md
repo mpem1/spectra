@@ -24,7 +24,10 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
   compose is what renders.
 - **Backgrounds** — solid, gradient, image (pan/zoom/scale), or transparent
   (alpha recording).
-- **Lyrics tab** — synced lyric lines rendered into the visualizer.
+- **Lyrics tab** — synced lyric lines rendered into the visualizer, plus a
+  **title card**: a free-positioned intro title that fades in at a set time,
+  holds for a set duration, and fades out — with glow, outline, and either
+  the visualizer palette or its own custom gradient.
 - **Projects** — save/load studio configurations, stored locally in the
   visitor's browser (IndexedDB) — no account, no server.
 - **Shareable looks** — one click turns your whole setup into a link that

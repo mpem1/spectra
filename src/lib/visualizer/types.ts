@@ -129,12 +129,58 @@ export interface LyricsConfig {
   glowColor: string
 }
 
+/* ----------------------------------- Title ------------------------------------ */
+
+/**
+ * Title card — a free-floating text (song title, artist…) that lives in its
+ * own time window: fades in at `startTime`, holds for `duration` seconds,
+ * fades out. Same styling language as the lyrics (fill sweep, outline, glow)
+ * with its own palette option and a free X/Y position.
+ */
+export interface TitleConfig {
+  enabled: boolean
+  /** Title text — \n splits stacked lines */
+  text: string
+  /** Seconds into the song when the card appears */
+  startTime: number
+  /** Seconds the card stays on screen */
+  duration: number
+  /** Fade in/out seconds */
+  fade: number
+  font: 'sans' | 'serif' | 'mono'
+  /** px relative to 720p canvas */
+  size: number
+  /** 300..800 */
+  weight: number
+  uppercase: boolean
+  /** Horizontal position 0..100 (50 = centered) */
+  positionX: number
+  /** Vertical position 0..100 (50 = center) */
+  positionY: number
+  /** Text fill: flat color or a gradient sweep */
+  fill: 'solid' | 'gradient'
+  color: string
+  /** Where the gradient sweep gets its colors: the visualizer palette or the title's own */
+  gradientMode: 'visualizer' | 'custom'
+  /** Title's own gradient (used when fill = gradient and gradientMode = custom) */
+  gradient: GradientConfig
+  outline: boolean
+  /** Outline stroke width, px relative to 720p canvas */
+  outlineWidth: number
+  outlineColor: string
+  glow: boolean
+  /** Glow blur strength 0..1 */
+  glowStrength: number
+  glowColor: string
+}
+
 /* ----------------------------------- Project --------------------------------- */
 
 export interface StudioConfig {
   visualizer: VisualizerConfig
   background: BackgroundConfig
   lyrics: LyricsConfig
+  title: TitleConfig
 }
 
 /* --------------------------------- Audio frame -------------------------------- */
@@ -349,6 +395,35 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     outlineColor: '#000000',
     glow: false,
     glowStrength: 0.5,
+    glowColor: '#ffffff',
+  },
+  title: {
+    enabled: false,
+    text: 'SONG TITLE',
+    startTime: 0,
+    duration: 6,
+    fade: 0.8,
+    font: 'sans',
+    size: 64,
+    weight: 800,
+    uppercase: true,
+    positionX: 50,
+    positionY: 38,
+    fill: 'gradient',
+    gradientMode: 'visualizer',
+    gradient: {
+      stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
+      angle: 90,
+      shape: 'linear',
+      cycleColors: false,
+      cycleSpeed: 0.25,
+    },
+    color: '#ffffff',
+    outline: false,
+    outlineWidth: 3,
+    outlineColor: '#000000',
+    glow: true,
+    glowStrength: 0.6,
     glowColor: '#ffffff',
   },
 }

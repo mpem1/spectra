@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Captions, Copy, Plus, Timer, Trash2, Type } from 'lucide-react'
+import { Captions, Copy, Heading1, Plus, Timer, Trash2, Type } from 'lucide-react'
 import type { LyricLine } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { getPreviewControls } from '@/components/studio/engine-registry'
@@ -158,14 +158,25 @@ function LyricRow({
 
 export function LyricsTab() {
   const lyrics = useStudioStore((s) => s.config.lyrics)
+  const title = useStudioStore((s) => s.config.title)
   const visualizerGradient = useStudioStore((s) => s.config.visualizer.gradient)
   const audioMeta = useStudioStore((s) => s.audioMeta)
   const patchLyrics = useStudioStore((s) => s.patchLyrics)
+  const patchTitle = useStudioStore((s) => s.patchTitle)
   const [raw, setRaw] = useState('')
   const [selected, setSelected] = useState<number | null>(null)
   const [activeLine, setActiveLine] = useState(-1)
   const [justAdded, setJustAdded] = useState<number | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
+
+  // Title start-time text: editable mirror of config.title.startTime with the
+  // same render-phase re-seed pattern as LyricRow's time field.
+  const [titleStartText, setTitleStartText] = useState(() => formatTimeInput(title.startTime))
+  const [prevTitleStart, setPrevTitleStart] = useState(title.startTime)
+  if (prevTitleStart !== title.startTime) {
+    setPrevTitleStart(title.startTime)
+    setTitleStartText(formatTimeInput(title.startTime))
+  }
   // The source text the current lines were imported from — lets "Distribute
   // evenly" tell "re-import" apart from "the user has been editing the rows".
   const lastImportedRef = useRef('')
@@ -664,6 +675,268 @@ export function LyricsTab() {
             max={1}
             step={0.05}
             onChange={(glowStrength) => patchLyrics({ glowStrength })}
+          />
+        ) : null}
+      </section>
+
+      {/* Title card — timed intro text with its own styling */}
+      <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
+        <div className="flex h-7 items-center justify-between">
+          <SectionTitle icon={Heading1}>Title card</SectionTitle>
+          <Switch
+            aria-label="Enable title card"
+            checked={title.enabled}
+            onCheckedChange={(enabled) => patchTitle({ enabled })}
+          />
+        </div>
+        <p className="text-[11px] leading-snug text-zinc-600">
+          A big intro title — fades in at its start time, holds for the set duration, then
+          fades out. One line per row; extra lines stack downwards.
+        </p>
+
+        <Textarea
+          value={title.text}
+          onChange={(e) => patchTitle({ text: e.target.value })}
+          placeholder={'Song title\nArtist name'}
+          className="min-h-16 bg-zinc-950/60 font-mono text-xs"
+          aria-label="Title text"
+        />
+
+        {/* Timing */}
+        <div className="flex h-8 items-center gap-2">
+          <MicroLabel className="flex-1">Starts at</MicroLabel>
+          <Input
+            value={titleStartText}
+            onChange={(e) => {
+              setTitleStartText(e.target.value)
+              const parsed = parseTimeInput(e.target.value)
+              if (parsed !== null) patchTitle({ startTime: parsed })
+            }}
+            onBlur={() => setTitleStartText(formatTimeInput(title.startTime))}
+            className="h-8 w-20 px-2 font-mono text-xs tabular-nums"
+            aria-label="Title start time"
+            placeholder="0:00.00"
+          />
+        </div>
+        <SliderRow
+          label="Hold for"
+          value={title.duration}
+          min={1}
+          max={30}
+          step={0.5}
+          onChange={(duration) => patchTitle({ duration })}
+          format={(v) => `${v.toFixed(1)}s`}
+        />
+        <SliderRow
+          label="Fade"
+          value={title.fade}
+          min={0}
+          max={3}
+          step={0.05}
+          onChange={(fade) => patchTitle({ fade })}
+          format={(v) => `${v.toFixed(2)}s`}
+        />
+
+        {/* Type */}
+        <div className="space-y-1.5">
+          <MicroLabel>Font</MicroLabel>
+          <Select
+            value={title.font}
+            onValueChange={(font) => patchTitle({ font: font as typeof title.font })}
+          >
+            <SelectTrigger size="sm" className="w-full" aria-label="Title font">
+              <SelectValue placeholder="Font" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="sans">Sans</SelectItem>
+              <SelectItem value="serif">Serif</SelectItem>
+              <SelectItem value="mono">Mono</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <SliderRow
+          label="Size"
+          value={title.size}
+          min={24}
+          max={140}
+          step={1}
+          onChange={(size) => patchTitle({ size })}
+          format={(v) => `${Math.round(v)}px`}
+        />
+        <SliderRow
+          label="Weight"
+          value={title.weight}
+          min={300}
+          max={800}
+          step={100}
+          onChange={(weight) => patchTitle({ weight })}
+        />
+        <div className="flex h-7 items-center justify-between">
+          <MicroLabel>Uppercase</MicroLabel>
+          <Switch
+            aria-label="Uppercase title"
+            checked={title.uppercase}
+            onCheckedChange={(uppercase) => patchTitle({ uppercase })}
+          />
+        </div>
+
+        {/* Move */}
+        <SliderRow
+          label="Position X"
+          value={title.positionX}
+          min={0}
+          max={100}
+          step={1}
+          onChange={(positionX) => patchTitle({ positionX })}
+          format={(v) => `${Math.round(v)}%`}
+        />
+        <SliderRow
+          label="Position Y"
+          value={title.positionY}
+          min={0}
+          max={100}
+          step={1}
+          onChange={(positionY) => patchTitle({ positionY })}
+          format={(v) => `${Math.round(v)}%`}
+        />
+
+        {/* Fill: flat color or palette sweep */}
+        <div className="space-y-1.5">
+          <MicroLabel>Fill</MicroLabel>
+          <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+            {(['solid', 'gradient'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={title.fill === mode}
+                onClick={() => patchTitle({ fill: mode })}
+                className={cn(
+                  'h-7 rounded-md text-xs capitalize transition-colors',
+                  title.fill === mode
+                    ? 'bg-emerald-500/15 text-emerald-300'
+                    : 'text-zinc-400 hover:text-zinc-200',
+                )}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+          {title.fill === 'gradient' ? (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+                {(['visualizer', 'custom'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={title.gradientMode === mode}
+                    onClick={() => patchTitle({ gradientMode: mode })}
+                    className={cn(
+                      'h-7 rounded-md text-xs transition-colors',
+                      title.gradientMode === mode
+                        ? 'bg-emerald-500/15 text-emerald-300'
+                        : 'text-zinc-400 hover:text-zinc-200',
+                    )}
+                  >
+                    {mode === 'visualizer' ? 'Match visualizer' : 'Custom'}
+                  </button>
+                ))}
+              </div>
+              {title.gradientMode === 'custom' ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <MicroLabel>Title palette</MicroLabel>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 gap-1 rounded-md px-2 text-[11px] text-zinc-500 hover:text-emerald-400"
+                      aria-label="Copy visualizer palette to title"
+                      title="Copy the visualizer palette as a starting point"
+                      onClick={() => patchTitle({ gradient: structuredClone(visualizerGradient) })}
+                    >
+                      <Copy className="size-3" aria-hidden />
+                      Copy visualizer palette
+                    </Button>
+                  </div>
+                  <GradientEditor
+                    value={title.gradient}
+                    onChange={(gradient) => patchTitle({ gradient })}
+                    default={defaultLyricsGradient()}
+                  />
+                </div>
+              ) : (
+                <p className="text-[11px] leading-snug text-zinc-600">
+                  Sweeps the visualizer palette across the title — switch to Custom to give it
+                  its own colors.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="flex h-8 items-center gap-2">
+              <MicroLabel className="flex-1">Color</MicroLabel>
+              <ColorPickerButton
+                value={title.color}
+                onChange={(color) => patchTitle({ color })}
+                ariaLabel="Title color"
+              />
+              <input
+                type="color"
+                value={toHex6(parseColor(title.color) ?? { r: 255, g: 255, b: 255, a: 1 })}
+                onChange={(e) => patchTitle({ color: e.target.value })}
+                className="h-7 w-10 cursor-pointer rounded-md border border-zinc-800 bg-zinc-950 p-0.5"
+                aria-label="Native title color picker"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Outline */}
+        <div className="flex h-8 items-center gap-2">
+          <MicroLabel className="flex-1">Outline</MicroLabel>
+          <Switch
+            aria-label="Title outline"
+            checked={title.outline}
+            onCheckedChange={(outline) => patchTitle({ outline })}
+          />
+          <ColorPickerButton
+            value={title.outlineColor}
+            onChange={(outlineColor) => patchTitle({ outlineColor })}
+            ariaLabel="Title outline color"
+          />
+        </div>
+        {title.outline ? (
+          <SliderRow
+            label="Outline width"
+            value={title.outlineWidth}
+            min={1}
+            max={12}
+            step={0.5}
+            onChange={(outlineWidth) => patchTitle({ outlineWidth })}
+            format={(v) => `${v.toFixed(1)}px`}
+          />
+        ) : null}
+
+        {/* Glow */}
+        <div className="flex h-8 items-center gap-2">
+          <MicroLabel className="flex-1">Glow</MicroLabel>
+          <Switch
+            aria-label="Title glow"
+            checked={title.glow}
+            onCheckedChange={(glow) => patchTitle({ glow })}
+          />
+          <ColorPickerButton
+            value={title.glowColor}
+            onChange={(glowColor) => patchTitle({ glowColor })}
+            ariaLabel="Title glow color"
+          />
+        </div>
+        {title.glow ? (
+          <SliderRow
+            label="Glow strength"
+            value={title.glowStrength}
+            min={0}
+            max={1}
+            step={0.05}
+            onChange={(glowStrength) => patchTitle({ glowStrength })}
           />
         ) : null}
       </section>

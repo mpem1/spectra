@@ -18,6 +18,7 @@ import type {
 import { buildGradient, buildRadialGradient, gradientLine, sampleGradient, withAlpha } from './gradients'
 import { getBackgroundImage } from './image-cache'
 import { drawLyrics } from './lyrics'
+import { drawTitle } from './title'
 
 /* --------------------------------- Utilities -------------------------------- */
 
@@ -89,6 +90,11 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   drawVisualizer(rc, frame, config.visualizer, S)
   if (config.lyrics.enabled && config.lyrics.lines.length > 0) {
     drawLyrics(rc, frame, config.lyrics, config.visualizer.gradient)
+  }
+  // Optional chaining: configs from very old saves (pre-title) merge over
+  // defaults in setConfig, but stay defensive here anyway.
+  if (config.title?.enabled && config.title.text.trim().length > 0) {
+    drawTitle(rc, frame, config.title, config.visualizer.gradient)
   }
   rc.ctx.restore()
 }

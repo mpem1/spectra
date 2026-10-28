@@ -102,8 +102,13 @@ export function buildShareUrl(
   const url = `${base}?p=${token}`
   if (url.length <= maxLength) return { url, imageDropped: false, tooLong: false }
 
-  // Too long (huge lyrics, most likely) — retry without lyric lines.
-  const trimmed: StudioConfig = { ...config, lyrics: { ...config.lyrics, lines: [] } }
+  // Too long (huge lyrics, most likely) — retry without lyric lines and with
+  // a capped title text so the link always fits a reasonable URL budget.
+  const trimmed: StudioConfig = {
+    ...config,
+    lyrics: { ...config.lyrics, lines: [] },
+    title: { ...config.title, text: config.title.text.slice(0, 120) },
+  }
   const lightUrl = `${base}?p=${encodeLook(trimmed)}`
   return {
     url: lightUrl.length <= maxLength ? lightUrl : url,

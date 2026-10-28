@@ -941,3 +941,20 @@ Work Log:
 
 Stage Summary:
 - WYSIWYG orientation: what you frame in the preview is the shape you export. Docs not yet updated (folded into README next commit).
+---
+Task ID: 24
+Agent: Z.ai Code (main)
+Task: Title card — timed intro text with its own styling, under the Lyrics section
+
+Work Log:
+- types.ts: TitleConfig (text w/ \n stacking, startTime/duration/fade window, font/size/weight/uppercase, positionX+positionY free move, fill solid|gradient with visualizer|custom palette source, outline, glow) + DEFAULT_STUDIO_CONFIG.title + StudioConfig.title.
+- New src/lib/visualizer/title.ts: drawTitle — pure/deterministic, visibility window with fade in/out, per-line gradient sweep reusing buildGradient/buildRadialGradient, auto-shrink to 92% width, glow halo + outline stroke mirroring the lyrics paint path.
+- renderer.ts: draws title after lyrics (defensive optional chaining for pre-title configs).
+- store: patchTitle + setConfig merge over defaults (old projects/share links load safely).
+- lyrics-tab.tsx: "Title card" section under lyrics style — enable switch, text area, mm:ss start input (re-seed pattern), Hold-for + Fade sliders, font/size/weight/uppercase, Position X/Y, Fill solid|gradient + Match-visualizer|Custom + GradientEditor + copy-palette, outline and glow rows.
+- share-link.ts: oversized-URL retry also caps title text (120 chars).
+- BUG found by E2E and fixed: DEFAULT title config omitted `color` → switching fill to solid crashed (parseColor(undefined).trim). Added color:'#ffffff' default.
+- Browser E2E (localhost): enabled → gradient "SONG TITLE" w/ glow at t=5s ✓; two-line "NEON NIGHTS / NEW ALBUM" stacked, moved to X=29% ✓; gone at t=10s (duration 6) ✓; solid cyan via native picker ✓; old pre-title share link loads clean with Grid restored ✓. Lint clean.
+
+Stage Summary:
+- Title cards are live in the Lyrics tab: timed intro text that moves, glows, and can ride the visualizer palette or carry its own colors — exported deterministically like everything else.

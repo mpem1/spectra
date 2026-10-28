@@ -12,6 +12,7 @@ import {
   type GradientPresetId,
   type LyricsConfig,
   type StudioConfig,
+  type TitleConfig,
   type VisualizerConfig,
 } from '@/lib/visualizer/types'
 import { exportMP4 } from '@/lib/export/exporter'
@@ -80,6 +81,7 @@ type StudioState = {
   patchVisualizer: (partial: Partial<VisualizerConfig>) => void
   patchBackground: (partial: Partial<BackgroundConfig>) => void
   patchLyrics: (partial: Partial<LyricsConfig>) => void
+  patchTitle: (partial: Partial<TitleConfig>) => void
   /** Patches config.visualizer.gradient */
   patchGradient: (partial: Partial<GradientConfig>) => void
   /** Patches config.background.gradient */
@@ -162,6 +164,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, lyrics: { ...s.config.lyrics, ...partial } },
     })),
 
+  patchTitle: (partial) =>
+    set((s) => ({
+      config: { ...s.config, title: { ...s.config.title, ...partial } },
+    })),
+
   patchGradient: (partial) =>
     set((s) => ({
       config: {
@@ -212,6 +219,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         visualizer: { ...DEFAULT_STUDIO_CONFIG.visualizer, ...config.visualizer },
         background: { ...DEFAULT_STUDIO_CONFIG.background, ...config.background },
         lyrics: { ...DEFAULT_STUDIO_CONFIG.lyrics, ...config.lyrics },
+        title: { ...DEFAULT_STUDIO_CONFIG.title, ...config.title },
       },
     }),
 
