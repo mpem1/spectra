@@ -1015,3 +1015,17 @@ Work Log:
 
 Stage Summary:
 - The visualizer is now a free layer: shrink it into a spectrograph column beside the record, oversize it, or park it anywhere — defaults reproduce the classic look exactly, and exports stay frame-exact.
+Task ID: 28
+Agent: Z.ai Code (main)
+Task: Declutter top bar — remove Export video / PNG Seq quick buttons
+
+Work Log:
+- User request: remove the top-bar "Export video" + "PNG Seq" buttons if unused.
+- Audit: "Export video" duplicated the Export tab's "Export MP4" (same startExport) → pure duplicate. "PNG Seq" was the ONLY entry to exportPngSequence → removing outright would orphan the feature.
+- top-bar.tsx: removed both buttons + handlePngSeq/pngBusy/pngPct/exportJob wiring and unused imports; top bar is now Record · Convert (comment updated).
+- export-tab.tsx: PNG sequence relocated into the stills row — Snapshot (PNG) | PNG sequence in a 2-col grid with busy % state, disabled while exporting, + explainer line. Logic (audio guard, cancel, capped-size toast) carried over unchanged.
+- No keyboard-shortcut or README references to the removed buttons (grepped).
+- Browser E2E: top bar shows only Record + Convert ✓; Export tab lists Export MP4 / Start recording / Snapshot (PNG) / PNG sequence ✓; no console errors; lint 0 errors.
+
+Stage Summary:
+- Cleaner top bar; every export path consolidated in the Export tab (MP4 + progress/cancel, live recording, stills, frame sequence). No capability lost.

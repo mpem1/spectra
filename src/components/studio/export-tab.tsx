@@ -1,6 +1,7 @@
 'use client'
 
-import { Camera, Circle, Download, Square } from 'lucide-react'
+import { useState } from 'react'
+import { Camera, Circle, Download, Film, Square } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ExportLength, ExportQuality, ExportResolution } from '@/lib/visualizer/types'
 import { resolutionShape } from '@/lib/visualizer/types'
@@ -9,7 +10,9 @@ import {
   downloadBlob,
   EXPORT_QUALITY_LABELS,
 } from '@/store/studio'
+import { exportPngSequence, PNG_SEQ_MAX_FRAMES } from '@/lib/export/png-seq'
 import { getPreviewCanvas } from '@/components/studio/canvas-registry'
+import { getEngine } from '@/components/studio/engine-registry'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -70,6 +73,49 @@ export function ExportTab() {
   const recordElapsed = useStudioStore((s) => s.recordElapsed)
   const startRecording = useStudioStore((s) => s.startRecording)
   const stopRecording = useStudioStore((s) => s.stopRecording)
+
+  const [pngBusy, setPngBusy] = useState(false)
+  const [pngPct, setPngPct] = useState(0)
+
+  const handlePngSeq = async () => {
+    if (pngBusy) return
+    const engine = getEngine()
+    const audioBuffer = engine?.audioBuffer
+    if (!audioBuffer) {
+      toast.error('Load audio first', {
+        description: 'PNG sequence renders the song offline, frame by frame.',
+      })
+      return
+    }
+    setPngBusy(true)
+    setPngPct(0)
+    const cancel = { cancelled: false }
+    try {
+      const { config, exportSettings: settings } = useStudioStore.getState()
+      const result = await exportPngSequence({
+        config,
+        settings,
+        audioBuffer,
+        onProgress: (p) => setPngPct(p.progress),
+        signal: cancel,
+      })
+      downloadBlob(result.blob, 'spectra-frames.zip')
+      toast.success('PNG sequence exported', {
+        description: `${result.frames} frames · ${(result.blob.size / (1024 * 1024)).toFixed(1)} MB${
+          result.capped ? ` · capped at ${PNG_SEQ_MAX_FRAMES}` : ''
+        }`,
+      })
+    } catch (err) {
+      if (cancel.cancelled) toast.info('PNG sequence cancelled')
+      else
+        toast.error('PNG sequence failed', {
+          description: err instanceof Error ? err.message : 'Unknown error.',
+        })
+    } finally {
+      setPngBusy(false)
+      setPngPct(0)
+    }
+  }
 
   const exporting = exportJob.active
   const progress = exportJob.progress
@@ -349,15 +395,30 @@ export function ExportTab() {
         )}
       </section>
 
-      {/* Snapshot */}
-      <Button
-        variant="outline"
-        className="h-10 w-full border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900"
-        onClick={handleSnapshot}
-      >
-        <Camera className="size-4" />
-        Snapshot current frame (PNG)
-      </Button>
+      {/* Stills — single frame + numbered frame sequence (for video editors) */}
+      <div className="grid grid-cols-2 gap-2">
+        <Button
+          variant="outline"
+          className="h-10 border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900"
+          onClick={handleSnapshot}
+        >
+          <Camera className="size-4" />
+          Snapshot (PNG)
+        </Button>
+        <Button
+          variant="outline"
+          className="h-10 border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900"
+          disabled={pngBusy || exporting}
+          onClick={() => void handlePngSeq()}
+        >
+          <Film className="size-4" />
+          {pngBusy ? `PNG ${Math.round(pngPct * 100)}%` : 'PNG sequence'}
+        </Button>
+      </div>
+      <p className="text-[11px] leading-relaxed text-zinc-500">
+        PNG sequence renders the song offline into numbered frames (.zip) — import into a video
+        editor for maximum-quality grading.
+      </p>
     </div>
   )
 }

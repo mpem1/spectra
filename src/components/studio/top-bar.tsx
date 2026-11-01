@@ -1,71 +1,23 @@
 'use client'
 
 import { useState } from 'react'
-import { Clapperboard, Download, ImageDown, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { Download } from 'lucide-react'
 import { useStudioStore } from '@/store/studio'
-import { exportPngSequence, PNG_SEQ_MAX_FRAMES } from '@/lib/export/png-seq'
-import { getEngine } from '@/components/studio/engine-registry'
-import { downloadBlob } from '@/store/studio'
 import { ConvertDialog } from '@/components/studio/convert-dialog'
 import { Button } from '@/components/ui/button'
 
 /**
- * Spectra top bar: brand mark on the left, the four capture/export quick
- * actions on the right — Record · Export video · PNG Seq · Convert.
+ * Spectra top bar: brand mark on the left, quick capture actions on the
+ * right — Record · Convert. MP4 / PNG-sequence exports live in the Export
+ * tab, which carries the full settings, progress and cancel UI.
  */
 export function TopBar() {
-  const audioMeta = useStudioStore((s) => s.audioMeta)
   const recording = useStudioStore((s) => s.recording)
   const recordElapsed = useStudioStore((s) => s.recordElapsed)
   const startRecording = useStudioStore((s) => s.startRecording)
   const stopRecording = useStudioStore((s) => s.stopRecording)
-  const exportJob = useStudioStore((s) => s.exportJob)
-  const startExport = useStudioStore((s) => s.startExport)
 
   const [convertOpen, setConvertOpen] = useState(false)
-  const [pngBusy, setPngBusy] = useState(false)
-  const [pngPct, setPngPct] = useState(0)
-
-  const handlePngSeq = async () => {
-    if (pngBusy) return
-    const engine = getEngine()
-    const audioBuffer = engine?.audioBuffer
-    if (!audioBuffer) {
-      toast.error('Load audio first', {
-        description: 'PNG sequence renders the song offline, frame by frame.',
-      })
-      return
-    }
-    setPngBusy(true)
-    setPngPct(0)
-    const cancel = { cancelled: false }
-    try {
-      const { config, exportSettings } = useStudioStore.getState()
-      const result = await exportPngSequence({
-        config,
-        settings: exportSettings,
-        audioBuffer,
-        onProgress: (p) => setPngPct(p.progress),
-        signal: cancel,
-      })
-      downloadBlob(result.blob, 'spectra-frames.zip')
-      toast.success('PNG sequence exported', {
-        description: `${result.frames} frames · ${(result.blob.size / (1024 * 1024)).toFixed(1)} MB${
-          result.capped ? ` · capped at ${PNG_SEQ_MAX_FRAMES}` : ''
-        }`,
-      })
-    } catch (err) {
-      if (cancel.cancelled) toast.info('PNG sequence cancelled')
-      else
-        toast.error('PNG sequence failed', {
-          description: err instanceof Error ? err.message : 'Unknown error.',
-        })
-    } finally {
-      setPngBusy(false)
-      setPngPct(0)
-    }
-  }
 
   const recSeconds = Math.floor(recordElapsed)
   const recLabel = `${Math.floor(recSeconds / 60)}:${String(recSeconds % 60).padStart(2, '0')}`
@@ -122,42 +74,6 @@ export function TopBar() {
               ) : null}
             </span>
             <span className="hidden md:inline">{recording ? `Stop · ${recLabel}` : 'Record'}</span>
-          </Button>
-
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-zinc-800 bg-zinc-900/60 hover:border-zinc-600 hover:bg-zinc-900"
-            disabled={exportJob.active || !audioMeta}
-            onClick={() => void startExport()}
-          >
-            {exportJob.active ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-            ) : (
-              <Clapperboard className="size-4" aria-hidden />
-            )}
-            <span className="hidden md:inline">
-              {exportJob.active
-                ? `${Math.round((exportJob.progress?.progress ?? 0) * 100)}%`
-                : 'Export video'}
-            </span>
-          </Button>
-
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-zinc-800 bg-zinc-900/60 hover:border-zinc-600 hover:bg-zinc-900"
-            disabled={pngBusy || !audioMeta}
-            onClick={() => void handlePngSeq()}
-          >
-            {pngBusy ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-            ) : (
-              <ImageDown className="size-4" aria-hidden />
-            )}
-            <span className="hidden md:inline">
-              {pngBusy ? `PNG ${Math.round(pngPct * 100)}%` : 'PNG Seq'}
-            </span>
           </Button>
 
           <Button
