@@ -1045,3 +1045,17 @@ Work Log:
 
 Stage Summary:
 - Backgrounds can now move: looping video or animated GIF behind the music, with a new Blur slider for image + video alike — all deterministic in MP4/PNG exports, saved in projects, and share links gracefully fall back to solid.
+Task ID: 30
+Agent: Z.ai Code (main)
+Task: Vinyl & cover — zoom and pan the album art inside the sleeve / label / CD face
+
+Work Log:
+- User request: adjust the IMAGE on the vinyl and cover — enlarge, shrink, move it around within the visible area. The shapes themselves already had size/X/Y (Task 26); the missing piece was the artwork inside them (always auto cover-fit).
+- types.ts: DiscConfig += coverArtZoom/coverArtX/coverArtY + discArtZoom/discArtX/discArtY (zoom 1..3, pan 0..100 with 50 = centered; per-shape so the sleeve crop is independent of the label/CD crop). Defaults = no-op → old saved projects / share links load unchanged via the setConfig merge.
+- disc.ts: drawImageCover gains zoom + fx/fy focal args — scale = cover-fit × max(1, zoom); pan dx = x + (w−dw)·fx (fx 0 = art's left/top edge, 0.5 = centered, 1 = right/bottom). (w−dw) ≤ 0 always → box never exposes gaps. Math at defaults is EXACTLY the old centered formula → classic layout pixel-identical. Wired into all three art sites: square sleeve, rotating vinyl label (crop glued to the record — spins with it), full CD face. Defensive ?? fallbacks on all six fields.
+- vinyl-section.tsx: "Art zoom / Art X / Art Y" slider trio under Square cover AND under Spinning disc, each shown only when art is uploaded, each with a one-line hint ("the frame itself stays put" / "keeps spinning with the record").
+- README: vinyl bullet extended.
+- Browser E2E (4-quadrant test art TL red/TR blue/BL yellow/BR purple + CENTER emblem): baseline = classic full art on sleeve + center crop label ✓; cover Art zoom 2.00× → frame same size/pos, art inside doubled ✓; Art X 0% → left half (CEN…), 100% → right half (…TER) ✓; disc label (RPM stopped) zoom 1.5× + X 0% + Y 0% → top-left crop, independent of the cover's settings ✓; Full CD face carries the same disc crop with punched hole ✓; RPM restored. Reload → fresh session (uploads never persist in localStorage — by design; explicit Save project / share links remain the persistence paths, setConfig merge + ?? fallbacks cover old configs). 0 console errors; lint 0 errors.
+
+Stage Summary:
+- The album art is now a free layer inside each shape: zoom into the emblem for the spinning label, slide the sleeve's crop to frame the title, or tighten the CD face — per-shape, deterministic in exports, no gaps at any setting.

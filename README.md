@@ -41,6 +41,9 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
   across the full disc like a CD with a punched center hole. Real-RPM spin
   (33⅓ / 45 presets) with direction toggle, audio-reactive size pulse,
   groove rings, and a light sheen — composes with every visualizer style.
+  Both the cover and the disc move and resize freely (size / X / Y), and
+  the art inside each zooms (1–3×) and slides independently so you choose
+  exactly which part of the artwork shows on the sleeve, label, or CD face.
 - **Projects** — save/load studio configurations, stored locally in the
   visitor's browser (IndexedDB) — no account, no server.
 - **Shareable looks** — one click turns your whole setup into a link that

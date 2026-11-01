@@ -152,6 +152,41 @@ export function VinylSection() {
             onChange={(coverY) => patchDisc({ coverY })}
             format={(v) => `${Math.round(v)}%`}
           />
+          {disc.imageSrc ? (
+            <div className="space-y-1">
+              <SliderRow
+                label="Art zoom"
+                value={disc.coverArtZoom ?? 1}
+                min={1}
+                max={3}
+                step={0.05}
+                onChange={(coverArtZoom) => patchDisc({ coverArtZoom })}
+                format={(v) => `${v.toFixed(2)}×`}
+              />
+              <SliderRow
+                label="Art X"
+                value={disc.coverArtX ?? 50}
+                min={0}
+                max={100}
+                step={1}
+                onChange={(coverArtX) => patchDisc({ coverArtX })}
+                format={(v) => `${Math.round(v)}%`}
+              />
+              <SliderRow
+                label="Art Y"
+                value={disc.coverArtY ?? 50}
+                min={0}
+                max={100}
+                step={1}
+                onChange={(coverArtY) => patchDisc({ coverArtY })}
+                format={(v) => `${Math.round(v)}%`}
+              />
+              <p className="text-[11px] leading-snug text-zinc-600">
+                Art zoom / X / Y adjust the picture inside the square — the
+                frame itself stays put.
+              </p>
+            </div>
+          ) : null}
         </>
       ) : null}
 
@@ -224,6 +259,41 @@ export function VinylSection() {
             onChange={(discY) => patchDisc({ discY })}
             format={(v) => `${Math.round(v)}%`}
           />
+          {disc.imageSrc ? (
+            <div className="space-y-1">
+              <SliderRow
+                label="Art zoom"
+                value={disc.discArtZoom ?? 1}
+                min={1}
+                max={3}
+                step={0.05}
+                onChange={(discArtZoom) => patchDisc({ discArtZoom })}
+                format={(v) => `${v.toFixed(2)}×`}
+              />
+              <SliderRow
+                label="Art X"
+                value={disc.discArtX ?? 50}
+                min={0}
+                max={100}
+                step={1}
+                onChange={(discArtX) => patchDisc({ discArtX })}
+                format={(v) => `${Math.round(v)}%`}
+              />
+              <SliderRow
+                label="Art Y"
+                value={disc.discArtY ?? 50}
+                min={0}
+                max={100}
+                step={1}
+                onChange={(discArtY) => patchDisc({ discArtY })}
+                format={(v) => `${Math.round(v)}%`}
+              />
+              <p className="text-[11px] leading-snug text-zinc-600">
+                Zooms and slides the art on the {disc.mode === 'label' ? 'center label' : 'CD face'}
+                {' '}— it keeps spinning with the record.
+              </p>
+            </div>
+          ) : null}
           <SliderRow
             label="Spin speed"
             value={disc.rpm}

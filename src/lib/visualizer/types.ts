@@ -212,6 +212,11 @@ export interface DiscConfig {
   /** Cover center, 0..100 (of width / height) */
   coverX: number
   coverY: number
+  /** Art zoom inside the sleeve on top of cover-fit (1 = fills the square) */
+  coverArtZoom: number
+  /** Which part of the art shows in the sleeve, 0..100 (50 = centered) */
+  coverArtX: number
+  coverArtY: number
   /** Show the spinning disc */
   showDisc: boolean
   /** Disc face: image on the vinyl's center label, or across the full face */
@@ -221,6 +226,11 @@ export interface DiscConfig {
   /** Disc center, 0..100 (of width / height) */
   discX: number
   discY: number
+  /** Art zoom on the disc face/label on top of cover-fit (1 = fills it) */
+  discArtZoom: number
+  /** Which part of the art shows on the disc face/label, 0..100 (50 = centered) */
+  discArtX: number
+  discArtY: number
   /** Spin speed in rotations per minute (33.33 ≈ LP, 45 ≈ single) */
   rpm: number
   /** Spin direction: 1 = clockwise, -1 = counter-clockwise */
@@ -501,11 +511,17 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     coverSize: 42,
     coverX: 30,
     coverY: 50,
+    coverArtZoom: 1,
+    coverArtX: 50,
+    coverArtY: 50,
     showDisc: true,
     mode: 'label',
     discSize: 46,
     discX: 46,
     discY: 50,
+    discArtZoom: 1,
+    discArtX: 50,
+    discArtY: 50,
     rpm: 33.33,
     direction: 1,
     pulse: 0,

@@ -27,7 +27,12 @@ function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v
 }
 
-/** Cover-fit an image into a box (fills it, cropping overflow), centered. */
+/**
+ * Cover-fit an image into a box (fills it, cropping overflow). An extra zoom
+ * enlarges the art further, and fx/fy (0..1) pick which part of the art fills
+ * the box — 0.5 keeps it centered, 0 shows its left/top edge, 1 its
+ * right/bottom. The box is always fully covered — no empty gaps, ever.
+ */
 function drawImageCover(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
@@ -35,14 +40,19 @@ function drawImageCover(
   y: number,
   w: number,
   h: number,
+  zoom = 1,
+  fx = 0.5,
+  fy = 0.5,
 ): void {
   const iw = img.naturalWidth || img.width
   const ih = img.naturalHeight || img.height
   if (iw <= 0 || ih <= 0) return
-  const scale = Math.max(w / iw, h / ih)
+  const scale = Math.max(w / iw, h / ih) * Math.max(1, zoom)
   const dw = iw * scale
   const dh = ih * scale
-  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh)
+  const panX = (w - dw) * (fx < 0 ? 0 : fx > 1 ? 1 : fx)
+  const panY = (h - dh) * (fy < 0 ? 0 : fy > 1 ? 1 : fy)
+  ctx.drawImage(img, x + panX, y + panY, dw, dh)
 }
 
 export function drawDisc(rc: RenderContext, frame: AudioFrame, disc: DiscConfig): void {
@@ -136,7 +146,17 @@ export function drawDisc(rc: RenderContext, frame: AudioFrame, disc: DiscConfig)
         if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, side, side, r)
         else ctx.rect(x, y, side, side)
         ctx.clip()
-        drawImageCover(ctx, img, x, y, side, side)
+        drawImageCover(
+          ctx,
+          img,
+          x,
+          y,
+          side,
+          side,
+          disc.coverArtZoom ?? 1,
+          (disc.coverArtX ?? 50) / 100,
+          (disc.coverArtY ?? 50) / 100,
+        )
         ctx.restore()
       }
     }
@@ -204,7 +224,17 @@ function drawVinylFace(
   if (img) {
     ctx.translate(cx, cy)
     ctx.rotate(angle)
-    drawImageCover(ctx, img, -labelR, -labelR, labelR * 2, labelR * 2)
+    drawImageCover(
+      ctx,
+      img,
+      -labelR,
+      -labelR,
+      labelR * 2,
+      labelR * 2,
+      disc.discArtZoom ?? 1,
+      (disc.discArtX ?? 50) / 100,
+      (disc.discArtY ?? 50) / 100,
+    )
   } else {
     // No art yet — a plain paper label so the record still reads.
     ctx.fillStyle = '#202021'
@@ -254,7 +284,17 @@ function drawCdFace(
   ctx.translate(cx, cy)
   ctx.rotate(angle)
   if (img) {
-    drawImageCover(ctx, img, -R, -R, R * 2, R * 2)
+    drawImageCover(
+      ctx,
+      img,
+      -R,
+      -R,
+      R * 2,
+      R * 2,
+      disc.discArtZoom ?? 1,
+      (disc.discArtX ?? 50) / 100,
+      (disc.discArtY ?? 50) / 100,
+    )
   } else {
     // No art yet — silver disc so it still reads as a CD.
     const silver = ctx.createRadialGradient(-R * 0.3, -R * 0.3, R * 0.1, 0, 0, R)
