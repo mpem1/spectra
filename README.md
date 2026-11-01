@@ -12,6 +12,10 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
 
 - **Visualizer styles** — Bars, Wave, Radial, Particles, Blob, Grid; each with
   configurable bar count, smoothing, glow, and spacing.
+- **Visualizer layout** — the whole visualizer is a movable, resizable layer
+  (Position X/Y + Size), so it can shrink into a spectrum column beside the
+  spinning disc, hug an edge, or fill the classic full-width layout (50 / 50 /
+  100% = unchanged).
 - **Gradient editor** — multi-stop gradients with per-stop opacity, linear or
   radial shape, angle control (0° = bottom→top, 90° = left→right, 180° =
   top→bottom), color cycling, named gradient presets (Sunset, Aurora, Ember,

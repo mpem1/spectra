@@ -55,6 +55,12 @@ export interface VisualizerConfig {
   /** Draw gradient behind bars as filled background glow */
   glow: boolean
   gradient: GradientConfig
+  /** Layer placement — horizontal center of the visualizer, 0..100% of canvas width (50 = centered) */
+  positionX: number
+  /** Layer placement — vertical center of the visualizer, 0..100% of canvas height (50 = centered) */
+  positionY: number
+  /** Layer zoom, 1 = natural size (0.1..2.5) — resize the whole visualizer in place */
+  scale: number
 }
 
 /* --------------------------------- Background -------------------------------- */
@@ -389,6 +395,9 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     mirror: 'none',
     mirrorOffset: 0.5,
     glow: true,
+    positionX: 50,
+    positionY: 50,
+    scale: 1,
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 48,

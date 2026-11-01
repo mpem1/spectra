@@ -149,6 +149,42 @@ export function StyleTab() {
         ) : null}
       </section>
 
+      {/* Layout — move & resize the whole visualizer layer */}
+      <section className="space-y-3">
+        <SectionLabel>LAYOUT</SectionLabel>
+        <p className="text-xs leading-relaxed text-zinc-500">
+          Move &amp; resize the visualizer as one layer — e.g. shrink it into a spectrum column
+          beside the spinning disc. 50 / 50 is the classic full-width layout.
+        </p>
+        <SliderRow
+          label="Position X"
+          value={visualizer.positionX}
+          min={0}
+          max={100}
+          step={1}
+          onChange={(positionX) => patchVisualizer({ positionX })}
+          format={(v) => `${Math.round(v)}%`}
+        />
+        <SliderRow
+          label="Position Y"
+          value={visualizer.positionY}
+          min={0}
+          max={100}
+          step={1}
+          onChange={(positionY) => patchVisualizer({ positionY })}
+          format={(v) => `${Math.round(v)}%`}
+        />
+        <SliderRow
+          label="Size"
+          value={visualizer.scale}
+          min={0.1}
+          max={2.5}
+          step={0.05}
+          onChange={(scale) => patchVisualizer({ scale })}
+          format={(v) => `${Math.round(v * 100)}%`}
+        />
+      </section>
+
       {/* Background */}
       <BackgroundSection />
 

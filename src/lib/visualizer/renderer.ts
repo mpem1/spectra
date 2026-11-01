@@ -223,8 +223,21 @@ function drawVisualizer(
   cfg: VisualizerConfig,
   S: number,
 ): void {
-  const { ctx } = rc
+  const { ctx, width: W, height: H } = rc
   ctx.save()
+  // Layer layout (move + resize): the canvas-center point of the visualizer
+  // layer is re-anchored at (positionX%, positionY%) and everything scales
+  // away from that anchor — resize in place, then slide. At the defaults
+  // (50 / 50 / 1) the transform is the identity, so classic layouts render
+  // pixel-identical to before. Pure math → deterministic in exports.
+  const zoom = clamp(cfg.scale ?? 1, 0.05, 4)
+  const posX = (clamp(cfg.positionX ?? 50, 0, 100) / 100) * W
+  const posY = (clamp(cfg.positionY ?? 50, 0, 100) / 100) * H
+  if (zoom !== 1 || posX !== W / 2 || posY !== H / 2) {
+    ctx.translate(posX, posY)
+    ctx.scale(zoom, zoom)
+    ctx.translate(-W / 2, -H / 2)
+  }
   switch (cfg.style) {
     case 'bars':
       drawBars(rc, frame, cfg, S)

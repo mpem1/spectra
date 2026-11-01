@@ -1001,3 +1001,17 @@ Work Log:
 
 Stage Summary:
 - Spectra live at https://mpem1.github.io/spectra/ with the full vinyl & cover feature. NOTE: the PAT was pasted in chat — user advised to rotate/revoke it afterwards.
+Task ID: 27
+Agent: Z.ai Code (main)
+Task: Visualizer layout — move & resize the visualizer layer (spectrograph-beside-disc)
+
+Work Log:
+- User request: like the reference video, place the spectrum/visualizer to the side of the spinning disc → needs move + resize for the visualizer.
+- types.ts: VisualizerConfig gains positionX (0..100), positionY (0..100), scale (0.1..2.5) + defaults 50/50/1. Store setConfig merge auto-defaults old saves/share links; patchVisualizer needed no change.
+- renderer.ts drawVisualizer: single layer transform wrapping ALL six styles — translate(posX,posY) → scale(zoom) → translate(-W/2,-H/2): the canvas-center anchor lands at (posX,posY) and content scales away from it (resize in place). Guarded to apply only when off-default → 50/50/100% renders pixel-identical to the classic layout. Pure math → deterministic in MP4/PNG exports.
+- style-tab.tsx: new LAYOUT section (hint text + Position X / Position Y / Size sliders with % formats) between Shape & motion and Background.
+- README: visualizer-layout bullet.
+- Browser E2E: sliders render at 50/50/1; set 16/52/35% → compact spectrum wave sits left of the NEON DRIFT cover with the vinyl right — the video composite ✓; reset to 50/50/1 → classic full-width bottom bars restored pixel-identical ✓; no console errors; lint 0 errors.
+
+Stage Summary:
+- The visualizer is now a free layer: shrink it into a spectrograph column beside the record, oversize it, or park it anywhere — defaults reproduce the classic look exactly, and exports stay frame-exact.
