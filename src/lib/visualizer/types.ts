@@ -65,7 +65,7 @@ export interface VisualizerConfig {
 
 /* --------------------------------- Background -------------------------------- */
 
-export type BackgroundMode = 'solid' | 'gradient' | 'transparent' | 'image'
+export type BackgroundMode = 'solid' | 'gradient' | 'transparent' | 'image' | 'video'
 
 export interface BackgroundConfig {
   mode: BackgroundMode
@@ -75,6 +75,8 @@ export interface BackgroundConfig {
   gradient: GradientConfig
   /** Image data URL (used when mode = image), drawn cover-fit */
   imageSrc: string
+  /** Video/GIF data URL (used when mode = video), looping and muted */
+  videoSrc: string
   /** Horizontal image offset as a fraction of canvas width (0 = centered) */
   x: number
   /** Vertical image offset as a fraction of canvas height (0 = centered) */
@@ -91,6 +93,8 @@ export interface BackgroundConfig {
   vignette: number
   /** Subtle noise grain 0..1 */
   grain: number
+  /** Blur the media (image or video/GIF background), 0..1 → up to ~40px */
+  blur: number
 }
 
 /* ----------------------------------- Lyrics ---------------------------------- */
@@ -428,6 +432,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     shade: 0.5,
     vignette: 0.35,
     grain: 0.08,
+    blur: 0,
   },
   lyrics: {
     enabled: false,

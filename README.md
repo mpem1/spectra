@@ -26,8 +26,9 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
   the selected export resolution (landscape 16:9, square 1:1, portrait 9:16),
   and the Export tab shows a live outline of the frame format — what you
   compose is what renders.
-- **Backgrounds** — solid, gradient, image (pan/zoom/scale), or transparent
-  (alpha recording).
+- **Backgrounds** — solid, gradient, image (pan/zoom/blur), looping **video
+  or animated GIF** (muted, cover-fit, frame-exact in exports — GIFs are
+  decoded into deterministic frames), or transparent (alpha recording).
 - **Lyrics tab** — synced lyric lines rendered into the visualizer, plus a
   **title card**: a free-positioned intro title that fades in at a set time,
   holds for a set duration, and fades out — with glow, outline, and either
@@ -60,9 +61,10 @@ be turned into a plain web link that rebuilds it exactly, on any device:
   base64url, ~600–700 chars) — no server, no account, no sign-up.
 - Links are **snapshots**: changing your look later never changes links you
   already shared.
-- Background **image pixels** are the one thing that can't fit in a URL —
-  they fall back to a solid color on the receiving end (the app tells you in
-  a toast). Everything else, including lyric styling, travels.
+- Background **media pixels** (image / video / GIF, album art) are the one
+  thing that can't fit in a URL — they fall back to a solid color on the
+  receiving end (the app tells you in a toast). Everything else, including
+  lyric styling, travels.
 
 ## Export pipeline (current state after session of 2026-10-26)
 

@@ -17,6 +17,7 @@ import type {
 } from './types'
 import { buildGradient, buildRadialGradient, gradientLine, sampleGradient, withAlpha } from './gradients'
 import { getBackgroundImage } from './image-cache'
+import { getBackgroundVideo, getGifAnimation, gifFrameAt, isGifSrc } from './animated-bg'
 import { drawLyrics } from './lyrics'
 import { drawTitle } from './title'
 import { drawDisc } from './disc'
@@ -108,6 +109,42 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
 
 /* --------------------------------- Background ------------------------------- */
 
+/**
+ * Cover-fit draw shared by the image AND video/GIF backgrounds: fills the
+ * canvas (cropping overflow), centered, with the user's pan/zoom, mirrors,
+ * and an optional media blur. The blur overscans the draw by ~2× the blur
+ * radius so softened edges never reveal the canvas beneath.
+ */
+function drawMediaCover(
+  ctx: CanvasRenderingContext2D,
+  media: CanvasImageSource,
+  naturalW: number,
+  naturalH: number,
+  bg: BackgroundConfig,
+  W: number,
+  H: number,
+  S: number,
+): void {
+  if (naturalW <= 0 || naturalH <= 0) return
+  const fit = Math.max(W / naturalW, H / naturalH)
+  const zoom = Math.max(0.05, bg.scale ?? 1)
+  const scale = fit * zoom
+  const dw = naturalW * scale
+  const dh = naturalH * scale
+  const cx = W / 2 + (bg.x ?? 0) * W
+  const cy = H / 2 + (bg.y ?? 0) * H
+  const blur = clamp01(bg.blur ?? 0)
+  const blurPx = blur > 0.001 && 'filter' in ctx ? blur * 40 * S : 0
+  // Same-ratio overscan so blurred edges stay outside the visible canvas.
+  const grow = blurPx > 0 ? 1 + (blurPx * 2) / Math.max(dw, dh) : 1
+  ctx.save()
+  if (blurPx > 0) ctx.filter = `blur(${blurPx.toFixed(1)}px)`
+  ctx.translate(cx, cy)
+  ctx.scale(bg.flipX ? -1 : 1, bg.flipY ? -1 : 1)
+  ctx.drawImage(media, (-dw * grow) / 2, (-dh * grow) / 2, dw * grow, dh * grow)
+  ctx.restore()
+}
+
 function drawBackground(
   rc: RenderContext,
   frame: AudioFrame,
@@ -119,22 +156,9 @@ function drawBackground(
   if (bg.mode === 'image') {
     const img = getBackgroundImage(bg.imageSrc)
     if (img) {
-      // Cover-fit base scale, then user zoom on top. Position is a normalized
-      // offset from the canvas center (0/0 = centered) so previews and exports
-      // at any resolution land identically.
-      const fit = Math.max(W / img.naturalWidth, H / img.naturalHeight)
-      const zoom = Math.max(0.05, bg.scale ?? 1)
-      const scale = fit * zoom
-      const dw = img.naturalWidth * scale
-      const dh = img.naturalHeight * scale
-      const cx = W / 2 + (bg.x ?? 0) * W
-      const cy = H / 2 + (bg.y ?? 0) * H
-      // Mirror around the image center (flipX/flipY, old configs default off).
-      ctx.save()
-      ctx.translate(cx, cy)
-      ctx.scale(bg.flipX ? -1 : 1, bg.flipY ? -1 : 1)
-      ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
-      ctx.restore()
+      // Cover-fit base scale, then user zoom/pan/flip/blur (shared with the
+      // video/GIF background), then the shade fader on top.
+      drawMediaCover(ctx, img, img.naturalWidth, img.naturalHeight, bg, W, H, S)
       // Shade fader — darkens the photo so the visualizer pops.
       const shade = clamp01(bg.shade ?? 0)
       if (shade > 0) {
@@ -143,6 +167,39 @@ function drawBackground(
       }
     } else {
       // Image still decoding — dark fallback, next frame picks it up.
+      ctx.fillStyle = '#0a0a0a'
+      ctx.fillRect(0, 0, W, H)
+    }
+  } else if (bg.mode === 'video') {
+    // Animated background — looping muted video, or a GIF decoded into
+    // deterministic frames. Both use the same cover-fit media transform as
+    // the image background; the shade fader sits on top identically.
+    const src = bg.videoSrc
+    let drawn = false
+    if (src && isGifSrc(src)) {
+      const anim = getGifAnimation(src)
+      if (anim) {
+        const gifFrame = gifFrameAt(anim, frame.styleTime * 1000)
+        if (gifFrame) {
+          drawMediaCover(ctx, gifFrame, anim.width, anim.height, bg, W, H, S)
+          drawn = true
+        }
+      }
+    } else if (src) {
+      const video = getBackgroundVideo(src)
+      if (video) {
+        drawMediaCover(ctx, video, video.videoWidth, video.videoHeight, bg, W, H, S)
+        drawn = true
+      }
+    }
+    if (drawn) {
+      const shade = clamp01(bg.shade ?? 0)
+      if (shade > 0) {
+        ctx.fillStyle = `rgba(0, 0, 0, ${shade})`
+        ctx.fillRect(0, 0, W, H)
+      }
+    } else {
+      // Still decoding / missing — dark fallback, next frame picks it up.
       ctx.fillStyle = '#0a0a0a'
       ctx.fillRect(0, 0, W, H)
     }

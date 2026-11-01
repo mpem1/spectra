@@ -9,6 +9,7 @@ import { useStudioStore } from '@/store/studio'
 import { setPreviewCanvas } from '@/components/studio/canvas-registry'
 import { setEngine, setPreviewControls, type PreviewControls } from '@/components/studio/engine-registry'
 import { loadAudioFile } from '@/components/studio/load-audio'
+import { warmGif } from '@/lib/visualizer/animated-bg'
 import { PlayerBar } from '@/components/studio/player-bar'
 import { BgImageTransform } from '@/components/studio/bg-image-transform'
 import { cn } from '@/lib/utils'
@@ -123,13 +124,23 @@ export function PreviewCanvas() {
 
   /* ----------------------- drop-anywhere + shortcuts ----------------------- */
 
-  /** Dropped images become the background (with the shade fader available). */
+  /**
+   * Dropped images become the background (with the shade fader available).
+   * Animated GIFs route to the Video/GIF mode, where they are decoded into
+   * deterministic frames so exports stay frame-exact.
+   */
   const setBackgroundFromFile = useCallback(
     (file: File): Promise<void> =>
       new Promise((resolve) => {
         const reader = new FileReader()
         reader.onload = () => {
-          patchBackground({ mode: 'image', imageSrc: String(reader.result) })
+          const dataUrl = String(reader.result)
+          if (file.type === 'image/gif') {
+            warmGif(dataUrl)
+            patchBackground({ mode: 'video', videoSrc: dataUrl })
+          } else {
+            patchBackground({ mode: 'image', imageSrc: dataUrl })
+          }
           resolve()
         }
         reader.onerror = () => resolve()

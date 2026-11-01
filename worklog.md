@@ -1029,3 +1029,19 @@ Work Log:
 
 Stage Summary:
 - Cleaner top bar; every export path consolidated in the Export tab (MP4 + progress/cancel, live recording, stills, frame sequence). No capability lost.
+Task ID: 29
+Agent: Z.ai Code (main)
+Task: Video / GIF background mode + blur slider for image & video backgrounds
+
+Work Log:
+- User request: add a video or GIF background option (like the image bg) + a blur slider.
+- types.ts: BackgroundMode += 'video'; BackgroundConfig += videoSrc (data URL), blur (0..1 → ≤40px, applied to image AND video/GIF); defaults blur 0 / videoSrc ''. Store setConfig merge auto-defaults old saves.
+- New src/lib/visualizer/animated-bg.ts: (a) GIF pipeline — omggif (pure JS, bun-installed, ambient d.ts in src/types) decodes uploads once into frame canvases + per-frame delays (omggif delays are CENTISECONDS — fixed an ms assumption; 0-delay → 100ms browser convention; 384MB decode guard), playback = pure math gifFrameAt(styleTime*1000 % duration) → deterministic preview AND export, free-runs while paused like the vinyl clock; (b) video pipeline — muted/loop/playsInline preview elements on the wall clock + export-private elements (prepareExportVideo/seekExportVideo/releaseExportVideo, seek to songTime % length before every frame, 'seeked' + 250ms timeout guard, self-cleanup on load error).
+- renderer.ts: drawMediaCover shared by image + video/GIF (cover-fit, pan/zoom/flip, ctx.filter blur with 2×-radius overscan so blurred edges never expose the canvas); drawBackground 'video' branch (GIF frames from styleTime, else video element, dark fallback while loading) + shade overlay shared.
+- background-section.tsx: 5-card mode row (Solid/Gradient/Image/Video/Alpha); MediaBackgroundControls extracted (Shade/Zoom/BLUR/Mirror/Reset) shared by Image + Video sections; VideoBackgroundSection (MP4/WebM/MOV/GIF upload, ≤120MB guard, live <video> or <img> thumbnail, replace/remove with cache forget); GIF uploads in the IMAGE section (and preview-canvas drops) auto-route to the deterministic Video mode with a toast.
+- share-link.ts: makePortable also strips background.videoSrc (recipient falls back to solid, same as image).
+- exporter.ts + png-seq.ts: prepare (prepareGif | prepareExportVideo) with onNotice fallbacks; per-frame seekExportVideo(styleTime) for videos before renderFrame; releaseExportVideo in finally (loop wrapped in try/finally in png-seq).
+- Test assets via ffmpeg (testsrc2 mp4 + gif). Browser E2E: Video card active ✓; MP4 bg renders + VIDEO-PLAYING (canvas grabs differ) ✓; Blur 80% → soft wash, no edge bleed ✓; GIF upload → GIF-ANIMATING with decoded frames ✓; Image mode carries Blur too ✓; 5-card row fits; no console errors; lint 0 errors.
+
+Stage Summary:
+- Backgrounds can now move: looping video or animated GIF behind the music, with a new Blur slider for image + video alike — all deterministic in MP4/PNG exports, saved in projects, and share links gracefully fall back to solid.

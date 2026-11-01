@@ -41,17 +41,19 @@ function fromBase64Url(text: string): Uint8Array {
 }
 
 /**
- * Make a config safe to travel in a URL. Image pixels (background and album
- * art) are the only oversized fields; the background falls back to its solid
- * color and the disc keeps its shape with a blank face/label.
+ * Make a config safe to travel in a URL. Media pixels (background image,
+ * background video/GIF, album art) are the only oversized fields; the
+ * background falls back to its solid color and the disc keeps its shape with
+ * a blank face/label.
  */
 export function makePortable(config: StudioConfig): {
   config: StudioConfig
   imageDropped: boolean
 } {
   const bgDrop = config.background.mode === 'image' && !!config.background.imageSrc
+  const videoDrop = config.background.mode === 'video' && !!config.background.videoSrc
   const discDrop = !!config.disc?.imageSrc
-  if (!bgDrop && !discDrop) return { config, imageDropped: false }
+  if (!bgDrop && !videoDrop && !discDrop) return { config, imageDropped: false }
   return {
     config: {
       ...config,
@@ -62,7 +64,9 @@ export function makePortable(config: StudioConfig): {
             color: config.background.color || '#0a0a0a',
             imageSrc: '',
           }
-        : config.background,
+        : videoDrop
+          ? { ...config.background, mode: 'solid', color: config.background.color || '#0a0a0a', videoSrc: '' }
+          : config.background,
       disc:
         discDrop && config.disc
           ? { ...config.disc, imageSrc: '' }

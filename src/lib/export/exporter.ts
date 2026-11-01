@@ -20,6 +20,13 @@ import { ArrayBufferTarget, Muxer } from 'mp4-muxer'
 import { OfflineAnalyzer } from '../audio/offline'
 import { renderFrame } from '../visualizer/renderer'
 import { loadBackgroundImage } from '../visualizer/image-cache'
+import {
+  isGifSrc,
+  prepareExportVideo,
+  prepareGif,
+  releaseExportVideo,
+  seekExportVideo,
+} from '../visualizer/animated-bg'
 import type {
   ExportProgress,
   ExportQuality,
@@ -245,6 +252,24 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
     }
   }
 
+  // Animated background (video file or GIF): GIFs decode into deterministic
+  // frame canvases; videos get an export-private element that the render loop
+  // seeks to song time modulo its length before every frame.
+  const bgVideoSrc = config.background.mode === 'video' ? config.background.videoSrc : ''
+  if (bgVideoSrc && isGifSrc(bgVideoSrc)) {
+    try {
+      await prepareGif(bgVideoSrc)
+    } catch {
+      onNotice?.('Background GIF could not be decoded — exporting with a dark background.')
+    }
+  } else if (bgVideoSrc) {
+    try {
+      await prepareExportVideo(bgVideoSrc)
+    } catch {
+      onNotice?.('Background video could not be loaded — exporting with a dark background.')
+    }
+  }
+
   const fps = settings.fps
   const analyzer = new OfflineAnalyzer(audioBuffer, fps)
 
@@ -360,6 +385,12 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
       // MUST be sequential 0,1,2,… (temporal smoothing state depends on it).
       const frame = analyzer.frame(i, config.visualizer.barCount, config.visualizer.smoothing)
 
+      // Video backgrounds are anchored to song time: park the private element
+      // on the matching frame before drawing. In exports styleTime === time.
+      if (bgVideoSrc && !isGifSrc(bgVideoSrc)) {
+        await seekExportVideo(bgVideoSrc, frame.styleTime)
+      }
+
       // Clear first so 'transparent' backgrounds don't bleed the previous
       // frame's pixels; opaque modes repaint everything anyway.
       ctx.clearRect(0, 0, width, height)
@@ -395,6 +426,7 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
     await videoEncoder.flush()
   } finally {
     if (videoEncoder.state !== 'closed') videoEncoder.close()
+    if (bgVideoSrc) releaseExportVideo(bgVideoSrc)
   }
   if (failure) throw failure
 

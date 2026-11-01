@@ -10,6 +10,13 @@ import { zipSync } from 'fflate'
 import { OfflineAnalyzer } from '../audio/offline'
 import { renderFrame } from '../visualizer/renderer'
 import { loadBackgroundImage } from '../visualizer/image-cache'
+import {
+  isGifSrc,
+  prepareExportVideo,
+  prepareGif,
+  releaseExportVideo,
+  seekExportVideo,
+} from '../visualizer/animated-bg'
 import type {
   ExportProgress,
   ExportSettings,
@@ -65,6 +72,23 @@ export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResu
     }
   }
 
+  // Animated background (video/GIF): GIF → deterministic frame decode;
+  // video → export-private element seeked per frame. Same as the MP4 path.
+  const bgVideoSrc = config.background.mode === 'video' ? config.background.videoSrc : ''
+  if (bgVideoSrc && isGifSrc(bgVideoSrc)) {
+    try {
+      await prepareGif(bgVideoSrc)
+    } catch {
+      // Fall through — the renderer paints a dark fallback.
+    }
+  } else if (bgVideoSrc) {
+    try {
+      await prepareExportVideo(bgVideoSrc)
+    } catch {
+      // Fall through — the renderer paints a dark fallback.
+    }
+  }
+
   const analyzer = new OfflineAnalyzer(audioBuffer, settings.fps)
   const total = Math.min(
     Math.ceil(lengthSeconds(settings.length, analyzer.duration) * settings.fps),
@@ -81,22 +105,31 @@ export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResu
 
   const files: Record<string, [Uint8Array, { level: 0 }]> = {}
 
-  for (let i = 0; i < total; i++) {
-    if (signal?.cancelled) throw new ExportCancelledError()
-    const frame = analyzer.frame(i, config.visualizer.barCount, config.visualizer.smoothing)
-    renderFrame({ ctx, width, height, frame: i }, frame, config)
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, 'image/png'),
-    )
-    if (!blob) throw new Error(`Frame ${i}: PNG encoding failed`)
-    const data = new Uint8Array(await blob.arrayBuffer())
-    files[`spectra_frame_${String(i).padStart(6, '0')}.png`] = [data, { level: 0 }]
-    onProgress?.({
-      phase: i === total - 1 ? 'muxing' : 'rendering',
-      progress: (i + 1) / total,
-      time: frame.time,
-    })
-    if (i % 4 === 0) await tick()
+  try {
+    for (let i = 0; i < total; i++) {
+      if (signal?.cancelled) throw new ExportCancelledError()
+      const frame = analyzer.frame(i, config.visualizer.barCount, config.visualizer.smoothing)
+      // Anchor video backgrounds to song time before drawing (GIFs are
+      // handled inside the renderer from the deterministic clock).
+      if (bgVideoSrc && !isGifSrc(bgVideoSrc)) {
+        await seekExportVideo(bgVideoSrc, frame.styleTime)
+      }
+      renderFrame({ ctx, width, height, frame: i }, frame, config)
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, 'image/png'),
+      )
+      if (!blob) throw new Error(`Frame ${i}: PNG encoding failed`)
+      const data = new Uint8Array(await blob.arrayBuffer())
+      files[`spectra_frame_${String(i).padStart(6, '0')}.png`] = [data, { level: 0 }]
+      onProgress?.({
+        phase: i === total - 1 ? 'muxing' : 'rendering',
+        progress: (i + 1) / total,
+        time: frame.time,
+      })
+      if (i % 4 === 0) await tick()
+    }
+  } finally {
+    if (bgVideoSrc) releaseExportVideo(bgVideoSrc)
   }
 
   onProgress?.({ phase: 'encoding', progress: 0.99, time: analyzer.duration })
