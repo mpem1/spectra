@@ -988,3 +988,16 @@ Work Log:
 - New vinyl-section.tsx (Style tab, after Background): enable switch, art upload/replace/remove, Square cover block (size/X/Y), Spinning disc block (Vinyl label | Full CD segmented, size/X/Y, RPM slider + 33⅓/45/Stop presets, Clockwise/Counter toggle, Pulse, Grooves switch in label mode, Sheen).
 - Browser E2E (localhost): cover+vinyl label composite matches the reference video ✓; two screenshots 1.3s apart show label art rotated (spin confirmed) ✓; Full CD mode shows art across the face with punched hole ✓; pulse probe region: 0 art pixels at Off → 5585 at Max (disc swells) ✓; grooves/mode/direction/RPM controls render with live values ✓; no console errors; lint 0 errors (warnings only in pre-existing public/ffmpeg vendor files).
 - NOTE: git push still revoked (user removed sandbox key access last session) — committed locally, awaiting re-connect to publish.
+Task ID: 26 (publish addendum)
+Agent: Z.ai Code (main)
+Task: Publish Task 26 + repair the broken Pages build
+
+Work Log:
+- User supplied a fresh GitHub PAT; pushed local main (bf8cdb4..7a71d32) — carried two platform housekeeping commits that restored stale src/app/api routes (presets/projects/color-presets/convert) importing the Prisma client.
+- CI "Build static site" failed: "Cannot find module '.prisma/client/default'" collecting page data for /api/color-presets (bun install skips prisma postinstall; force-dynamic routes can't exist in output:export anyway).
+- Verified the Studio app uses none of these routes (presets → localStorage, projects → IndexedDB, convert → ffmpeg.wasm; only the unmounted legacy editor app called them) and src/lib/projects.ts is prisma-free pure helpers.
+- Fix: git rm -r src/app/api (72718f2) → Actions run 72718f2 completed SUCCESS.
+- Live-site verification: production chunk f72655a245dcfe4e contains "Vinyl & cover", "Vinyl label", "Full CD", "Spinning disc", RPM 33.33 + the earlier "Pulse with music" (no regression).
+
+Stage Summary:
+- Spectra live at https://mpem1.github.io/spectra/ with the full vinyl & cover feature. NOTE: the PAT was pasted in chat — user advised to rotate/revoke it afterwards.
