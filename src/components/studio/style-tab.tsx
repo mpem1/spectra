@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { GradientEditor } from '@/components/studio/gradient-editor'
 import { BackgroundSection } from '@/components/studio/background-section'
+import { VinylSection } from '@/components/studio/vinyl-section'
 import { MicroLabel, OptionCard, SliderRow } from '@/components/studio/controls'
 
 const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] = [
@@ -150,6 +151,9 @@ export function StyleTab() {
 
       {/* Background */}
       <BackgroundSection />
+
+      {/* Album art — square cover + spinning vinyl/CD */}
+      <VinylSection />
     </div>
   )
 }

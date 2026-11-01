@@ -5,6 +5,7 @@ import {
   DEFAULT_STUDIO_CONFIG,
   GRADIENT_PRESETS,
   type BackgroundConfig,
+  type DiscConfig,
   type ExportProgress,
   type ExportQuality,
   type ExportSettings,
@@ -82,6 +83,7 @@ type StudioState = {
   patchBackground: (partial: Partial<BackgroundConfig>) => void
   patchLyrics: (partial: Partial<LyricsConfig>) => void
   patchTitle: (partial: Partial<TitleConfig>) => void
+  patchDisc: (partial: Partial<DiscConfig>) => void
   /** Patches config.visualizer.gradient */
   patchGradient: (partial: Partial<GradientConfig>) => void
   /** Patches config.background.gradient */
@@ -169,6 +171,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, title: { ...s.config.title, ...partial } },
     })),
 
+  patchDisc: (partial) =>
+    set((s) => ({
+      config: { ...s.config, disc: { ...s.config.disc, ...partial } },
+    })),
+
   patchGradient: (partial) =>
     set((s) => ({
       config: {
@@ -220,6 +227,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         background: { ...DEFAULT_STUDIO_CONFIG.background, ...config.background },
         lyrics: { ...DEFAULT_STUDIO_CONFIG.lyrics, ...config.lyrics },
         title: { ...DEFAULT_STUDIO_CONFIG.title, ...config.title },
+        disc: { ...DEFAULT_STUDIO_CONFIG.disc, ...config.disc },
       },
     }),
 

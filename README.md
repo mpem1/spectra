@@ -30,6 +30,12 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
   the visualizer palette or its own custom gradient. The size can **pulse
   with the music** (text swells on loud hits) and the whole block can
   **swivel** around its center axis with adjustable swing and speed.
+- **Vinyl & cover** — upload album art and get the classic record-player
+  look: a square cover with a spinning vinyl sliding out from behind it
+  (art on the center label, grooved black face, spindle hole), or the art
+  across the full disc like a CD with a punched center hole. Real-RPM spin
+  (33⅓ / 45 presets) with direction toggle, audio-reactive size pulse,
+  groove rings, and a light sheen — composes with every visualizer style.
 - **Projects** — save/load studio configurations, stored locally in the
   visitor's browser (IndexedDB) — no account, no server.
 - **Shareable looks** — one click turns your whole setup into a link that

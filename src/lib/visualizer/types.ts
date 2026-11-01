@@ -182,6 +182,47 @@ export interface TitleConfig {
   glowColor: string
 }
 
+/* ------------------------------------ Disc ------------------------------------ */
+
+/**
+ * Album art layer — a square cover with a spinning disc, like a record
+ * sliding out of its sleeve. One image powers both: the square cover shows it
+ * flat, and the disc carries it either on the vinyl's center label (black
+ * grooved face around it) or across the full face like a CD. Purely
+ * decorative: deterministic spin on the style clock, optional audio pulse.
+ */
+export interface DiscConfig {
+  enabled: boolean
+  /** Album art (data URL) — shared by the cover and the disc face/label */
+  imageSrc: string
+  /** Show the square cover (the "sleeve") */
+  showCover: boolean
+  /** Cover side length as % of canvas height */
+  coverSize: number
+  /** Cover center, 0..100 (of width / height) */
+  coverX: number
+  coverY: number
+  /** Show the spinning disc */
+  showDisc: boolean
+  /** Disc face: image on the vinyl's center label, or across the full face */
+  mode: 'label' | 'full'
+  /** Disc diameter as % of canvas height */
+  discSize: number
+  /** Disc center, 0..100 (of width / height) */
+  discX: number
+  discY: number
+  /** Spin speed in rotations per minute (33.33 ≈ LP, 45 ≈ single) */
+  rpm: number
+  /** Spin direction: 1 = clockwise, -1 = counter-clockwise */
+  direction: 1 | -1
+  /** Audio-reactive size pulse 0..1 (0 = steady) */
+  pulse: number
+  /** Vinyl groove rings on the black face (label mode) */
+  grooves: boolean
+  /** Fixed light sheen across the face 0..1 */
+  sheen: number
+}
+
 /* ----------------------------------- Project --------------------------------- */
 
 export interface StudioConfig {
@@ -189,6 +230,7 @@ export interface StudioConfig {
   background: BackgroundConfig
   lyrics: LyricsConfig
   title: TitleConfig
+  disc: DiscConfig
 }
 
 /* --------------------------------- Audio frame -------------------------------- */
@@ -437,5 +479,23 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     glow: true,
     glowStrength: 0.6,
     glowColor: '#ffffff',
+  },
+  disc: {
+    enabled: false,
+    imageSrc: '',
+    showCover: true,
+    coverSize: 42,
+    coverX: 30,
+    coverY: 50,
+    showDisc: true,
+    mode: 'label',
+    discSize: 46,
+    discX: 46,
+    discY: 50,
+    rpm: 33.33,
+    direction: 1,
+    pulse: 0,
+    grooves: true,
+    sheen: 0.35,
   },
 }

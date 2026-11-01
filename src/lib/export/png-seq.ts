@@ -48,12 +48,20 @@ export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResu
   const { config, settings, audioBuffer, onProgress, signal } = opts
   const { width, height } = RESOLUTIONS[settings.resolution]
 
-  // Decode a configured background image before frame 0 (deterministic frames).
+  // Decode configured images before frame 0 (deterministic frames):
+  // the background image and the album art used by the vinyl/CD layer.
   if (config.background.mode === 'image' && config.background.imageSrc) {
     try {
       await loadBackgroundImage(config.background.imageSrc)
     } catch {
       // Fall through — the renderer paints a dark fallback.
+    }
+  }
+  if (config.disc?.enabled && config.disc.imageSrc) {
+    try {
+      await loadBackgroundImage(config.disc.imageSrc)
+    } catch {
+      // Fall through — the disc paints a blank face/label.
     }
   }
 

@@ -972,3 +972,19 @@ Work Log:
 
 Stage Summary:
 - The title now performs: its px size swells with the loudness of the track, and the whole block can swivel around its own center axis with adjustable swing and speed — all deterministic in MP4/PNG exports and included in share links and saved projects.
+---
+Task ID: 26
+Agent: Z.ai Code (main)
+Task: Vinyl & cover — album art layer (square sleeve + spinning vinyl/CD disc)
+
+Work Log:
+- Analyzed reference video (Emberosia - Burn Ths Shadow): square album cover with a black vinyl slid out from behind it, art on the spinning center label, grooves + spindle hole. Frames at 25/50/75% confirmed the label rotates with the disc.
+- types.ts: DiscConfig (enabled, imageSrc shared by cover+disc, showCover/coverSize/coverX/coverY, showDisc/mode 'label'|'full'/discSize/discX/discY, rpm 0..120, direction ±1, pulse 0..1, grooves, sheen) + defaults tuned for the reference look (cover 42% at 30/50, disc 46% at 46/50, 33.33 RPM) + StudioConfig.disc.
+- New src/lib/visualizer/disc.ts: drawDisc — deterministic pure renderer. Disc drawn first (behind), cover second (sleeve overlaps record). Vinyl face: radial-gradient body, 22 groove rings + 2 track separators, label art cover-fit in 0.37R circle rotating with angle = dir*2π*rpm/60*styleTime (exports lock styleTime to song time), paper-label fallback when no art, spindle dot. CD face: art across full face with REAL punched hole via Path2D evenodd clip (bg shows through), silver fallback, hole/mirror rings. Fixed light sheen (viewer-anchored, doesn't spin) + rim stroke + drop shadows. Pulse uses the title's energy calibration (1 + pulse*clamp01(energy*2)).
+- renderer.ts: drawDisc after visualizer, before lyrics/title (text stays on top).
+- store: patchDisc + setConfig merge over defaults (old projects/links load clean).
+- share-link.ts: makePortable also strips disc.imageSrc (vinyl keeps its shape with blank label; background fallback unchanged).
+- exporter.ts + png-seq.ts: preload disc image before frame 0 alongside the background image (deterministic exports; notice on failure).
+- New vinyl-section.tsx (Style tab, after Background): enable switch, art upload/replace/remove, Square cover block (size/X/Y), Spinning disc block (Vinyl label | Full CD segmented, size/X/Y, RPM slider + 33⅓/45/Stop presets, Clockwise/Counter toggle, Pulse, Grooves switch in label mode, Sheen).
+- Browser E2E (localhost): cover+vinyl label composite matches the reference video ✓; two screenshots 1.3s apart show label art rotated (spin confirmed) ✓; Full CD mode shows art across the face with punched hole ✓; pulse probe region: 0 art pixels at Off → 5585 at Max (disc swells) ✓; grooves/mode/direction/RPM controls render with live values ✓; no console errors; lint 0 errors (warnings only in pre-existing public/ffmpeg vendor files).
+- NOTE: git push still revoked (user removed sandbox key access last session) — committed locally, awaiting re-connect to publish.

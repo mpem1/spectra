@@ -19,6 +19,7 @@ import { buildGradient, buildRadialGradient, gradientLine, sampleGradient, withA
 import { getBackgroundImage } from './image-cache'
 import { drawLyrics } from './lyrics'
 import { drawTitle } from './title'
+import { drawDisc } from './disc'
 
 /* --------------------------------- Utilities -------------------------------- */
 
@@ -88,6 +89,12 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   rc.ctx.save()
   drawBackground(rc, frame, config.background, S)
   drawVisualizer(rc, frame, config.visualizer, S)
+  // Album art layer (square cover + spinning vinyl/CD) — above the
+  // visualizer, below the text overlays. Optional chaining keeps very old
+  // saves (pre-disc) renderable even before the store merge runs.
+  if (config.disc?.enabled) {
+    drawDisc(rc, frame, config.disc)
+  }
   if (config.lyrics.enabled && config.lyrics.lines.length > 0) {
     drawLyrics(rc, frame, config.lyrics, config.visualizer.gradient)
   }

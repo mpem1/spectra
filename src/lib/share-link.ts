@@ -41,28 +41,35 @@ function fromBase64Url(text: string): Uint8Array {
 }
 
 /**
- * Make a config safe to travel in a URL. Background image pixels are the
- * only oversized field; image mode falls back to the solid color.
+ * Make a config safe to travel in a URL. Image pixels (background and album
+ * art) are the only oversized fields; the background falls back to its solid
+ * color and the disc keeps its shape with a blank face/label.
  */
 export function makePortable(config: StudioConfig): {
   config: StudioConfig
   imageDropped: boolean
 } {
-  if (config.background.mode === 'image' && config.background.imageSrc) {
-    return {
-      config: {
-        ...config,
-        background: {
-          ...config.background,
-          mode: 'solid',
-          color: config.background.color || '#0a0a0a',
-          imageSrc: '',
-        },
-      },
-      imageDropped: true,
-    }
+  const bgDrop = config.background.mode === 'image' && !!config.background.imageSrc
+  const discDrop = !!config.disc?.imageSrc
+  if (!bgDrop && !discDrop) return { config, imageDropped: false }
+  return {
+    config: {
+      ...config,
+      background: bgDrop
+        ? {
+            ...config.background,
+            mode: 'solid',
+            color: config.background.color || '#0a0a0a',
+            imageSrc: '',
+          }
+        : config.background,
+      disc:
+        discDrop && config.disc
+          ? { ...config.disc, imageSrc: '' }
+          : config.disc,
+    },
+    imageDropped: true,
   }
-  return { config, imageDropped: false }
 }
 
 /** Compact URL-safe token for a config ("p1.<base64url-gzip-json>"). */

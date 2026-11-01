@@ -228,12 +228,20 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
   report({ phase: 'preparing', progress: 0, time: 0 })
 
   // A configured background image must be fully decoded before frame 0 so
-  // every rendered frame includes it (deterministic output).
+  // every rendered frame includes it (deterministic output). Same for the
+  // album art used by the vinyl/CD layer.
   if (config.background.mode === 'image' && config.background.imageSrc) {
     try {
       await loadBackgroundImage(config.background.imageSrc)
     } catch {
       onNotice?.('Background image could not be loaded — exporting with a dark background.')
+    }
+  }
+  if (config.disc?.enabled && config.disc.imageSrc) {
+    try {
+      await loadBackgroundImage(config.disc.imageSrc)
+    } catch {
+      onNotice?.('Album art could not be loaded — exporting with a blank disc.')
     }
   }
 
