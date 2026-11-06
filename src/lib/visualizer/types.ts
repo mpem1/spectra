@@ -61,6 +61,9 @@ export interface VisualizerConfig {
   positionY: number
   /** Layer zoom, 1 = natural size (0.1..2.5) — resize the whole visualizer in place */
   scale: number
+  /** Layer order vs. the vinyl & cover: 'front' = bars on top (classic look),
+   *  'back' = bars tucked behind the vinyl/cover so the record overlaps them */
+  layer: 'front' | 'back'
 }
 
 /* --------------------------------- Background -------------------------------- */
@@ -433,6 +436,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     positionX: 50,
     positionY: 50,
     scale: 1,
+    layer: 'front',
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 48,

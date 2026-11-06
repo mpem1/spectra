@@ -1123,3 +1123,19 @@ Work Log:
 
 Stage Summary:
 - The background no longer smears when the picture doesn't fill the frame: whatever the image/video leaves uncovered is a clean dark stage — in the preview and in every export. And the disc faces now throw real two-layer shadows (contact + cinematic throw) at a stronger default depth, so the angle dial reads at a glance, while the realistic cassette gained a full photo-grade lighting pass.
+
+---
+
+Task ID: 35
+Agent: Z.ai Code (main)
+Task: Cover & disc sizing parity (bleed past the edges) + visualizer layer order (front/back)
+User: "art cover doesnt go as large as the disc/ record they should both be able to exceed the edges of the visible area and the visualizer should be able to be in front or back of the vinyl and cover."
+
+Work Log:
+- Sizing parity + overflow: vinyl-section.tsx — Cover size slider max 80 → 200, Disc size max 90 → 200 (both % of canvas height, so >100% means the element is bigger than the frame and gets cropped by its edges); Cover/Disc X & Y widened 0..100 → -50..150 so the centers themselves can slide past the edges. Draw code untouched — disc.ts/cassette.ts already compute position/size from raw percentages, canvas clips naturally; cassette CW = discSize/100·H has no upper clamp. Mode description now appends "Sizes over 100% bleed past the frame edges."
+- Visualizer layer order: new VisualizerConfig field `layer: 'front' | 'back'` (default 'front' = today's behavior; old saves/links merge to it via setConfig defaults). renderer.ts renderFrame: 'back' draws the visualizer BETWEEN background and the album art layer (bg → viz → disc → lyrics/title), 'front' keeps the original order (bg → disc → viz → …) — lyrics/title always stay on top in both. drawVisualizer is save/restore-scoped so drawing it before the disc leaks nothing.
+- UI: vinyl-section.tsx adds a "Visualizer layer" segmented control (Behind vinyl / In front) shown when the album art layer is enabled, right under the section description; stores to config.visualizer.layer via patchVisualizer. README vinyl bullet updated (200% sizes, -50..150 positions, layer order).
+- Browser E2E (agent-browser): enabled vinyl, uploaded art via in-page canvas → File → DataTransfer (no server). Cover size + Disc size → End = 200% each: cover bled past both left/right edges, vinyl covered >2× height ✓. Cover X = 12% → cover half off the left edge (art text visibly cropped) ✓. Layer pair screenshots: "Behind vinyl" = bars completely hidden behind cover/vinyl, only a sliver past the disc edge; "In front" = bars drawn over the pink cover AND the black vinyl ✓. Reload → clean defaults, 0 console errors ✓. Mobile 390×844: segmented control renders inline in the panel ✓. lint 0 errors (27 pre-existing vendored-ffmpeg warnings).
+
+Stage Summary:
+- The square cover can now grow exactly as large as the disc/record — and both can overshoot the frame (size to 200%, centers from -50% to 150%) for full-bleed compositions — plus the visualizer gets a Behind vinyl / In front switch so the reactive bars can live underneath the record or stay on top of it.

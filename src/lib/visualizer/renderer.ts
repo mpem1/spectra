@@ -89,13 +89,18 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   const S = rc.height / 720
   rc.ctx.save()
   drawBackground(rc, frame, config.background, S)
-  drawVisualizer(rc, frame, config.visualizer, S)
+  // Layer order vs. the album art layer: 'back' tucks the bars behind the
+  // vinyl & cover, 'front' (the default, and what very old saves merge to)
+  // keeps them on top. Lyrics/title always stay above everything.
+  const vizBehind = (config.visualizer as VisualizerConfig | undefined)?.layer === 'back'
+  if (vizBehind) drawVisualizer(rc, frame, config.visualizer, S)
   // Album art layer (square cover + spinning vinyl/CD) — above the
   // visualizer, below the text overlays. Optional chaining keeps very old
   // saves (pre-disc) renderable even before the store merge runs.
   if (config.disc?.enabled) {
     drawDisc(rc, frame, config.disc)
   }
+  if (!vizBehind) drawVisualizer(rc, frame, config.visualizer, S)
   if (config.lyrics.enabled && config.lyrics.lines.length > 0) {
     drawLyrics(rc, frame, config.lyrics, config.visualizer.gradient)
   }

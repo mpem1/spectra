@@ -44,9 +44,13 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
   across the full disc like a CD with a punched center hole. Real-RPM spin
   (33⅓ / 45 presets) with direction toggle, audio-reactive size pulse,
   groove rings, and a light sheen — composes with every visualizer style.
-  Both the cover and the disc move and resize freely (size / X / Y), and
-  the art inside each zooms (1–3×) and slides independently so you choose
-  exactly which part of the artwork shows on the sleeve, label, or CD face.
+  Both the cover and the disc move and resize freely — size up to **200%**
+  of the frame and X / Y from -50 to 150, so both can match each other's
+  scale and bleed past the visible edges — and the art inside each zooms
+  (1–3×) and slides independently so you choose exactly which part of the
+  artwork shows on the sleeve, label, or CD face. The **visualizer layer**
+  can sit in front of the vinyl & cover (classic look) or tuck behind them
+  so the record overlaps the bars.
   Or flip the face to a whole **cassette tape** with turning sprocket hubs:
   any shell color, and the label is bare plastic, your album art, or the
   built-in mixtape design (A badge, ruled lines, three custom stripe colors,

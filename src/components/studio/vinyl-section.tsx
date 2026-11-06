@@ -35,6 +35,8 @@ const RPM_PRESETS: { label: string; value: number }[] = [
 export function VinylSection() {
   const disc = useStudioStore((s) => s.config.disc)
   const patchDisc = useStudioStore((s) => s.patchDisc)
+  const vizLayer = useStudioStore((s) => s.config.visualizer.layer ?? 'front')
+  const patchVisualizer = useStudioStore((s) => s.patchVisualizer)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   const handleFile = async (file: File | undefined): Promise<void> => {
@@ -76,6 +78,40 @@ export function VinylSection() {
         clean vector or a shaded realistic style. Cover and disc share the
         same image.
       </p>
+
+      {/* Visualizer layer order — in front of or behind the vinyl & cover */}
+      {disc.enabled ? (
+        <div className="space-y-1.5">
+          <MicroLabel>Visualizer layer</MicroLabel>
+          <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+            {(
+              [
+                { id: 'back', label: 'Behind vinyl' },
+                { id: 'front', label: 'In front' },
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                aria-pressed={vizLayer === m.id}
+                onClick={() => patchVisualizer({ layer: m.id })}
+                className={cn(
+                  'h-7 rounded-md text-xs transition-colors',
+                  vizLayer === m.id
+                    ? 'bg-emerald-500/15 text-emerald-300'
+                    : 'text-zinc-400 hover:text-zinc-200',
+                )}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] leading-snug text-zinc-600">
+            Put the bars behind the record so the vinyl &amp; cover overlap
+            them, or keep them in front (classic look).
+          </p>
+        </div>
+      ) : null}
 
       {/* Album art upload */}
       {disc.imageSrc ? (
@@ -133,7 +169,7 @@ export function VinylSection() {
             label="Cover size"
             value={disc.coverSize}
             min={10}
-            max={80}
+            max={200}
             step={1}
             onChange={(coverSize) => patchDisc({ coverSize })}
             format={(v) => `${Math.round(v)}%`}
@@ -141,8 +177,8 @@ export function VinylSection() {
           <SliderRow
             label="Cover X"
             value={disc.coverX}
-            min={0}
-            max={100}
+            min={-50}
+            max={150}
             step={1}
             onChange={(coverX) => patchDisc({ coverX })}
             format={(v) => `${Math.round(v)}%`}
@@ -150,8 +186,8 @@ export function VinylSection() {
           <SliderRow
             label="Cover Y"
             value={disc.coverY}
-            min={0}
-            max={100}
+            min={-50}
+            max={150}
             step={1}
             onChange={(coverY) => patchDisc({ coverY })}
             format={(v) => `${Math.round(v)}%`}
@@ -237,6 +273,7 @@ export function VinylSection() {
                 : disc.mode === 'full'
                   ? 'CD: art across the whole face with a punched center hole.'
                   : 'Cassette: a tape with turning hubs — its width follows Disc size.'}
+              {' '}Sizes over 100% bleed past the frame edges.
             </p>
           </div>
           {disc.mode === 'cassette' ? (
@@ -246,7 +283,7 @@ export function VinylSection() {
             label="Disc size"
             value={disc.discSize}
             min={10}
-            max={90}
+            max={200}
             step={1}
             onChange={(discSize) => patchDisc({ discSize })}
             format={(v) => `${Math.round(v)}%`}
@@ -254,8 +291,8 @@ export function VinylSection() {
           <SliderRow
             label="Disc X"
             value={disc.discX}
-            min={0}
-            max={100}
+            min={-50}
+            max={150}
             step={1}
             onChange={(discX) => patchDisc({ discX })}
             format={(v) => `${Math.round(v)}%`}
@@ -263,8 +300,8 @@ export function VinylSection() {
           <SliderRow
             label="Disc Y"
             value={disc.discY}
-            min={0}
-            max={100}
+            min={-50}
+            max={150}
             step={1}
             onChange={(discY) => patchDisc({ discY })}
             format={(v) => `${Math.round(v)}%`}
