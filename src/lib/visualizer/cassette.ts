@@ -9,10 +9,14 @@
  *
  * Two drawing styles share the same geometry, label options and hub motion:
  * - vector: the clean flat illustration — simple gradients, crisp edges;
- * - realistic: a shaded photoreal render — multi-stop plastic with bevel
- *   edges, an embossed recess ring, metallic screws and hubs, a recessed
- *   window bezel with inner shadow and a glass reflection, brown tape-pack
- *   gradients, a fixed specular streak and a deterministic film grain.
+ * - realistic: a photoreal render lit from the top-left — high-contrast
+ *   diagonal shading with a hotspot, beveled rim lights/shadows, an embossed
+ *   recess ring and a soft inner perimeter occlusion, the molded-halves seam
+ *   line, see-through reel silhouettes on bare (smoke-plastic) shells,
+ *   Phillips metal screws with contact shadows, labels that sit ON the shell
+ *   with their own soft shadows, a deep recessed window with a double glass
+ *   reflection, brown tape packs, specular-dotted hubs, twin glossy streaks
+ *   and a deterministic film grain.
  *
  * The face is configurable:
  * - shell color (clear-ish gray, black, anything from the picker);
@@ -26,7 +30,7 @@
  */
 import type { AudioFrame, DiscConfig, RenderContext } from './types'
 import { getBackgroundImage } from './image-cache'
-import { drawImageCover, faceShadow, shadeHex, roundRectPath } from './cover-fit'
+import { drawImageCover, faceShadow, shadeHex, roundRectPath, withAlpha } from './cover-fit'
 
 const TWO_PI = Math.PI * 2
 /** Real compact cassette proportion: 100 × 63.5 mm. */
@@ -86,7 +90,7 @@ function getGrainPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
     const id = g.createImageData(128, 128)
     const rnd = mulberry32(0xc0ffeee)
     for (let i = 0; i < id.data.length; i += 4) {
-      const v = 100 + Math.floor(rnd() * 56) // 100..155 around overlay-neutral 128
+      const v = 84 + Math.floor(rnd() * 88) // 84..172, contrasty around overlay-neutral 128
       id.data[i] = v
       id.data[i + 1] = v
       id.data[i + 2] = v
@@ -132,11 +136,11 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
   const hh = CH / 2
   const shellR = 0.055 * CW
 
-  // Drop shadow for depth against the background (depth/angle from the panel).
+  // Drop shadow behind the whole cassette (depth / angle / color from the panel).
   const sh = faceShadow(disc.shadowDepth ?? 40, disc.shadowAngle ?? 90, S)
   if (sh) {
     ctx.save()
-    ctx.shadowColor = `rgba(0, 0, 0, ${sh.alpha})`
+    ctx.shadowColor = withAlpha(disc.shadowColor ?? '#000000', sh.alpha)
     ctx.shadowBlur = sh.blur
     ctx.shadowOffsetX = sh.dx
     ctx.shadowOffsetY = sh.dy
@@ -146,81 +150,161 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
     ctx.restore()
   }
 
-  // Body: vector gets a gentle 3-stop top-lit gradient; realistic gets a
-  // deeper multi-stop roll-off so the plastic reads as molded, not flat.
-  const body = ctx.createLinearGradient(0, -hh, 0, hh)
+  // Body: vector gets the gentle top-lit 3-stop gradient; realistic gets a
+  // high-contrast DIAGONAL light — bright top-left, deep fall-off bottom-right.
   if (real) {
-    body.addColorStop(0, shadeHex(shell, 0.30))
-    body.addColorStop(0.16, shadeHex(shell, 0.10))
-    body.addColorStop(0.55, shell)
-    body.addColorStop(0.85, shadeHex(shell, -0.14))
-    body.addColorStop(1, shadeHex(shell, -0.30))
+    const body = ctx.createLinearGradient(-hw, -hh, hw, hh)
+    body.addColorStop(0, shadeHex(shell, 0.45))
+    body.addColorStop(0.3, shadeHex(shell, 0.14))
+    body.addColorStop(0.62, shell)
+    body.addColorStop(1, shadeHex(shell, -0.45))
+    roundRectPath(ctx, -hw, -hh, CW, CH, shellR)
+    ctx.fillStyle = body
+    ctx.fill()
   } else {
+    const body = ctx.createLinearGradient(0, -hh, 0, hh)
     body.addColorStop(0, shadeHex(shell, 0.16))
     body.addColorStop(0.5, shell)
     body.addColorStop(1, shadeHex(shell, -0.16))
+    roundRectPath(ctx, -hw, -hh, CW, CH, shellR)
+    ctx.fillStyle = body
+    ctx.fill()
   }
-  roundRectPath(ctx, -hw, -hh, CW, CH, shellR)
-  ctx.fillStyle = body
-  ctx.fill()
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)'
   ctx.lineWidth = 1 * S
   ctx.stroke()
 
   if (real) {
-    // Bevel edges — light catches the top rim, the bottom falls into shade.
+    // Light hotspot near the top-left corner (the lamp side).
     ctx.save()
     roundRectPath(ctx, -hw, -hh, CW, CH, shellR)
     ctx.clip()
-    const topLight = ctx.createLinearGradient(0, -hh, 0, -hh + 0.10 * CH)
-    topLight.addColorStop(0, 'rgba(255, 255, 255, 0.30)')
-    topLight.addColorStop(1, 'rgba(255, 255, 255, 0)')
-    ctx.fillStyle = topLight
-    ctx.fillRect(-hw, -hh, CW, 0.10 * CH)
-    const botShade = ctx.createLinearGradient(0, hh - 0.13 * CH, 0, hh)
-    botShade.addColorStop(0, 'rgba(0, 0, 0, 0)')
-    botShade.addColorStop(1, 'rgba(0, 0, 0, 0.36)')
-    ctx.fillStyle = botShade
-    ctx.fillRect(-hw, hh - 0.13 * CH, CW, 0.13 * CH)
+    const hotspot = ctx.createRadialGradient(-hw * 0.5, -hh * 0.55, 0, -hw * 0.5, -hh * 0.55, CW * 0.85)
+    hotspot.addColorStop(0, 'rgba(255, 255, 255, 0.22)')
+    hotspot.addColorStop(0.55, 'rgba(255, 255, 255, 0.06)')
+    hotspot.addColorStop(1, 'rgba(255, 255, 255, 0)')
+    ctx.fillStyle = hotspot
+    ctx.fillRect(-hw, -hh, CW, CH)
+
+    // Soft occlusion hugging the whole inner perimeter (molded edge depth).
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.20)'
+    ctx.lineWidth = 5 * S
+    roundRectPath(ctx, -hw, -hh, CW, CH, shellR)
+    ctx.stroke()
     ctx.restore()
 
-    // Embossed recess ring just inside the rim (the two molded halves meet).
+    // Rim lights, split along the light diagonal: bright top-left edge,
+    // dark bottom-right edge — the bevel that makes it read as 3D plastic.
+    const rim = (dark: boolean): void => {
+      ctx.save()
+      roundRectPath(ctx, -hw, -hh, CW, CH, shellR)
+      ctx.clip()
+      ctx.beginPath()
+      if (!dark) {
+        ctx.moveTo(-hw, -hh)
+        ctx.lineTo(hw, -hh)
+        ctx.lineTo(-hw, hh)
+      } else {
+        ctx.moveTo(hw, -hh)
+        ctx.lineTo(hw, hh)
+        ctx.lineTo(-hw, hh)
+      }
+      ctx.closePath()
+      ctx.clip()
+      ctx.strokeStyle = dark ? 'rgba(0, 0, 0, 0.45)' : 'rgba(255, 255, 255, 0.38)'
+      ctx.lineWidth = 4 * S
+      roundRectPath(ctx, -hw, -hh, CW, CH, shellR)
+      ctx.stroke()
+      ctx.restore()
+    }
+    rim(false)
+    rim(true)
+
+    // Embossed recess ring just inside the rim (where the two halves meet).
     roundRectPath(ctx, -hw + 2.6 * S, -hh + 2.6 * S, CW - 5.2 * S, CH - 5.2 * S, shellR * 0.82)
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.30)'
-    ctx.lineWidth = 1.2 * S
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.40)'
+    ctx.lineWidth = 1.4 * S
     ctx.stroke()
     roundRectPath(ctx, -hw + 3.8 * S, -hh + 3.8 * S, CW - 7.6 * S, CH - 7.6 * S, shellR * 0.74)
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.09)'
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)'
     ctx.lineWidth = 1 * S
     ctx.stroke()
+
+    // Seam of the molded halves — visible on bare shell beside the window.
+    ctx.save()
+    roundRectPath(ctx, -hw, -hh, CW, CH, shellR)
+    ctx.clip()
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.26)'
+    ctx.lineWidth = Math.max(1, 1.2 * S)
+    ctx.beginPath()
+    ctx.moveTo(-hw + 0.055 * CW, 0)
+    ctx.lineTo(hw - 0.055 * CW, 0)
+    ctx.stroke()
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'
+    ctx.beginPath()
+    ctx.moveTo(-hw + 0.055 * CW, 1.6 * S)
+    ctx.lineTo(hw - 0.055 * CW, 1.6 * S)
+    ctx.stroke()
+    ctx.restore()
+
+    // See-through reel silhouettes — the smoke-plastic cue, on bare shells
+    // only (a paper or art label wraps the outside and hides the insides).
+    if (mode === 'none') {
+      const silY = -0.04 * CH
+      const silR = 0.155 * CW
+      for (const sx of [-1, 1]) {
+        const x = sx * 0.155 * CW
+        ctx.beginPath()
+        ctx.arc(x, silY, silR, 0, TWO_PI)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.13)'
+        ctx.fill()
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.12)'
+        ctx.lineWidth = Math.max(1, 1.5 * S)
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.arc(x, silY, 0.066 * CW, 0, TWO_PI)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.10)'
+        ctx.fill()
+      }
+    }
   }
 
-  // Corner screws — flat in vector, turned metal in realistic.
+  // Corner screws — flat in vector, turned metal with contact shadow in real.
   for (const sx of [-1, 1]) {
     for (const sy of [-1, 1]) {
       const x = sx * 0.415 * CW
       const y = sy * 0.40 * CH
       const sr = 0.021 * CW
+      if (real) {
+        // Soft contact shadow the screw head casts on the shell.
+        const ao = ctx.createRadialGradient(x, y, sr * 0.6, x, y, sr * 2.4)
+        ao.addColorStop(0, 'rgba(0, 0, 0, 0.38)')
+        ao.addColorStop(1, 'rgba(0, 0, 0, 0)')
+        ctx.fillStyle = ao
+        ctx.beginPath()
+        ctx.arc(x, y, sr * 2.4, 0, TWO_PI)
+        ctx.fill()
+      }
       ctx.beginPath()
       ctx.arc(x, y, sr, 0, TWO_PI)
       if (real) {
         const metal = ctx.createRadialGradient(x - sr * 0.4, y - sr * 0.4, sr * 0.15, x, y, sr)
-        metal.addColorStop(0, shadeHex(shell, 0.52))
-        metal.addColorStop(0.65, shell)
-        metal.addColorStop(1, shadeHex(shell, -0.52))
+        metal.addColorStop(0, shadeHex(shell, 0.55))
+        metal.addColorStop(0.55, shadeHex(shell, 0.08))
+        metal.addColorStop(1, shadeHex(shell, -0.55))
         ctx.fillStyle = metal
       } else {
         ctx.fillStyle = shadeHex(shell, -0.35)
       }
       ctx.fill()
-      ctx.strokeStyle = real ? 'rgba(0, 0, 0, 0.45)' : shadeHex(shell, 0.22)
+      ctx.strokeStyle = real ? 'rgba(0, 0, 0, 0.5)' : shadeHex(shell, 0.22)
       ctx.lineWidth = 1 * S
       ctx.stroke()
       // The slot: one line in vector, a Phillips cross in realistic.
       ctx.save()
       ctx.translate(x, y)
       ctx.rotate(Math.PI / 4)
-      ctx.strokeStyle = real ? 'rgba(0, 0, 0, 0.60)' : 'rgba(255, 255, 255, 0.28)'
+      ctx.strokeStyle = real ? 'rgba(0, 0, 0, 0.65)' : 'rgba(255, 255, 255, 0.28)'
       ctx.lineWidth = real ? Math.max(1, 1.4 * S) : 1 * S
       ctx.beginPath()
       ctx.moveTo(-0.014 * CW, 0)
@@ -239,8 +323,8 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
   /* --------------------------- Bottom plate -------------------------------- */
   // The trapezoid base with its playback access holes (all shells have it).
   const plate = ctx.createLinearGradient(0, hh - 0.34 * CH, 0, hh)
-  plate.addColorStop(0, shadeHex(shell, real ? -0.14 : -0.10))
-  plate.addColorStop(1, shadeHex(shell, real ? -0.30 : -0.24))
+  plate.addColorStop(0, shadeHex(shell, real ? -0.16 : -0.10))
+  plate.addColorStop(1, shadeHex(shell, real ? -0.34 : -0.24))
   ctx.beginPath()
   ctx.moveTo(-0.30 * CW, 0.20 * CH)
   ctx.lineTo(0.30 * CW, 0.20 * CH)
@@ -256,7 +340,7 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
     ctx.beginPath()
     ctx.moveTo(-0.43 * CW, 0.455 * CH)
     ctx.lineTo(0.43 * CW, 0.455 * CH)
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)'
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)'
     ctx.lineWidth = 1.4 * S
     ctx.stroke()
   }
@@ -267,7 +351,7 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
     ctx.arc(hx * CW, 0.345 * CH, 0.021 * CW, 0, TWO_PI)
     ctx.fill()
     if (real) {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)'
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'
       ctx.lineWidth = 1 * S
       ctx.stroke()
     }
@@ -276,7 +360,7 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
     roundRectPath(ctx, rx * CW - 0.017 * CW, 0.315 * CH, 0.034 * CW, 0.075 * CH, 0.008 * CW)
     ctx.fill()
     if (real) {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)'
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'
       ctx.lineWidth = 1 * S
       ctx.stroke()
     }
@@ -292,7 +376,7 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
     ctx.clip()
     const ao = ctx.createLinearGradient(0, hh - 0.16 * CH, 0, hh)
     ao.addColorStop(0, 'rgba(0, 0, 0, 0)')
-    ao.addColorStop(1, 'rgba(0, 0, 0, 0.24)')
+    ao.addColorStop(1, 'rgba(0, 0, 0, 0.30)')
     ctx.fillStyle = ao
     ctx.fillRect(-hw, hh - 0.16 * CH, CW, 0.16 * CH)
     ctx.restore()
@@ -305,6 +389,17 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
     const ly = -hh + 0.075 * CH
     const lw = 0.94 * CW
     const lh = CH - 0.075 * CH - 0.32 * CH
+    if (real) {
+      // The printed label sits ON the shell — give it a contact shadow.
+      ctx.save()
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.45)'
+      ctx.shadowBlur = 10 * S
+      ctx.shadowOffsetY = 3 * S
+      roundRectPath(ctx, lx, ly, lw, lh, 0.035 * CW)
+      ctx.fillStyle = '#000'
+      ctx.fill()
+      ctx.restore()
+    }
     ctx.save()
     roundRectPath(ctx, lx, ly, lw, lh, 0.035 * CW)
     ctx.clip()
@@ -322,14 +417,14 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
     if (real) {
       // Print gloss sweeping the label + a pressed-in edge shade.
       const gloss = ctx.createLinearGradient(lx, ly, lx + lw, ly + lh)
-      const a = 0.05 + 0.20 * sheen
+      const a = 0.08 + 0.30 * sheen
       gloss.addColorStop(0, 'rgba(255, 255, 255, 0)')
       gloss.addColorStop(0.45, `rgba(255, 255, 255, ${a.toFixed(3)})`)
       gloss.addColorStop(0.55, 'rgba(255, 255, 255, 0)')
       gloss.addColorStop(1, 'rgba(255, 255, 255, 0)')
       ctx.fillStyle = gloss
       ctx.fillRect(lx, ly, lw, lh)
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.28)'
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.32)'
       ctx.lineWidth = 2.4 * S
       roundRectPath(ctx, lx, ly, lw, lh, 0.035 * CW)
       ctx.stroke()
@@ -359,13 +454,24 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
     const cardY = -hh + 0.07 * CH
     const cardW = 0.91 * CW
     const cardH = 0.36 * CH
+    if (real) {
+      // The card sits ON the shell — soft contact shadow underneath.
+      ctx.save()
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.45)'
+      ctx.shadowBlur = 9 * S
+      ctx.shadowOffsetY = 3 * S
+      roundRectPath(ctx, cardX, cardY, cardW, cardH, 0.045 * CW)
+      ctx.fillStyle = '#000'
+      ctx.fill()
+      ctx.restore()
+    }
     roundRectPath(ctx, cardX, cardY, cardW, cardH, 0.045 * CW)
     if (real) {
-      // Paper roll-off instead of a flat fill.
+      // Paper roll-off instead of a flat fill, plus a lit top edge.
       const paper = ctx.createLinearGradient(0, cardY, 0, cardY + cardH)
-      paper.addColorStop(0, shadeHex(disc.labelColor || '#f7f4ec', 0.10))
+      paper.addColorStop(0, shadeHex(disc.labelColor || '#f7f4ec', 0.14))
       paper.addColorStop(0.55, disc.labelColor || '#f7f4ec')
-      paper.addColorStop(1, shadeHex(disc.labelColor || '#f7f4ec', -0.08))
+      paper.addColorStop(1, shadeHex(disc.labelColor || '#f7f4ec', -0.10))
       ctx.fillStyle = paper
     } else {
       ctx.fillStyle = disc.labelColor || '#f7f4ec'
@@ -374,12 +480,12 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.18)'
     ctx.stroke()
     if (real) {
-      // Inner shadow so the card sits slightly pressed into the shell.
+      // Inner shadow so the card reads slightly pressed into the shell.
       ctx.save()
       roundRectPath(ctx, cardX, cardY, cardW, cardH, 0.045 * CW)
       ctx.clip()
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.14)'
-      ctx.lineWidth = 3 * S
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.16)'
+      ctx.lineWidth = 3.5 * S
       roundRectPath(ctx, cardX, cardY, cardW, cardH, 0.045 * CW)
       ctx.stroke()
       ctx.restore()
@@ -429,8 +535,8 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
         if (real) {
           // Ink emboss: a light offset under the dark stroke.
           ctx.save()
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.35)'
-          ctx.fillText(line, textX + 0.7 * S, y + 0.9 * S)
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
+          ctx.fillText(line, textX + 0.8 * S, y + 1 * S)
           ctx.restore()
           ctx.fillStyle = disc.labelTextColor || '#1c1c1e'
         }
@@ -450,11 +556,11 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
   const winX = -winW / 2
 
   if (real) {
-    // Recessed bezel: dark where light enters at the top, light below.
+    // Recessed bezel: deep black where light enters, catch-light below.
     const bezel = ctx.createLinearGradient(0, winY - 2.5 * S, 0, winY + winH + 2.5 * S)
-    bezel.addColorStop(0, 'rgba(0, 0, 0, 0.55)')
-    bezel.addColorStop(0.5, 'rgba(0, 0, 0, 0.15)')
-    bezel.addColorStop(1, 'rgba(255, 255, 255, 0.16)')
+    bezel.addColorStop(0, 'rgba(0, 0, 0, 0.70)')
+    bezel.addColorStop(0.5, 'rgba(0, 0, 0, 0.20)')
+    bezel.addColorStop(1, 'rgba(255, 255, 255, 0.22)')
     ctx.lineWidth = 2.5 * S
     ctx.strokeStyle = bezel
     roundRectPath(ctx, winX - 2.5 * S, winY - 2.5 * S, winW + 5 * S, winH + 5 * S, winR + 2.5 * S)
@@ -463,8 +569,8 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
 
   // Backing: near-black interior with a soft top shadow.
   const back = ctx.createLinearGradient(0, winY, 0, winY + winH)
-  back.addColorStop(0, '#101013')
-  back.addColorStop(1, '#050506')
+  back.addColorStop(0, real ? '#0c0c0e' : '#101013')
+  back.addColorStop(1, real ? '#030304' : '#050506')
   roundRectPath(ctx, winX, winY, winW, winH, winR)
   ctx.fillStyle = back
   ctx.fill()
@@ -476,15 +582,21 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
   roundRectPath(ctx, winX + 1.5 * S, winY + 1.5 * S, winW - 3 * S, winH - 3 * S, winR)
   ctx.stroke()
   if (real) {
-    // Interior depth — the top of the cavity falls into shadow.
+    // Interior depth — the top of the cavity falls into shadow…
     ctx.save()
     roundRectPath(ctx, winX, winY, winW, winH, winR)
     ctx.clip()
-    const depth = ctx.createLinearGradient(0, winY, 0, winY + winH * 0.55)
-    depth.addColorStop(0, 'rgba(0, 0, 0, 0.50)')
+    const depth = ctx.createLinearGradient(0, winY, 0, winY + winH * 0.6)
+    depth.addColorStop(0, 'rgba(0, 0, 0, 0.65)')
     depth.addColorStop(1, 'rgba(0, 0, 0, 0)')
     ctx.fillStyle = depth
-    ctx.fillRect(winX, winY, winW, winH * 0.55)
+    ctx.fillRect(winX, winY, winW, winH * 0.6)
+    // …and the bottom wall catches a bounce-light.
+    const bounce = ctx.createLinearGradient(0, winY + winH * 0.7, 0, winY + winH)
+    bounce.addColorStop(0, 'rgba(255, 255, 255, 0)')
+    bounce.addColorStop(1, 'rgba(255, 255, 255, 0.12)')
+    ctx.fillStyle = bounce
+    ctx.fillRect(winX, winY + winH * 0.7, winW, winH * 0.3)
     ctx.restore()
   }
 
@@ -493,7 +605,7 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
   ctx.fillRect(-0.31 * CW, winY + winH * 0.62, 0.62 * CW, winH * 0.3)
   if (real) {
     // The ribbon's top edge catches a hair of light.
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.07)'
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.09)'
     ctx.fillRect(-0.31 * CW, winY + winH * 0.62, 0.62 * CW, Math.max(1, 1.2 * S))
   }
 
@@ -511,23 +623,23 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
     if (real) {
       // Wound brown tape with a soft roll-off toward the rim.
       const pack = ctx.createRadialGradient(x, hubY, hubR * 0.7, x, hubY, spoolR)
-      pack.addColorStop(0, '#241b13')
-      pack.addColorStop(0.72, '#171009')
-      pack.addColorStop(1, '#0c0805')
+      pack.addColorStop(0, '#261c12')
+      pack.addColorStop(0.7, '#171009')
+      pack.addColorStop(1, '#0b0705')
       ctx.fillStyle = pack
     } else {
       ctx.fillStyle = '#161618'
     }
     ctx.fill()
     if (real) {
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)'
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'
       ctx.lineWidth = Math.max(0.75, 1.2 * S)
       ctx.stroke()
     }
     ctx.save()
     ctx.translate(x, hubY)
     ctx.rotate(angle)
-    ctx.strokeStyle = real ? 'rgba(255, 255, 255, 0.10)' : 'rgba(255, 255, 255, 0.07)'
+    ctx.strokeStyle = real ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.07)'
     ctx.lineWidth = Math.max(0.75, 0.006 * CW)
     for (let k = 0; k < 4; k++) {
       const r = hubR * 1.15 + ((spoolR - hubR * 1.15) * (k + 0.6)) / 4.4
@@ -545,9 +657,9 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
     ctx.arc(0, 0, hubR, 0, TWO_PI)
     if (real) {
       const hubMetal = ctx.createRadialGradient(-hubR * 0.35, -hubR * 0.35, hubR * 0.1, 0, 0, hubR)
-      hubMetal.addColorStop(0, '#f5f5f7')
-      hubMetal.addColorStop(0.6, '#d6d6db')
-      hubMetal.addColorStop(1, '#a3a3ab')
+      hubMetal.addColorStop(0, '#ffffff')
+      hubMetal.addColorStop(0.55, '#dadade')
+      hubMetal.addColorStop(1, '#9c9ca4')
       ctx.fillStyle = hubMetal
     } else {
       ctx.fillStyle = '#dcdcdf'
@@ -556,13 +668,20 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)'
     ctx.lineWidth = Math.max(0.75, 1 * S)
     ctx.stroke()
+    if (real) {
+      // Specular dot — the glossy plastic glint.
+      ctx.beginPath()
+      ctx.arc(-hubR * 0.38, -hubR * 0.38, hubR * 0.18, 0, TWO_PI)
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'
+      ctx.fill()
+    }
     ctx.fillStyle = '#0a0a0b'
     ctx.beginPath()
     ctx.arc(0, 0, 0.028 * CW, 0, TWO_PI)
     ctx.fill()
     if (real) {
       // Bored hole with a catch-light ring.
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)'
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.30)'
       ctx.lineWidth = Math.max(0.75, 0.8 * S)
       ctx.beginPath()
       ctx.arc(0, 0, 0.034 * CW, 0, TWO_PI)
@@ -580,17 +699,25 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
   }
 
   if (real) {
-    // Glass reflection across the window — viewer-anchored, over the tape.
+    // Glass reflections across the window — viewer-anchored, over the tape.
+    // A main diagonal band plus a thinner counter-reflection, like real glass.
     ctx.save()
     roundRectPath(ctx, winX, winY, winW, winH, winR)
     ctx.clip()
     const glass = ctx.createLinearGradient(winX, winY, winX + winW, winY + winH)
     glass.addColorStop(0, 'rgba(255, 255, 255, 0)')
-    glass.addColorStop(0.35, `rgba(255, 255, 255, ${(0.03 + 0.12 * sheen).toFixed(3)})`)
-    glass.addColorStop(0.5, `rgba(255, 255, 255, ${(0.06 + 0.22 * sheen).toFixed(3)})`)
-    glass.addColorStop(0.66, `rgba(255, 255, 255, ${(0.03 + 0.12 * sheen).toFixed(3)})`)
+    glass.addColorStop(0.32, `rgba(255, 255, 255, ${(0.05 + 0.20 * sheen).toFixed(3)})`)
+    glass.addColorStop(0.46, `rgba(255, 255, 255, ${(0.10 + 0.36 * sheen).toFixed(3)})`)
+    glass.addColorStop(0.6, `rgba(255, 255, 255, ${(0.05 + 0.20 * sheen).toFixed(3)})`)
     glass.addColorStop(1, 'rgba(255, 255, 255, 0)')
     ctx.fillStyle = glass
+    ctx.fillRect(winX, winY, winW, winH)
+    const counter = ctx.createLinearGradient(winX + winW, winY, winX, winY + winH)
+    counter.addColorStop(0, 'rgba(255, 255, 255, 0)')
+    counter.addColorStop(0.5, `rgba(255, 255, 255, ${(0.03 + 0.14 * sheen).toFixed(3)})`)
+    counter.addColorStop(0.58, 'rgba(255, 255, 255, 0)')
+    counter.addColorStop(1, 'rgba(255, 255, 255, 0)')
+    ctx.fillStyle = counter
     ctx.fillRect(winX, winY, winW, winH)
     ctx.restore()
   }
@@ -609,13 +736,20 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
     ctx.fillStyle = g
     ctx.fillRect(-hw, -hh, CW, CH)
     if (real) {
-      // A tighter specular band on top — the highlight that sells plastic.
+      // Twin specular bands — the glossy streaks that sell molded plastic.
       const streak = ctx.createLinearGradient(-hw, -hh, hw * 0.55, hh)
       streak.addColorStop(0, 'rgba(255, 255, 255, 0)')
-      streak.addColorStop(0.5, `rgba(255, 255, 255, ${(0.05 + 0.24 * sheen).toFixed(3)})`)
-      streak.addColorStop(0.6, 'rgba(255, 255, 255, 0)')
+      streak.addColorStop(0.46, `rgba(255, 255, 255, ${(0.10 + 0.45 * sheen).toFixed(3)})`)
+      streak.addColorStop(0.56, 'rgba(255, 255, 255, 0)')
       streak.addColorStop(1, 'rgba(255, 255, 255, 0)')
       ctx.fillStyle = streak
+      ctx.fillRect(-hw, -hh, CW, CH)
+      const counter = ctx.createLinearGradient(hw * 0.2, hh, -hw * 0.6, -hh * 0.2)
+      counter.addColorStop(0, 'rgba(255, 255, 255, 0)')
+      counter.addColorStop(0.5, `rgba(255, 255, 255, ${(0.04 + 0.18 * sheen).toFixed(3)})`)
+      counter.addColorStop(0.62, 'rgba(255, 255, 255, 0)')
+      counter.addColorStop(1, 'rgba(255, 255, 255, 0)')
+      ctx.fillStyle = counter
       ctx.fillRect(-hw, -hh, CW, CH)
     }
     ctx.restore()
@@ -629,7 +763,7 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
       roundRectPath(ctx, -hw, -hh, CW, CH, shellR)
       ctx.clip()
       ctx.globalCompositeOperation = 'overlay'
-      ctx.globalAlpha = 0.22
+      ctx.globalAlpha = 0.26
       ctx.fillStyle = grain
       ctx.fillRect(-hw, -hh, CW, CH)
       ctx.restore()

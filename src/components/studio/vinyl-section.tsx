@@ -423,9 +423,19 @@ export function VinylSection() {
             onChange={(shadowAngle) => patchDisc({ shadowAngle })}
             format={(v) => `${Math.round(v)}°`}
           />
+          <div className="flex h-6 items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/60 px-2">
+            <MicroLabel>Color</MicroLabel>
+            <ColorPickerButton
+              ariaLabel="Shadow color"
+              value={disc.shadowColor ?? '#000000'}
+              onChange={(shadowColor) => patchDisc({ shadowColor })}
+            />
+          </div>
           <p className="text-[11px] leading-snug text-zinc-600">
             Depth fades the drop shadow behind the cover, record/CD and
-            cassette; angle swings its direction (90° = straight down).
+            cassette; angle swings its direction (90° = straight down). On
+            very dark backgrounds a black shadow disappears — pick a lighter
+            or colored one there.
           </p>
         </div>
       ) : null}

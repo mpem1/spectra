@@ -1092,3 +1092,18 @@ Work Log:
 
 Stage Summary:
 - Two new dials for the album-art layer: the cassette can now be drawn as a flat illustration or a photoreal shaded render — same labels, colors and turning hubs either way — and every face (sleeve, vinyl, CD, cassette) casts a drop shadow whose depth and direction are yours to set, from subtle grounding to dramatic off-axis light.
+Task ID: 33
+Agent: Z.ai Code (main)
+Task: Realistic cassette v2 — real lighting, not just sheen; shadows with real range + color
+
+Work Log:
+- User feedback: "realistic is still a vector… you just add sheen" and "shadow options are very limited, barely visible… the shadow is too light".
+- cover-fit.ts: faceShadow curve re-tuned — depth now drives reach 36·S·d, blur 75·S·d, alpha 0.25+0.65·d (was 24/58/0.28+0.55) → depth 100 is an unmistakable 36px-offset, 75px-blur, 0.9-alpha shadow at 720p; new withAlpha(color, alpha) helper so the shadow can be any hex.
+- types.ts: DiscConfig += shadowColor (default #000000 — no-op for old saves).
+- disc.ts + cassette.ts: all three shadow passes use withAlpha(disc.shadowColor) — on near-black backgrounds a black shadow is physically invisible, so the panel gains a Shadow color picker (hint explains it).
+- cassette.ts realistic path rebuilt as an actual lighting model (vector path byte-identical): diagonal light gradient top-left→bottom-right (±0.45 shade swing, was a vertical ±0.30), radial hotspot at the light corner, half-clipped rim strokes (bright TL edge / dark BR edge), wide soft inner-perimeter occlusion, molded-halves seam line with under-light, see-through reel silhouettes on BARE shells only (smoke-plastic cue; paper/art labels wrap the outside so they hide the insides), screw contact-shadow AO rings, contact shadows under the art label AND mixtape card (labels sit ON the shell), stronger print gloss + pressed edge, deeper window (darker backing, 0.65 top cavity shadow, bottom bounce-light, stronger bezel 0.70/0.22), hub specular dots + brighter metal ramp, twin glossy streaks (main + counter, up to 0.55 alpha), contrastier grain tile (84..172 @ 0.26 overlay).
+- vinyl-section.tsx: Shadows block gains the Color row + updated hint.
+- Browser E2E (80% cassette, fresh session): realistic blank shell shows diagonal lighting + silhouettes + streaks + grain ✓; Vector unchanged (flat clean illustration) — side-by-side contrast is now day-and-night ✓; shadow depth 100 + color #38bdf8 → huge visible cyan shadow on the dark studio background, angle 0 pushes it right ✓; restored 40/90/#000000 ✓; mixtape realistic shows paper contact shadow + embossed text ✓; 0 console errors; lint 0 errors.
+
+Stage Summary:
+- The realistic cassette is no longer the vector with sheen — it is lit like a photo: diagonal key light, bevel rims, contact shadows under every layer, glass with double reflections, smoke-plastic see-through reels, grain. And the drop shadows now have real range with a color picker — because on a near-black background the only way to see a shadow is to choose its color.

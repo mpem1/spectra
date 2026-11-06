@@ -250,6 +250,8 @@ export interface DiscConfig {
   shadowDepth: number
   /** Shadow direction in degrees — 0 right · 90 down · 180 left · 270 up */
   shadowAngle: number
+  /** Shadow color — black by default; pick a lighter/colored one for dark backgrounds */
+  shadowColor: string
   /** Spin speed in rotations per minute (33.33 ≈ LP, 45 ≈ single) */
   rpm: number
   /** Spin direction: 1 = clockwise, -1 = counter-clockwise */
@@ -550,6 +552,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     labelTextColor: '#1c1c1e',
     shadowDepth: 40,
     shadowAngle: 90,
+    shadowColor: '#000000',
     rpm: 33.33,
     direction: 1,
     pulse: 0,

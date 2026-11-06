@@ -75,10 +75,12 @@ export function roundRectPath(
 /**
  * Drop-shadow parameters behind the album-art faces (square cover, vinyl/CD
  * disc, cassette) from the depth (0..100) and angle (degrees) sliders.
- * Depth 40 / angle 90 reproduces the classic look; depth 0 returns null so
- * callers skip the shadow pass entirely. The blur, reach and darkness all
- * grow with depth; angle aims the offset around the clock (90 = straight
- * down). Sizes are pre-scaled by S (canvas 720p unit).
+ * Depth drives reach, blur and darkness together — depth 100 is a huge,
+ * unmistakable shadow (36px reach, 75px blur, 0.9 alpha at 720p) while 0
+ * returns null so callers skip the shadow pass entirely. Angle aims the
+ * offset around the clock (90 = straight down). Color is applied by callers
+ * via withAlpha() — a black shadow is invisible on near-black backgrounds,
+ * so the panel offers a color picker too.
  */
 export function faceShadow(
   depth: number,
@@ -89,9 +91,16 @@ export function faceShadow(
   if (d <= 0.001) return null
   const rad = ((Number.isFinite(angle) ? angle : 90) * Math.PI) / 180
   return {
-    dx: Math.cos(rad) * d * 24 * S,
-    dy: Math.sin(rad) * d * 24 * S,
-    blur: d * 58 * S,
-    alpha: 0.28 + d * 0.55,
+    dx: Math.cos(rad) * d * 36 * S,
+    dy: Math.sin(rad) * d * 36 * S,
+    blur: d * 75 * S,
+    alpha: 0.25 + d * 0.65,
   }
+}
+
+/** Apply an alpha to a #hex color (black fallback for anything unparseable). */
+export function withAlpha(color: string, alpha: number): string {
+  const c = parseHex6(color)
+  if (!c) return `rgba(0, 0, 0, ${alpha})`
+  return `rgba(${Math.round(c.r * 255)}, ${Math.round(c.g * 255)}, ${Math.round(c.b * 255)}, ${alpha})`
 }

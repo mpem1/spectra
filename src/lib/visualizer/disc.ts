@@ -20,7 +20,7 @@
  */
 import type { AudioFrame, DiscConfig, RenderContext } from './types'
 import { getBackgroundImage } from './image-cache'
-import { drawImageCover, faceShadow } from './cover-fit'
+import { drawImageCover, faceShadow, withAlpha } from './cover-fit'
 import { drawCassette } from './cassette'
 
 const TWO_PI = Math.PI * 2
@@ -57,7 +57,7 @@ export function drawDisc(rc: RenderContext, frame: AudioFrame, disc: DiscConfig)
       const sh = faceShadow(disc.shadowDepth ?? 40, disc.shadowAngle ?? 90, S)
       if (sh) {
         ctx.save()
-        ctx.shadowColor = `rgba(0, 0, 0, ${sh.alpha})`
+        ctx.shadowColor = withAlpha(disc.shadowColor ?? '#000000', sh.alpha)
         ctx.shadowBlur = sh.blur
         ctx.shadowOffsetX = sh.dx
         ctx.shadowOffsetY = sh.dy
@@ -114,7 +114,7 @@ export function drawDisc(rc: RenderContext, frame: AudioFrame, disc: DiscConfig)
       // Sleeve shadow (drawn before the art so it hugs the square).
       const sh = faceShadow(disc.shadowDepth ?? 40, disc.shadowAngle ?? 90, S)
       if (sh) {
-        ctx.shadowColor = `rgba(0, 0, 0, ${sh.alpha})`
+        ctx.shadowColor = withAlpha(disc.shadowColor ?? '#000000', sh.alpha)
         ctx.shadowBlur = sh.blur
         ctx.shadowOffsetX = sh.dx
         ctx.shadowOffsetY = sh.dy
