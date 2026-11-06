@@ -100,8 +100,10 @@ export function PlayerBar({
         aria-label={loop ? 'Disable repeat' : 'Enable repeat'}
         aria-pressed={loop}
         className={cn(
-          'size-8 shrink-0 hover:bg-zinc-800',
-          loop ? 'text-emerald-400 hover:text-emerald-300' : 'text-zinc-400 hover:text-zinc-100',
+          'size-8 shrink-0',
+          loop
+            ? 'bg-emerald-500 text-zinc-950 hover:bg-emerald-400 hover:text-zinc-950'
+            : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100',
         )}
         onClick={() => setLoop(!loop)}
       >

@@ -100,8 +100,8 @@ function MediaBackgroundControls() {
             className={cn(
               'flex h-11 items-center justify-center gap-2 rounded-lg border text-xs font-medium transition-colors',
               background.flipX
-                ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200',
+                ? 'border-emerald-400 bg-emerald-500 text-zinc-950'
+                : 'border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:border-zinc-700 hover:text-zinc-100',
             )}
           >
             <FlipHorizontal2 className="size-4" aria-hidden />
@@ -114,8 +114,8 @@ function MediaBackgroundControls() {
             className={cn(
               'flex h-11 items-center justify-center gap-2 rounded-lg border text-xs font-medium transition-colors',
               background.flipY
-                ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200',
+                ? 'border-emerald-400 bg-emerald-500 text-zinc-950'
+                : 'border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:border-zinc-700 hover:text-zinc-100',
             )}
           >
             <FlipVertical2 className="size-4" aria-hidden />

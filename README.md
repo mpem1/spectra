@@ -69,6 +69,11 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
   colored shadow so it actually shows.
 - **Projects** — save/load studio configurations, stored locally in the
   visitor's browser (IndexedDB) — no account, no server.
+- **Legible controls** — the studio runs on a forced dark theme with
+  high-contrast states everywhere: active tabs, mode chips and option cards
+  are solid green with near-black text, every on/off switch is solid green
+  (on) vs. visible gray (off) — never a faint tint — and the Export tab's
+  Snapshot / PNG sequence buttons are dark chips with white text.
 - **Shareable looks** — one click turns your whole setup into a link that
   anyone can open. See [Sharing a look](#sharing-a-look-one-click-link) below.
 

@@ -1157,3 +1157,21 @@ Work Log:
 
 Stage Summary:
 - The sleeve and the record no longer have to share one picture: upload a second image just for the disc face — vinyl label, full CD face, or cassette label — and swap or remove it anytime; without one, everything falls back to the shared album art exactly as before, in the preview and in every export.
+
+---
+
+Task ID: 37
+Agent: Z.ai Code (main)
+Task: UI contrast overhaul — unmistakable on/off states + legible Export buttons
+User: "on the user interface its hard for me to tell if a toggle is on or off the colors clash too much same with export tab the snapshot and png sewuence tabs are illegible cause the colors of the text are too close to the tab color"
+
+Work Log:
+- Root cause: <html> never carried the `dark` class, so every shadcn primitive resolved LIGHT theme values while the studio layout is hardcoded dark zinc. Outline buttons (Snapshot (PNG) / PNG sequence) rendered a WHITE background that inherited the wrapper's near-white text → white-on-white, literally illegible. Switches resolved backwards too (ON = near-black track invisible on dark panels, OFF = bright light-gray pill). Select/Popover/Dialog contents were also white-on-dark.
+- Theme foundation: layout.tsx <html className="dark">; sonner.tsx Toaster forced theme="dark" (drop next-themes hook); slider.tsx thumb hardcoded light (border-zinc-300/60 bg-zinc-100) so the knob stays visible on dark tracks; range/track now resolve to near-white/dark-zinc correctly in dark.
+- Switch (ui/switch.tsx): state colors hardcoded, never translucent — OFF = solid zinc-700 track + zinc-600 border + zinc-200 knob; ON = emerald-600 track + white knob + soft emerald glow; bumped h-[1.15rem]→h-5. Any on/off is now distinguishable at a glance (hue AND brightness differ).
+- One pressed/selected system across every state-bearing control — active = SOLID emerald-500 chip with zinc-950 text/icon (≈7.5:1), inactive = dark chip/zinc-300 text (≈12:1): control-panel.tsx main tabs (Style/Lyrics/Export/Presets, incl. dark-scoped data-[state=active] overrides so the base dark: variants can't win); controls.tsx OptionCard (+ soft emerald glow); vinyl-section.tsx × 7 (visualizer layer, disc face, RPM presets, direction, cassette style, label); lyrics-tab.tsx × 4 (fill, gradient source, title fill, title gradient); gradient-editor.tsx (shape chips; preset pills brightened to emerald-400 border + 25% fill + white semibold label); background-section.tsx Flip horizontal/vertical; player-bar.tsx repeat (solid emerald chip when looping).
+- Export tab: Snapshot (PNG) + PNG sequence moved outline→variant="secondary" with explicit border-zinc-700 bg (solid dark chips, white text, hover zinc-700/white) — legible regardless of theme resolution.
+- Browser E2E (agent-browser): computed styles confirm html.dark, active tab bg = emerald-500/text ≈ black, switches OFF track zinc-700 + zinc-200 knob vs ON emerald-600 + white knob; screenshots: Style tab (Bars card solid emerald, Sunset pill highlighted, Linear chip solid, cycle-colors switch ON green), Export bottom (Snapshot/PNG sequence dark chips white text), vinyl section (Vinyl label/33⅓/Clockwise solid chips, Grooves ON green), Lyrics (Solid chip, Uppercase/Outline/Glow switches OFF visible), Presets, mobile 390×844 (inline tabs + legible switches). Frame-rate dropdown opens dark with white text. 0 console errors; lint 0 errors (27 pre-existing vendored-ffmpeg warnings).
+
+Stage Summary:
+- Every switch, chip and tab now has an unmistakable on/off look — bright green means active, dark gray means idle — and the Export tab's Snapshot / PNG sequence buttons are dark chips with white text instead of the white-on-white they were. Underneath, the whole app finally runs on the dark theme it was designed for, so dropdowns, pickers and toasts are consistent too.

@@ -398,16 +398,16 @@ export function ExportTab() {
       {/* Stills — single frame + numbered frame sequence (for video editors) */}
       <div className="grid grid-cols-2 gap-2">
         <Button
-          variant="outline"
-          className="h-10 border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900"
+          variant="secondary"
+          className="h-10 border border-zinc-700 text-zinc-100 hover:bg-zinc-700 hover:text-white"
           onClick={handleSnapshot}
         >
           <Camera className="size-4" />
           Snapshot (PNG)
         </Button>
         <Button
-          variant="outline"
-          className="h-10 border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900"
+          variant="secondary"
+          className="h-10 border border-zinc-700 text-zinc-100 hover:bg-zinc-700 hover:text-white"
           disabled={pngBusy || exporting}
           onClick={() => void handlePngSeq()}
         >

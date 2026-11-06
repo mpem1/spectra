@@ -113,8 +113,8 @@ export function VinylSection() {
                 className={cn(
                   'h-7 rounded-md text-xs transition-colors',
                   vizLayer === m.id
-                    ? 'bg-emerald-500/15 text-emerald-300'
-                    : 'text-zinc-400 hover:text-zinc-200',
+                    ? 'bg-emerald-500 font-medium text-zinc-950'
+                    : 'text-zinc-300 hover:text-zinc-100',
                 )}
               >
                 {m.label}
@@ -323,8 +323,8 @@ export function VinylSection() {
                   className={cn(
                     'h-7 rounded-md text-xs transition-colors',
                     disc.mode === m.id
-                      ? 'bg-emerald-500/15 text-emerald-300'
-                      : 'text-zinc-400 hover:text-zinc-200',
+                      ? 'bg-emerald-500 font-medium text-zinc-950'
+                      : 'text-zinc-300 hover:text-zinc-100',
                   )}
                 >
                   {m.label}
@@ -431,8 +431,8 @@ export function VinylSection() {
                 className={cn(
                   'h-7 rounded-md border text-xs transition-colors',
                   Math.abs(disc.rpm - p.value) < 0.01
-                    ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300'
-                    : 'border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:text-zinc-200',
+                    ? 'border-emerald-400 bg-emerald-500 font-medium text-zinc-950'
+                    : 'border-zinc-800 bg-zinc-950/60 text-zinc-300 hover:text-zinc-100',
                 )}
               >
                 {p.label}
@@ -449,8 +449,8 @@ export function VinylSection() {
                 className={cn(
                   'flex h-7 items-center justify-center gap-1.5 rounded-md text-xs transition-colors',
                   disc.direction === 1
-                    ? 'bg-emerald-500/15 text-emerald-300'
-                    : 'text-zinc-400 hover:text-zinc-200',
+                    ? 'bg-emerald-500 font-medium text-zinc-950'
+                    : 'text-zinc-300 hover:text-zinc-100',
                 )}
               >
                 <RotateCw className="size-3.5" aria-hidden />
@@ -463,8 +463,8 @@ export function VinylSection() {
                 className={cn(
                   'flex h-7 items-center justify-center gap-1.5 rounded-md text-xs transition-colors',
                   disc.direction === -1
-                    ? 'bg-emerald-500/15 text-emerald-300'
-                    : 'text-zinc-400 hover:text-zinc-200',
+                    ? 'bg-emerald-500 font-medium text-zinc-950'
+                    : 'text-zinc-300 hover:text-zinc-100',
                 )}
               >
                 <RotateCcw className="size-3.5" aria-hidden />
@@ -580,8 +580,8 @@ function CassetteControls() {
               className={cn(
                 'h-7 rounded-md text-xs transition-colors',
                 style === m.id
-                  ? 'bg-emerald-500/15 text-emerald-300'
-                  : 'text-zinc-400 hover:text-zinc-200',
+                  ? 'bg-emerald-500 font-medium text-zinc-950'
+                  : 'text-zinc-300 hover:text-zinc-100',
               )}
             >
               {m.label}
@@ -622,8 +622,8 @@ function CassetteControls() {
               className={cn(
                 'h-7 rounded-md text-xs transition-colors',
                 label === m.id
-                  ? 'bg-emerald-500/15 text-emerald-300'
-                  : 'text-zinc-400 hover:text-zinc-200',
+                  ? 'bg-emerald-500 font-medium text-zinc-950'
+                  : 'text-zinc-300 hover:text-zinc-100',
               )}
             >
               {m.label}

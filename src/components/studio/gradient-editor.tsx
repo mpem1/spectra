@@ -168,7 +168,7 @@ export function GradientEditor({
                 className={cn(
                   'flex items-center gap-1.5 rounded-full border px-2 py-1 transition-colors',
                   active
-                    ? 'border-emerald-500 bg-emerald-500/10'
+                    ? 'border-emerald-400 bg-emerald-500/25'
                     : 'border-zinc-800 bg-zinc-950/40 hover:border-zinc-600',
                 )}
               >
@@ -177,7 +177,7 @@ export function GradientEditor({
                   style={{ background: gradientCss(preset.stops, 90) }}
                   aria-hidden
                 />
-                <span className="text-[11px] leading-none text-zinc-300">{preset.name}</span>
+                <span className={cn('text-[11px] leading-none', active ? 'font-semibold text-zinc-100' : 'text-zinc-300')}>{preset.name}</span>
               </button>
             )
           })}
@@ -244,8 +244,8 @@ export function GradientEditor({
               className={cn(
                 'h-7 rounded-md text-xs capitalize transition-colors',
                 value.shape === shape
-                  ? 'bg-emerald-500/15 text-emerald-300'
-                  : 'text-zinc-400 hover:text-zinc-200',
+                  ? 'bg-emerald-500 font-medium text-zinc-950'
+                  : 'text-zinc-300 hover:text-zinc-100',
               )}
             >
               {shape}

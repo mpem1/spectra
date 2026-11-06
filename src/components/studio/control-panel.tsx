@@ -39,7 +39,7 @@ export function ControlPanel() {
               <TabsTrigger
                 key={tab.id}
                 value={tab.id}
-                className="gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 data-[state=active]:bg-zinc-800 data-[state=active]:text-emerald-400 data-[state=active]:hover:text-emerald-400"
+                className="gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 data-[state=active]:bg-emerald-500 data-[state=active]:text-zinc-950 data-[state=active]:font-semibold data-[state=active]:hover:text-zinc-950 dark:data-[state=active]:bg-emerald-500 dark:data-[state=active]:text-zinc-950"
               >
                 <tab.icon className="size-3.5" aria-hidden />
                 {tab.label}

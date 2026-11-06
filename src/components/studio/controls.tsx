@@ -103,8 +103,8 @@ export function OptionCard({
       className={cn(
         'flex min-h-[64px] flex-col items-center justify-center gap-1.5 rounded-lg border px-1 py-2.5 transition-colors',
         active
-          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-          : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+          ? 'border-emerald-400 bg-emerald-500 text-zinc-950 shadow-[0_0_16px_-4px] shadow-emerald-500/50'
+          : 'border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:border-zinc-700 hover:text-zinc-100'
       )}
     >
       <Icon className="size-5" aria-hidden />

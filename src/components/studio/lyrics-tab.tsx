@@ -550,8 +550,8 @@ export function LyricsTab() {
                 className={cn(
                   'h-7 rounded-md text-xs capitalize transition-colors',
                   lyrics.fill === mode
-                    ? 'bg-emerald-500/15 text-emerald-300'
-                    : 'text-zinc-400 hover:text-zinc-200',
+                    ? 'bg-emerald-500 font-medium text-zinc-950'
+                    : 'text-zinc-300 hover:text-zinc-100',
                 )}
               >
                 {mode}
@@ -571,8 +571,8 @@ export function LyricsTab() {
                     className={cn(
                       'h-7 rounded-md text-xs transition-colors',
                       lyrics.gradientMode === mode
-                        ? 'bg-emerald-500/15 text-emerald-300'
-                        : 'text-zinc-400 hover:text-zinc-200',
+                        ? 'bg-emerald-500 font-medium text-zinc-950'
+                        : 'text-zinc-300 hover:text-zinc-100',
                     )}
                   >
                     {mode === 'visualizer' ? 'Match visualizer' : 'Custom'}
@@ -861,8 +861,8 @@ export function LyricsTab() {
                 className={cn(
                   'h-7 rounded-md text-xs capitalize transition-colors',
                   title.fill === mode
-                    ? 'bg-emerald-500/15 text-emerald-300'
-                    : 'text-zinc-400 hover:text-zinc-200',
+                    ? 'bg-emerald-500 font-medium text-zinc-950'
+                    : 'text-zinc-300 hover:text-zinc-100',
                 )}
               >
                 {mode}
@@ -881,8 +881,8 @@ export function LyricsTab() {
                     className={cn(
                       'h-7 rounded-md text-xs transition-colors',
                       title.gradientMode === mode
-                        ? 'bg-emerald-500/15 text-emerald-300'
-                        : 'text-zinc-400 hover:text-zinc-200',
+                        ? 'bg-emerald-500 font-medium text-zinc-950'
+                        : 'text-zinc-300 hover:text-zinc-100',
                     )}
                   >
                     {mode === 'visualizer' ? 'Match visualizer' : 'Custom'}
