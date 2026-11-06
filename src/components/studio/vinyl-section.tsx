@@ -72,8 +72,9 @@ export function VinylSection() {
       <p className="text-[11px] leading-snug text-zinc-600">
         A square cover with a record sliding out of it, spinning at your set
         speed. The face is a vinyl with the art on its center label, a CD
-        with the art across it, or a cassette tape with turning hubs — cover
-        and disc share the same image.
+        with the art across it, or a cassette tape with turning hubs — in a
+        clean vector or a shaded realistic style. Cover and disc share the
+        same image.
       </p>
 
       {/* Album art upload */}
@@ -399,6 +400,35 @@ export function VinylSection() {
           />
         </>
       ) : null}
+
+      {/* Drop shadows behind every face — cover, record/CD, cassette */}
+      {disc.enabled ? (
+        <div className="space-y-1.5 rounded-lg border border-zinc-800/80 bg-zinc-950/40 p-2">
+          <MicroLabel>Shadows</MicroLabel>
+          <SliderRow
+            label="Shadow depth"
+            value={disc.shadowDepth ?? 40}
+            min={0}
+            max={100}
+            step={1}
+            onChange={(shadowDepth) => patchDisc({ shadowDepth })}
+            format={(v) => (v <= 0 ? 'Off' : `${Math.round(v)}%`)}
+          />
+          <SliderRow
+            label="Shadow angle"
+            value={disc.shadowAngle ?? 90}
+            min={0}
+            max={360}
+            step={5}
+            onChange={(shadowAngle) => patchDisc({ shadowAngle })}
+            format={(v) => `${Math.round(v)}°`}
+          />
+          <p className="text-[11px] leading-snug text-zinc-600">
+            Depth fades the drop shadow behind the cover, record/CD and
+            cassette; angle swings its direction (90° = straight down).
+          </p>
+        </div>
+      ) : null}
     </section>
   )
 }
@@ -407,18 +437,52 @@ export function VinylSection() {
 const CASSETTE_STRIPES = ['#e5325c', '#2bb3e6', '#f2c722']
 
 /**
- * Cassette face controls: shell plastic color, the label style (bare
- * plastic, album art, or the built-in mixtape label) and — for the mixtape —
- * the text on the rules plus the card, text and stripe colors.
+ * Cassette face controls: drawing style (flat vector or shaded realistic
+ * render), shell plastic color, the label style (bare plastic, album art,
+ * or the built-in mixtape label) and — for the mixtape — the text on the
+ * rules plus the card, text and stripe colors.
  */
 function CassetteControls() {
   const disc = useStudioStore((s) => s.config.disc)
   const patchDisc = useStudioStore((s) => s.patchDisc)
   const stripes = disc.stripes?.length >= 3 ? disc.stripes.slice(0, 3) : [...CASSETTE_STRIPES]
   const label = disc.cassetteLabel ?? 'default'
+  const style = disc.cassetteStyle ?? 'vector'
 
   return (
     <div className="space-y-2 rounded-lg border border-zinc-800/80 bg-zinc-950/40 p-2">
+      <div className="space-y-1.5">
+        <MicroLabel>Style</MicroLabel>
+        <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+          {(
+            [
+              { id: 'vector', label: 'Vector' },
+              { id: 'realistic', label: 'Realistic' },
+            ] as const
+          ).map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              aria-pressed={style === m.id}
+              onClick={() => patchDisc({ cassetteStyle: m.id })}
+              className={cn(
+                'h-7 rounded-md text-xs transition-colors',
+                style === m.id
+                  ? 'bg-emerald-500/15 text-emerald-300'
+                  : 'text-zinc-400 hover:text-zinc-200',
+              )}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] leading-snug text-zinc-600">
+          {style === 'realistic'
+            ? 'Shaded render — molded plastic with bevels, metal screws and hubs, glass reflection.'
+            : 'Clean flat illustration — crisp shapes and simple gradients.'}
+        </p>
+      </div>
+
       <div className="flex h-6 items-center justify-between">
         <MicroLabel>Shell plastic</MicroLabel>
         <ColorPickerButton

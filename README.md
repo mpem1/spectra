@@ -47,7 +47,11 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
   Or flip the face to a whole **cassette tape** with turning sprocket hubs:
   any shell color, and the label is bare plastic, your album art, or the
   built-in mixtape design (A badge, ruled lines, three custom stripe colors,
-  and your own text written on the rules).
+  and your own text written on the rules). The cassette comes in two styles —
+  a clean **vector** illustration or a shaded **realistic** render with molded
+  plastic bevels, metal screws and hubs, a glass window reflection and film
+  grain. Every face also casts a **drop shadow** whose depth and direction
+  (angle) you control.
 - **Projects** — save/load studio configurations, stored locally in the
   visitor's browser (IndexedDB) — no account, no server.
 - **Shareable looks** — one click turns your whole setup into a link that

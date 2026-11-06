@@ -232,6 +232,8 @@ export interface DiscConfig {
   /** Which part of the art shows on the disc face/label, 0..100 (50 = centered) */
   discArtX: number
   discArtY: number
+  /** Cassette drawing style: clean flat illustration or shaded photoreal render */
+  cassetteStyle: 'vector' | 'realistic'
   /** Cassette shell plastic color */
   shellColor: string
   /** Cassette label: bare plastic, the album art, or the built-in mixtape label */
@@ -244,6 +246,10 @@ export interface DiscConfig {
   labelText: string
   /** Mixtape label text color */
   labelTextColor: string
+  /** Drop-shadow depth behind the cover / disc / cassette, 0..100 (0 = off) */
+  shadowDepth: number
+  /** Shadow direction in degrees — 0 right · 90 down · 180 left · 270 up */
+  shadowAngle: number
   /** Spin speed in rotations per minute (33.33 ≈ LP, 45 ≈ single) */
   rpm: number
   /** Spin direction: 1 = clockwise, -1 = counter-clockwise */
@@ -535,12 +541,15 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     discArtZoom: 1,
     discArtX: 50,
     discArtY: 50,
+    cassetteStyle: 'vector',
     shellColor: '#2f2f34',
     cassetteLabel: 'default',
     stripes: ['#e5325c', '#2bb3e6', '#f2c722'],
     labelColor: '#f7f4ec',
     labelText: '',
     labelTextColor: '#1c1c1e',
+    shadowDepth: 40,
+    shadowAngle: 90,
     rpm: 33.33,
     direction: 1,
     pulse: 0,

@@ -71,3 +71,27 @@ export function roundRectPath(
   if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, w, h, r)
   else ctx.rect(x, y, w, h)
 }
+
+/**
+ * Drop-shadow parameters behind the album-art faces (square cover, vinyl/CD
+ * disc, cassette) from the depth (0..100) and angle (degrees) sliders.
+ * Depth 40 / angle 90 reproduces the classic look; depth 0 returns null so
+ * callers skip the shadow pass entirely. The blur, reach and darkness all
+ * grow with depth; angle aims the offset around the clock (90 = straight
+ * down). Sizes are pre-scaled by S (canvas 720p unit).
+ */
+export function faceShadow(
+  depth: number,
+  angle: number,
+  S: number,
+): { dx: number; dy: number; blur: number; alpha: number } | null {
+  const d = Math.max(0, Math.min(100, Number.isFinite(depth) ? depth : 40)) / 100
+  if (d <= 0.001) return null
+  const rad = ((Number.isFinite(angle) ? angle : 90) * Math.PI) / 180
+  return {
+    dx: Math.cos(rad) * d * 24 * S,
+    dy: Math.sin(rad) * d * 24 * S,
+    blur: d * 58 * S,
+    alpha: 0.28 + d * 0.55,
+  }
+}

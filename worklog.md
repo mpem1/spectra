@@ -1076,3 +1076,19 @@ Work Log:
 
 Stage Summary:
 - The family is complete: square cover + vinyl + CD + cassette, all sharing move/resize, art zoom/pan, RPM spin/pulse and frame-exact exports — the cassette adds customizable shell plastic and a mixtape label you can leave blank, wrap in art, or restyle down to the last stripe.
+Task ID: 32
+Agent: Z.ai Code (main)
+Task: Realistic cassette style + adjustable shadows behind every disc face
+
+Work Log:
+- User request: (1) an additional cassette version that looks realistic, not just the vector one; (2) a shadow behind each disc face with changeable depth and angle.
+- types.ts: DiscConfig += cassetteStyle 'vector'|'realistic' (default vector = no-op for old saves), shadowDepth 0..100 (default 40) and shadowAngle 0..360 (default 90 = straight down). setConfig merge auto-defaults old saves / share links.
+- cover-fit.ts: new shared faceShadow(depth, angle, S) — depth scales blur (58·S·d), reach (24·S·d) and darkness (0.28+0.55·d) together so one slider feels natural; angle aims the offset around the clock (0 right · 90 down · 180 left · 270 up). Depth 0 → null so callers skip the shadow pass entirely. Default 40/90 reproduces the previous hardcoded look (blur 20-24·S, offset 8-10·S, alpha ~0.5) → old projects render pixel-near-identical.
+- disc.ts: both hardcoded shadow passes (vinyl/CD disc + square sleeve) now use faceShadow; shadow pass skipped at depth 0 (bodies fully self-paint, so nothing else changes).
+- cassette.ts: shell drop shadow → faceShadow; new `real` (cassetteStyle === 'realistic') shading passes layered on the SAME geometry/labels/hub motion — multi-stop molded-plastic gradient, top-light/bottom-shade bevels, double embossed recess ring, Phillips-cross metallic screws (radial-gradient metal), plate edge catch-light + hole rims, bottom ambient occlusion, mixtape paper roll-off + inner pressed shadow + stripe print edges + ink emboss on text, art-label gloss sweep, recessed window bezel (dark-top/light-bottom) + interior depth shadow, brown radial tape-pack + rim, metallic gradient sprocket hubs + bored-hole catch-light, ribbon hairlight, diagonal glass reflection across the window (viewer-anchored), tighter specular streak, and deterministic film grain (mulberry32-seeded 128px noise tile, WeakMap-cached CanvasPattern per ctx, overlay @ 0.22) — all pure (rc, frame, disc), exports stay frame-exact.
+- vinyl-section.tsx: CassetteControls gains a Style Vector/Realistic segmented toggle with a per-style hint; new Shadows block (visible when the layer is enabled) with Shadow depth (0 = Off) + Shadow angle sliders; intro paragraph mentions the two styles.
+- README cassette bullet extended.
+- Browser E2E: mixtape realistic (bevels/recess ring/metal hubs/glass grain visible) ✓; Vector ↔ Realistic toggle both directions ✓; shadow depth 100 → deep soft shadow, 0 → Off removes it entirely ✓; angle 270 → shadow flips above the cassette, 0/360 → right ✓; vinyl label + square cover with 4-quadrant art → shadows track both at depth 40 ✓; sliders restored to 40/90 defaults; 0 console errors; lint 0 errors (27 pre-existing vendored-ffmpeg warnings only).
+
+Stage Summary:
+- Two new dials for the album-art layer: the cassette can now be drawn as a flat illustration or a photoreal shaded render — same labels, colors and turning hubs either way — and every face (sleeve, vinyl, CD, cassette) casts a drop shadow whose depth and direction are yours to set, from subtle grounding to dramatic off-axis light.
