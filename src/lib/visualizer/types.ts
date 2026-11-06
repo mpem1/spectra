@@ -202,6 +202,32 @@ export interface TitleConfig {
   glowColor: string
 }
 
+/* -------------------------------- Pulse image -------------------------------- */
+
+/**
+ * Pulse image — a PNG/SVG logo or emblem that floats over (or behind) the
+ * scene and breathes with the music, like the blob/radial styles react.
+ * Scale swells on bass+energy; optional slow spin and a palette-tinted aura.
+ */
+export interface PulseImageConfig {
+  enabled: boolean
+  /** Image (data URL) — transparency strongly recommended */
+  imageSrc: string
+  /** Center, 0..100 (of width / height) */
+  x: number
+  y: number
+  /** Rest size as % of canvas height */
+  size: number
+  /** Audio-reactive swell 0..1 (0 = static, 1 = up to +35% on the loudest hit) */
+  pulse: number
+  /** Slow continuous rotation */
+  spin: boolean
+  /** Soft palette-tinted aura behind the image */
+  glow: boolean
+  /** Layer order vs. the vinyl & visualizer (same semantics as the bars) */
+  layer: 'front' | 'back'
+}
+
 /* --------------------------------- Watermark --------------------------------- */
 
 /**
@@ -306,6 +332,7 @@ export interface StudioConfig {
   lyrics: LyricsConfig
   title: TitleConfig
   disc: DiscConfig
+  pulseImage: PulseImageConfig
   watermark: WatermarkConfig
 }
 
@@ -605,5 +632,16 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     position: 'br',
     size: 56,
     opacity: 0.85,
+  },
+  pulseImage: {
+    enabled: false,
+    imageSrc: '',
+    x: 50,
+    y: 50,
+    size: 30,
+    pulse: 0.6,
+    spin: false,
+    glow: true,
+    layer: 'front',
   },
 }

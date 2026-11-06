@@ -22,6 +22,7 @@ import { drawLyrics } from './lyrics'
 import { drawTitle } from './title'
 import { drawDisc } from './disc'
 import { drawWatermark } from './watermark'
+import { drawPulseImage } from './pulse-image'
 
 /* --------------------------------- Utilities -------------------------------- */
 
@@ -94,6 +95,11 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // vinyl & cover, 'front' (the default, and what very old saves merge to)
   // keeps them on top. Lyrics/title always stay above everything.
   const vizBehind = (config.visualizer as VisualizerConfig | undefined)?.layer === 'back'
+  // Pulse image behind everything except the background (pre-disc saves
+  // merge layer='front', so this only runs when the user asks for it).
+  if (config.pulseImage?.enabled && config.pulseImage.layer === 'back') {
+    drawPulseImage(rc, frame, config.pulseImage, config.visualizer.gradient, S)
+  }
   if (vizBehind) drawVisualizer(rc, frame, config.visualizer, S)
   // Album art layer (square cover + spinning vinyl/CD) — above the
   // visualizer, below the text overlays. Optional chaining keeps very old
@@ -102,6 +108,10 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
     drawDisc(rc, frame, config.disc)
   }
   if (!vizBehind) drawVisualizer(rc, frame, config.visualizer, S)
+  // Pulse image in front of the bars & vinyl (the default placement).
+  if (config.pulseImage?.enabled && config.pulseImage.layer !== 'back') {
+    drawPulseImage(rc, frame, config.pulseImage, config.visualizer.gradient, S)
+  }
   if (config.lyrics.enabled && config.lyrics.lines.length > 0) {
     drawLyrics(rc, frame, config.lyrics, config.visualizer.gradient)
   }

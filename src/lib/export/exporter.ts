@@ -267,6 +267,14 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
       onNotice?.('Watermark logo could not be loaded — exporting without it.')
     }
   }
+  // Pulse image (music-reactive emblem) — same frame-0 rule.
+  if (config.pulseImage?.enabled && config.pulseImage.imageSrc) {
+    try {
+      await loadBackgroundImage(config.pulseImage.imageSrc)
+    } catch {
+      onNotice?.('Pulse image could not be loaded — exporting without it.')
+    }
+  }
 
   // Animated background (video file or GIF): GIFs decode into deterministic
   // frame canvases; videos get an export-private element that the render loop

@@ -16,6 +16,7 @@ import {
   type TitleConfig,
   type VisualizerConfig,
   type WatermarkConfig,
+  type PulseImageConfig,
 } from '@/lib/visualizer/types'
 import { exportMP4 } from '@/lib/export/exporter'
 import { getEngine, getPreviewControls } from '@/components/studio/engine-registry'
@@ -86,6 +87,7 @@ type StudioState = {
   patchTitle: (partial: Partial<TitleConfig>) => void
   patchDisc: (partial: Partial<DiscConfig>) => void
   patchWatermark: (partial: Partial<WatermarkConfig>) => void
+  patchPulseImage: (partial: Partial<PulseImageConfig>) => void
   /** Patches config.visualizer.gradient */
   patchGradient: (partial: Partial<GradientConfig>) => void
   /** Patches config.background.gradient */
@@ -183,6 +185,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, watermark: { ...s.config.watermark, ...partial } },
     })),
 
+  patchPulseImage: (partial) =>
+    set((s) => ({
+      config: { ...s.config, pulseImage: { ...s.config.pulseImage, ...partial } },
+    })),
+
   patchGradient: (partial) =>
     set((s) => ({
       config: {
@@ -236,6 +243,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         title: { ...DEFAULT_STUDIO_CONFIG.title, ...config.title },
         disc: { ...DEFAULT_STUDIO_CONFIG.disc, ...config.disc },
         watermark: { ...DEFAULT_STUDIO_CONFIG.watermark, ...config.watermark },
+        pulseImage: { ...DEFAULT_STUDIO_CONFIG.pulseImage, ...config.pulseImage },
       },
     }),
 

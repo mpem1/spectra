@@ -1242,3 +1242,21 @@ Work Log:
 
 Stage Summary:
 - New "Corner watermark" panel at the bottom of the Style tab: drop in a logo or just type your @handle, pick a corner, set size and opacity — it sits above everything (lyrics, titles, visualizer) and is baked into every MP4 / PNG export so your videos stay credited.
+
+---
+
+Task ID: 43
+Agent: Z.ai Code (main)
+Task: Pulse image — a logo/emblem that breathes with the music (blob/radial-style reactivity)
+User: "i also was thinking about inserting a png/vector where a visualizer outline would pulse with the music similar to blob and radial"
+
+Work Log:
+- New PulseImageConfig { enabled, imageSrc, x, y, size (% of canvas height), pulse (0..1 swell strength), spin, glow, layer: front|back } + DEFAULTS (disabled, pulse 0.6, glow on) — old saves/projects/share links merge to a no-op.
+- New src/lib/visualizer/pulse-image.ts drawPulseImage: rest size from config; swell = 1 + pulse·drive·0.35 where drive = 0.6·bass + 0.4·energy (punch + sustain, up to +35% at full pulse) — the same AudioFrame the blob/radial react to; optional slow rotation on the decorative clock (0.45 rad/s); palette-tinted glow aura sampled from the visualizer gradient at the emblem's height so it never looks detached from the color story; aspect-preserving, width clamped to 4:1; still-decoding image skipped for that frame.
+- renderFrame layering mirrors the visualizer's front/back pattern: layer=back draws right after the background (behind bars AND vinyl/cover); front (default) draws after the bars/disc, below lyrics/title/watermark. Export determinism: exporter.ts + png-seq.ts preload pulseImageSrc before frame 0; share-link.ts makePortable strips the data URL from share links (settings travel, pixels don't).
+- store: patchPulseImage + setConfig merge line. New pulse-image-section.tsx (Style tab, between Vinyl and Watermark): AudioLines icon + enable switch, transparency-checkerboard preview + Replace/Remove, X/Y/Size/Pulse-strength sliders, Behind vinyl / In front picker, Slow spin + Palette glow switches.
+- idle.ts improvement (benefits every audio-reactive feature): the idle demo frame's bass/energy were CONSTANTS (0.5/0.4) so nothing breathed before a track was loaded; now they swing gently (bass 0.32..0.68, energy 0.28..0.52) on styleTime — the decorative wall clock that free-runs while paused and equals `time` in exports, so the preview comes alive in demo mode while exports stay deterministic.
+- Browser E2E: generated an amber ring+triangle emblem in-page, uploaded, enabled → emblem floats center with the pink palette aura ✓; width-tracking over 2s shows continuous breathing 97↔100px in idle (was 0px before the idle fix); disc enabled + Layer=Behind vinyl → emblem tucks behind the cover, only its glow halo peeks around the record ✓. 0 page errors; lint 0 errors.
+
+Stage Summary:
+- New "Pulse image" panel in the Style tab: upload any PNG/SVG emblem and it floats over the scene, swelling on every kick like the blob and radial styles — with sliders for position, size and swell strength, a Behind vinyl / In front layer switch, slow spin, and a glow tinted by your visualizer palette. Works even in the idle demo now (the whole scene breathes a little before you load a track), and it's baked into every export.

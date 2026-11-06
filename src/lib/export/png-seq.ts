@@ -87,6 +87,14 @@ export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResu
       // Fall through — the watermark is skipped.
     }
   }
+  // Pulse image (music-reactive emblem) — same frame-0 rule.
+  if (config.pulseImage?.enabled && config.pulseImage.imageSrc) {
+    try {
+      await loadBackgroundImage(config.pulseImage.imageSrc)
+    } catch {
+      // Fall through — the pulse image is skipped.
+    }
+  }
 
   // Animated background (video/GIF): GIF → deterministic frame decode;
   // video → export-private element seeked per frame. Same as the MP4 path.

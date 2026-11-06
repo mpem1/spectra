@@ -48,8 +48,13 @@ export function makeIdleFrame(
     styleTime,
     freq,
     wave,
-    energy: 0.4,
-    bass: 0.5,
+    // Gently swinging (not constant) so audio-reactive features — pulse
+    // image, disc pulse, beat bounce — visibly breathe in the idle demo
+    // too, before any track is loaded. Driven by styleTime: the decorative
+    // clock free-runs on the wall clock in the preview (alive while paused)
+    // and equals `time` in exports, so exports stay deterministic.
+    energy: 0.4 + 0.12 * Math.sin(styleTime * 1.6 + 1.0),
+    bass: 0.5 + 0.18 * Math.sin(styleTime * 2.1),
     treble: 0.3,
   }
 }

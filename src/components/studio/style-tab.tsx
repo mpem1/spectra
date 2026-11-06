@@ -13,6 +13,7 @@ import { GradientEditor } from '@/components/studio/gradient-editor'
 import { BackgroundSection } from '@/components/studio/background-section'
 import { VinylSection } from '@/components/studio/vinyl-section'
 import { WatermarkSection } from '@/components/studio/watermark-section'
+import { PulseImageSection } from '@/components/studio/pulse-image-section'
 import { MicroLabel, OptionCard, SliderRow } from '@/components/studio/controls'
 
 const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] = [
@@ -275,6 +276,9 @@ export function StyleTab() {
 
       {/* Album art — square cover + spinning vinyl/CD */}
       <VinylSection />
+
+      {/* Pulse image — a logo/emblem that breathes with the music */}
+      <PulseImageSection />
 
       {/* Corner watermark — logo or @handle above everything */}
       <WatermarkSection />

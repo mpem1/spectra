@@ -54,7 +54,10 @@ export function makePortable(config: StudioConfig): {
   const videoDrop = config.background.mode === 'video' && !!config.background.videoSrc
   const discDrop = !!config.disc?.imageSrc || !!config.disc?.discImageSrc
   const wmDrop = !!config.watermark?.imageSrc
-  if (!bgDrop && !videoDrop && !discDrop && !wmDrop) return { config, imageDropped: false }
+  const pulseDrop = !!config.pulseImage?.imageSrc
+  if (!bgDrop && !videoDrop && !discDrop && !wmDrop && !pulseDrop) {
+    return { config, imageDropped: false }
+  }
   return {
     config: {
       ...config,
@@ -76,6 +79,10 @@ export function makePortable(config: StudioConfig): {
         wmDrop && config.watermark
           ? { ...config.watermark, imageSrc: '' }
           : config.watermark,
+      pulseImage:
+        pulseDrop && config.pulseImage
+          ? { ...config.pulseImage, imageSrc: '' }
+          : config.pulseImage,
     },
     imageDropped: true,
   }
