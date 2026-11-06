@@ -1192,3 +1192,18 @@ Work Log:
 
 Stage Summary:
 - Bars, Wave and Grid now have a Horizontal / Vertical switch: flip them into a full-height spectrum wall that runs down the screen with the bass at the bottom — and every other control (position, size, mirror, layer order, export) keeps working exactly like the classic layout.
+
+---
+
+Task ID: 40
+Agent: Z.ai Code (main)
+Task: Auto-palette — pull the visualizer gradient from the album art
+User: "3. Auto-palette from your album art — one click: the visualizer's colors get pulled straight from your cover"
+
+Work Log:
+- New src/lib/visualizer/palette.ts: extractPaletteFromArt(src, count=4) — loads the cover into a 64×64 offscreen canvas, quantizes opaque pixels to 12-bit keys with per-bucket averaged true colors, ranks by frequency, then greedily picks the most frequent colors with an RGB-distance floor that relaxes (84→8) so simple art still yields enough stops; single-color art is padded with darkened/lightened variants of the dominant color; final stops ordered dark → light and positioned evenly 0..100, opacity 100. Deterministic; data-URL uploads can't taint the canvas.
+- style-tab.tsx: GRADIENT section header now has a "From art" button (wand icon, emerald accent) — disabled with an explanatory title until album art is uploaded in Vinyl & cover; busy spinner while extracting; success/error toasts. On success it patches the visualizer gradient's STOPS only, keeping the user's angle/shape/cycle settings — and since lyrics/title can source their gradients from the visualizer palette, the whole scene can follow in one click.
+- Browser E2E: painted a synthetic cover (red→yellow→teal sweep + purple + white circles) in-page, uploaded via the real file input (first input[type=file] turned out to be the AUDIO input — cover art is input #2, aria-label "Album art file"), clicked "From art": toast "Palette pulled from your album art", bars immediately render purple → red → orange → white sweep, stop editor shows the four extracted colors at 0/33/67/100 (teal correctly lost the dominance contest). Disabled-state verified before upload. 0 console errors.
+
+Stage Summary:
+- One click on "From art" (next to the GRADIENT header) reads your album cover and rebuilds the visualizer's gradient from its dominant colors — your angle, shape and cycling settings stay untouched, and lyrics/titles that follow the visualizer palette match automatically.

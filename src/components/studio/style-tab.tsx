@@ -1,7 +1,10 @@
 'use client'
 
-import { AudioWaveform, BarChart3, Droplet, Grid3x3, Radar, Sparkles } from 'lucide-react'
+import { useState } from 'react'
+import { AudioWaveform, BarChart3, Droplet, Grid3x3, Radar, Sparkles, Wand2, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import type { VisualizerStyle } from '@/lib/visualizer/types'
+import { extractPaletteFromArt } from '@/lib/visualizer/palette'
 import { useStudioStore } from '@/store/studio'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -23,6 +26,49 @@ const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] =
 /** Plain uppercase section label (VISUALIZER / GRADIENT / …) like the reference UI. */
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <MicroLabel className="text-[11px] tracking-widest text-zinc-500">{children}</MicroLabel>
+}
+
+/** One click: pull the visualizer palette straight from the uploaded album art. */
+function AutoPaletteButton() {
+  const artSrc = useStudioStore((s) => s.config.disc.imageSrc)
+  const gradient = useStudioStore((s) => s.config.visualizer.gradient)
+  const patchGradient = useStudioStore((s) => s.patchGradient)
+  const [busy, setBusy] = useState(false)
+  const disabled = !artSrc || busy
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      title={
+        artSrc
+          ? 'Pull this palette from your album art'
+          : 'Upload album art in the Vinyl & cover section first'
+      }
+      onClick={() => {
+        if (!artSrc) return
+        setBusy(true)
+        extractPaletteFromArt(artSrc, 4)
+          .then((stops) => {
+            patchGradient({ ...gradient, stops })
+            toast.success('Palette pulled from your album art')
+          })
+          .catch(() => toast.error('Could not read colors from that image'))
+          .finally(() => setBusy(false))
+      }}
+      className={cn(
+        'inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors',
+        'border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:border-zinc-700 hover:text-zinc-100',
+        disabled && 'pointer-events-none opacity-40',
+      )}
+    >
+      {busy ? (
+        <Loader2 className="size-3.5 animate-spin" aria-hidden />
+      ) : (
+        <Wand2 className="size-3.5 text-emerald-500" aria-hidden />
+      )}
+      From art
+    </button>
+  )
 }
 
 export function StyleTab() {
@@ -50,7 +96,10 @@ export function StyleTab() {
 
       {/* Gradient */}
       <section className="space-y-2">
-        <SectionLabel>GRADIENT</SectionLabel>
+        <div className="flex items-center justify-between">
+          <SectionLabel>GRADIENT</SectionLabel>
+          <AutoPaletteButton />
+        </div>
         <GradientEditor value={visualizer.gradient} onChange={patchGradient} />
       </section>
 
