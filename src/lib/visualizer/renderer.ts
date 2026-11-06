@@ -308,11 +308,27 @@ function drawVisualizer(
   }
   switch (cfg.style) {
     case 'bars':
-      drawBars(rc, frame, cfg, S)
-      break
     case 'wave':
-      drawWave(rc, frame, cfg, S)
+    case 'grid': {
+      // These three draw a classic left→right strip. Vertical orientation
+      // rotates that strip 90° counter-clockwise into a top→bottom column:
+      // bass stays at the bottom, bars/wave grow sideways from the layer's
+      // right edge. The style code keeps drawing in its own left→right
+      // space — we hand it a swapped (H×W) canvas and rotate it into place,
+      // so every slider (count, mirror, glow, position, size) keeps behaving
+      // exactly as in horizontal mode, and the strip always fits the canvas
+      // without cropping (a plain rotation of a wide strip would overflow).
+      const vertical = (cfg.orientation ?? 'horizontal') === 'vertical'
+      if (vertical) {
+        ctx.translate(0, H)
+        ctx.rotate(-Math.PI / 2)
+      }
+      const styleRc: RenderContext = vertical ? { ...rc, width: H, height: W } : rc
+      if (cfg.style === 'bars') drawBars(styleRc, frame, cfg, S)
+      else if (cfg.style === 'wave') drawWave(styleRc, frame, cfg, S)
+      else drawGrid(styleRc, frame, cfg, S)
       break
+    }
     case 'radial':
       drawRadial(rc, frame, cfg, S)
       break
@@ -321,9 +337,6 @@ function drawVisualizer(
       break
     case 'blob':
       drawBlob(rc, frame, cfg, S)
-      break
-    case 'grid':
-      drawGrid(rc, frame, cfg, S)
       break
     default:
       break

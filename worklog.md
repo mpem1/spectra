@@ -1175,3 +1175,20 @@ Work Log:
 
 Stage Summary:
 - Every switch, chip and tab now has an unmistakable on/off look — bright green means active, dark gray means idle — and the Export tab's Snapshot / PNG sequence buttons are dark chips with white text instead of the white-on-white they were. Underneath, the whole app finally runs on the dark theme it was designed for, so dropdowns, pickers and toasts are consistent too.
+
+---
+
+Task ID: 38
+Agent: Z.ai Code (main)
+Task: Vertical orientation option for the horizontal visualizer styles
+User: "now can we add the ability to make the visualizers that have a horzontal orientation have an option to make them vertical"
+
+Work Log:
+- New VisualizerConfig field `orientation: 'horizontal' | 'vertical'` (default 'horizontal' — old saves, projects and share links merge to it and render pixel-identical). Radial / particles / blob ignore it (they're orientation-agnostic); it applies to the three strip styles: bars, wave, grid.
+- renderer.ts drawVisualizer: for those three styles with orientation = vertical, applies `translate(0, H) + rotate(-π/2)` and hands the style a SWAPPED RenderContext (width = real H, height = real W). Why swapped instead of a plain rotation: a landscape strip rotated as-is would span 1280px vertically on a 720px-tall canvas and get cropped — the swap makes the style draw in a canvas-shaped space first, so the strip always fits exactly. Mapping lands drawing (x, y) → canvas (y, H − x): bass stays at the BOTTOM, bars grow sideways from the layer's right edge, and the rotated drawing fills the canvas exactly like horizontal mode — so the layer transform (Position X/Y + Size, applied before the rotation in the chain) keeps identical semantics, and Mirror = Center becomes the classic symmetric full-height wall (bars growing both ways from the mirror-offset axis).
+- Zero changes inside the style functions: bars/wave/grid keep drawing left→right in their own space, so bar count, gap, roundness, glow, gradient (fills/gradients rotate coherently with the strip since they're built in the swapped space), sensitivity and mirror-offset all behave as before. Deterministic — same config → same pixels in offline export.
+- style-tab.tsx: new "Orientation" segmented control (Horizontal / Vertical) at the top of SHAPE & MOTION, shown only for bars/wave/grid; same solid-emerald selected state as the Task 37 chip system (emerald-500 bg + zinc-950 text vs zinc-300 on dark). LAYOUT hint now mentions pairing with Vertical for full-height walls.
+- Browser E2E (agent-browser): default bars horizontal ✓ → Vertical click → strip runs top→bottom, bass bottom, bars point left from the right edge, no cropping, gradient sweeps with the strip ✓; Horizontal click → classic look restored ✓; Wave vertical = waveform traced bottom→top oscillating sideways ✓; Grid vertical = dot-matrix columns lit from the right ✓; Mirror = Center + vertical = symmetric full-width wall ✓; vinyl enabled + vertical bars = classic spectrum-beside-the-disc composition ✓; reload resets to defaults (app carries config via share links only — expected; share-link merge supplies orientation automatically) ✓; mobile 390×844 layout fine ✓; 0 console errors ✓; lint 0 errors (27 pre-existing vendored-ffmpeg warnings).
+
+Stage Summary:
+- Bars, Wave and Grid now have a Horizontal / Vertical switch: flip them into a full-height spectrum wall that runs down the screen with the bass at the bottom — and every other control (position, size, mirror, layer order, export) keeps working exactly like the classic layout.

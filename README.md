@@ -16,6 +16,9 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
   (Position X/Y + Size), so it can shrink into a spectrum column beside the
   spinning disc, hug an edge, or fill the classic full-width layout (50 / 50 /
   100% = unchanged).
+- **Vertical orientation** — Bars, Wave and Grid can flip from the classic
+  left→right strip to a full-height top→bottom column (bass stays at the
+  bottom; mirror modes, layer order, and every other slider keep working).
 - **Gradient editor** — multi-stop gradients with per-stop opacity, linear or
   radial shape, angle control (0° = bottom→top, 90° = left→right, 180° =
   top→bottom), color cycling, named gradient presets (Sunset, Aurora, Ember,

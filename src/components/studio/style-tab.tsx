@@ -5,6 +5,7 @@ import type { VisualizerStyle } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
 import { GradientEditor } from '@/components/studio/gradient-editor'
 import { BackgroundSection } from '@/components/studio/background-section'
 import { VinylSection } from '@/components/studio/vinyl-section'
@@ -56,6 +57,39 @@ export function StyleTab() {
       {/* Shape & motion */}
       <section className="space-y-3">
         <SectionLabel>SHAPE &amp; MOTION</SectionLabel>
+
+        {/* Orientation — the strip styles can run left→right or top→bottom */}
+        {visualizer.style === 'bars' ||
+        visualizer.style === 'wave' ||
+        visualizer.style === 'grid' ? (
+          <div className="space-y-1.5">
+            <MicroLabel>Orientation</MicroLabel>
+            <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+              {(
+                [
+                  { id: 'horizontal', label: 'Horizontal' },
+                  { id: 'vertical', label: 'Vertical' },
+                ] as const
+              ).map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  aria-pressed={visualizer.orientation === o.id}
+                  onClick={() => patchVisualizer({ orientation: o.id })}
+                  className={cn(
+                    'h-7 rounded-md text-xs transition-colors',
+                    visualizer.orientation === o.id
+                      ? 'bg-emerald-500 font-medium text-zinc-950'
+                      : 'text-zinc-300 hover:text-zinc-100',
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <SliderRow
           label="Bar count"
           value={visualizer.barCount}
@@ -154,7 +188,8 @@ export function StyleTab() {
         <SectionLabel>LAYOUT</SectionLabel>
         <p className="text-xs leading-relaxed text-zinc-500">
           Move &amp; resize the visualizer as one layer — e.g. shrink it into a spectrum column
-          beside the spinning disc. 50 / 50 is the classic full-width layout.
+          beside the spinning disc (pair it with Orientation&nbsp;→&nbsp;Vertical for a full-height
+          wall). 50 / 50 is the classic full-width layout.
         </p>
         <SliderRow
           label="Position X"

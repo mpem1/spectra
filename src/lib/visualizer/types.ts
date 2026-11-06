@@ -64,6 +64,11 @@ export interface VisualizerConfig {
   /** Layer order vs. the vinyl & cover: 'front' = bars on top (classic look),
    *  'back' = bars tucked behind the vinyl/cover so the record overlaps them */
   layer: 'front' | 'back'
+  /** Strip direction for the horizontal styles (bars / wave / grid):
+   *  'horizontal' = the classic left→right strip · 'vertical' = the same strip
+   *  rotated 90° into a full-height column (bass stays at the bottom, bars
+   *  grow sideways). Radial / particles / blob ignore it. */
+  orientation: 'horizontal' | 'vertical'
 }
 
 /* --------------------------------- Background -------------------------------- */
@@ -441,6 +446,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     positionY: 50,
     scale: 1,
     layer: 'front',
+    orientation: 'horizontal',
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 48,
