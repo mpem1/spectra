@@ -19,6 +19,21 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
 - **Vertical orientation** — Bars, Wave and Grid can flip from the classic
   left→right strip to a full-height top→bottom column (bass stays at the
   bottom; mirror modes, layer order, and every other slider keep working).
+- **Auto-palette** — one click next to the gradient header pulls the
+  visualizer's colors straight from the uploaded album art (angle, shape and
+  cycling settings are preserved; lyrics/titles following the visualizer
+  palette match automatically).
+- **Beat bounce** — image / video / GIF backgrounds gently zoom with the bass
+  (up to +8% at full strength; 0 = exact no-op). The vinyl & cover has its own
+  audio-reactive pulse, so the whole scene can breathe with the beat.
+- **Pulse image** — a PNG/SVG logo or emblem that floats over (or behind) the
+  scene and swells with the music like the blob/radial styles, with slow-spin
+  and a glow tinted by the visualizer palette; front/back layering included.
+- **Corner watermark** — a small logo or @handle pinned to any corner, drawn
+  above lyrics/titles and baked into every MP4/PNG export.
+- **Project files** — download the entire setup (every uploaded image
+  included, no size cap) as a `.spectra` file and reopen it anywhere; share
+  links still work for quick look-sharing without the media.
 - **Gradient editor** — multi-stop gradients with per-stop opacity, linear or
   radial shape, angle control (0° = bottom→top, 90° = left→right, 180° =
   top→bottom), color cycling, named gradient presets (Sunset, Aurora, Ember,
