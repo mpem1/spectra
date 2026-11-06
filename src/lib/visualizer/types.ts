@@ -206,8 +206,12 @@ export interface TitleConfig {
  */
 export interface DiscConfig {
   enabled: boolean
-  /** Album art (data URL) — shared by the cover and the disc face/label */
+  /** Album art (data URL) — powers the square cover; the disc reuses it
+   *  unless a separate disc image is set below */
   imageSrc: string
+  /** Separate image (data URL) for the disc face only — the vinyl label,
+   *  CD face or cassette label. Empty = reuse the shared album art. */
+  discImageSrc: string
   /** Show the square cover (the "sleeve") */
   showCover: boolean
   /** Cover side length as % of canvas height */
@@ -532,6 +536,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
   disc: {
     enabled: false,
     imageSrc: '',
+    discImageSrc: '',
     showCover: true,
     coverSize: 42,
     coverX: 30,

@@ -121,7 +121,11 @@ export function drawCassette(rc: RenderContext, frame: AudioFrame, disc: DiscCon
   const labelMode = disc.cassetteLabel ?? 'default'
   const real = (disc.cassetteStyle ?? 'vector') === 'realistic'
   const sheen = clamp01(disc.sheen ?? 0.35)
-  const img = labelMode === 'art' && disc.imageSrc ? getBackgroundImage(disc.imageSrc) : null
+  // The cassette label uses the separate disc face image when one is set,
+  // falling back to the shared album art (same rule as the vinyl/CD face).
+  const faceSrc = disc.discImageSrc ?? ''
+  const artSrc = faceSrc || disc.imageSrc
+  const img = labelMode === 'art' && artSrc ? getBackgroundImage(artSrc) : null
   // Art label with no art uploaded degrades to bare plastic, like share links.
   const mode: 'none' | 'art' | 'default' = labelMode === 'art' && !img ? 'none' : labelMode
 

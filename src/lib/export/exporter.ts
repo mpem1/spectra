@@ -251,6 +251,14 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
       onNotice?.('Album art could not be loaded — exporting with a blank disc.')
     }
   }
+  // Optional separate disc-face image (vinyl label / CD face / cassette label).
+  if (config.disc?.enabled && config.disc.discImageSrc) {
+    try {
+      await loadBackgroundImage(config.disc.discImageSrc)
+    } catch {
+      onNotice?.('Disc face art could not be loaded — exporting with the shared album art.')
+    }
+  }
 
   // Animated background (video file or GIF): GIFs decode into deterministic
   // frame canvases; videos get an export-private element that the render loop

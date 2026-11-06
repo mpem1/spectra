@@ -3,7 +3,11 @@
  *
  * The "record out of its sleeve" look: a square cover image with a black
  * vinyl disc slid out from behind it (or a CD with the art across its whole
- * face). One image powers both elements. The disc:
+ * face). The cover carries the album art, and the disc carries the same art
+ * either on the vinyl's center label (black grooved face around it) or
+ * across the full face like a CD — unless a separate disc image is set, in
+ * which case the disc face shows that instead. Purely decorative:
+ * deterministic spin on the style clock, optional audio pulse. Behaviors:
  *
  * - spins deterministically on the decorative clock (styleTime) at a set RPM
  *   — free-running in the live preview (keeps spinning while paused), locked
@@ -33,7 +37,12 @@ export function drawDisc(rc: RenderContext, frame: AudioFrame, disc: DiscConfig)
   if (!disc.enabled || (!disc.showCover && !disc.showDisc)) return
   const { ctx, width: W, height: H } = rc
   const S = H / 720
-  const img = disc.imageSrc ? getBackgroundImage(disc.imageSrc) : null
+  // Two images: the sleeve always shows the shared album art, while the disc
+  // face (vinyl label / CD face / cassette label) can carry its own picture —
+  // falling back to the shared art when no separate one is set.
+  const coverImg = disc.imageSrc ? getBackgroundImage(disc.imageSrc) : null
+  const faceSrc = disc.discImageSrc ?? ''
+  const faceImg = faceSrc ? getBackgroundImage(faceSrc) : coverImg
 
   // Shared pulse calibration with the title card: real-music RMS lands
   // ~0.1–0.4, stretched to full scale by 0.5 so the slider feels alive.
@@ -69,9 +78,9 @@ export function drawDisc(rc: RenderContext, frame: AudioFrame, disc: DiscConfig)
       )
 
       if (disc.mode === 'label') {
-        drawVinylFace(ctx, disc, img, cx, cy, R, angle, S)
+        drawVinylFace(ctx, disc, faceImg, cx, cy, R, angle, S)
       } else {
-        drawCdFace(ctx, disc, img, cx, cy, R, angle, S)
+        drawCdFace(ctx, disc, faceImg, cx, cy, R, angle, S)
       }
 
       // Static light sheen — fixed to the viewer (the light source doesn't
@@ -127,7 +136,7 @@ export function drawDisc(rc: RenderContext, frame: AudioFrame, disc: DiscConfig)
       )
       ctx.restore()
 
-      if (img) {
+      if (coverImg) {
         ctx.save()
         ctx.beginPath()
         if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, side, side, r)
@@ -135,7 +144,7 @@ export function drawDisc(rc: RenderContext, frame: AudioFrame, disc: DiscConfig)
         ctx.clip()
         drawImageCover(
           ctx,
-          img,
+          coverImg,
           x,
           y,
           side,

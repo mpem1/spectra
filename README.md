@@ -41,7 +41,10 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
 - **Vinyl & cover** — upload album art and get the classic record-player
   look: a square cover with a spinning vinyl sliding out from behind it
   (art on the center label, grooved black face, spindle hole), or the art
-  across the full disc like a CD with a punched center hole. Real-RPM spin
+  across the full disc like a CD with a punched center hole. The cover and
+  the disc share your art by default — or upload a **separate disc face
+  image** so the record (vinyl label, CD face, or cassette label) carries
+  its own picture while the sleeve keeps the original. Real-RPM spin
   (33⅓ / 45 presets) with direction toggle, audio-reactive size pulse,
   groove rings, and a light sheen — composes with every visualizer style.
   Both the cover and the disc move and resize freely — size up to **200%**

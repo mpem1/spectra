@@ -1139,3 +1139,21 @@ Work Log:
 
 Stage Summary:
 - The square cover can now grow exactly as large as the disc/record — and both can overshoot the frame (size to 200%, centers from -50% to 150%) for full-bleed compositions — plus the visualizer gets a Behind vinyl / In front switch so the reactive bars can live underneath the record or stay on top of it.
+
+---
+
+Task ID: 36
+Agent: Z.ai Code (main)
+Task: Separate image for the disc face vs. the square cover
+User: "what about an option to have a separate image on cover from record/ disc"
+
+Work Log:
+- New optional DiscConfig field `discImageSrc` (data URL, default '' = reuse the shared album art — old saves, projects and share links merge to it and render identically).
+- disc.ts drawDisc: splits the single `img` into coverImg (sleeve, from imageSrc) and faceImg (vinyl label / CD face, from discImageSrc with fallback to coverImg). cassette.ts art label uses faceSrc || imageSrc — same fallback rule, so the mixtape slot / album-art label picks up the separate image too.
+- Export determinism: exporter.ts (MP4/WebM) and png-seq.ts now preload discImageSrc before frame 0 (with their own graceful-fallback notice) so the separate art is never missing on the first frames.
+- share-link.ts makePortable: discImageSrc joins imageSrc in the stripped-media set (data URLs can't travel in a URL); projects (IndexedDB) keep the full config untouched.
+- vinyl-section.tsx: upload area is now two slots — "Cover art" (existing input, labeled) and a new "DISC FACE ART" block below it: dashed "Use a different image on the disc / Optional — the disc reuses the cover art" button when unset; preview + Replace disc art + Remove separate disc art (with fallback hint) when set. Second hidden input aria-label="Disc face art file"; handleFile generalized to (file, 'cover' | 'disc'). Disc Art zoom/X/Y sliders + cassette 'art' label hints now consider discImageSrc. Section description updated.
+- Browser E2E (agent-browser, in-page canvas → File → DataTransfer uploads): shared state → cover AND vinyl label both show A-SIDE ✓; separate teal B-SIDE disc art → cover keeps A-SIDE, vinyl label spins B-SIDE ✓; Full CD face shows B-SIDE ✓; cassette label 'Album art' shows B-SIDE ✓; Remove separate disc art → label reverts to shared A-SIDE in cassette AND vinyl modes ✓; two previews + buttons render in the panel ✓; 0 console errors ✓; lint 0 errors (27 pre-existing vendored-ffmpeg warnings). (One test-path detour: `find --name "Album art"` substring-matched "Remove album art" and cleared the cover mid-test — redone by refs; the feature itself was unaffected.)
+
+Stage Summary:
+- The sleeve and the record no longer have to share one picture: upload a second image just for the disc face — vinyl label, full CD face, or cassette label — and swap or remove it anytime; without one, everything falls back to the shared album art exactly as before, in the preview and in every export.

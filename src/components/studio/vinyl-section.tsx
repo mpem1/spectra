@@ -38,12 +38,16 @@ export function VinylSection() {
   const vizLayer = useStudioStore((s) => s.config.visualizer.layer ?? 'front')
   const patchVisualizer = useStudioStore((s) => s.patchVisualizer)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const discInputRef = useRef<HTMLInputElement | null>(null)
 
-  const handleFile = async (file: File | undefined): Promise<void> => {
+  const handleFile = async (
+    file: File | undefined,
+    target: 'cover' | 'disc',
+  ): Promise<void> => {
     if (!file || !file.type.startsWith('image/')) return
     try {
       const imageSrc = await fileToDataUrl(file)
-      patchDisc({ imageSrc })
+      patchDisc(target === 'cover' ? { imageSrc } : { discImageSrc: imageSrc })
     } catch {
       // Reading failed — keep the previous art.
     }
@@ -58,7 +62,18 @@ export function VinylSection() {
         className="hidden"
         aria-label="Album art file"
         onChange={(e) => {
-          void handleFile(e.target.files?.[0])
+          void handleFile(e.target.files?.[0], 'cover')
+          e.target.value = ''
+        }}
+      />
+      <input
+        ref={discInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
+        className="hidden"
+        aria-label="Disc face art file"
+        onChange={(e) => {
+          void handleFile(e.target.files?.[0], 'disc')
           e.target.value = ''
         }}
       />
@@ -75,8 +90,8 @@ export function VinylSection() {
         A square cover with a record sliding out of it, spinning at your set
         speed. The face is a vinyl with the art on its center label, a CD
         with the art across it, or a cassette tape with turning hubs — in a
-        clean vector or a shaded realistic style. Cover and disc share the
-        same image.
+        clean vector or a shaded realistic style. The cover and the disc
+        share your art by default, or give the record its own picture below.
       </p>
 
       {/* Visualizer layer order — in front of or behind the vinyl & cover */}
@@ -113,9 +128,11 @@ export function VinylSection() {
         </div>
       ) : null}
 
-      {/* Album art upload */}
+      {/* Album art upload — the square cover; the disc reuses it unless a
+          separate disc face image is set below */}
       {disc.imageSrc ? (
         <div className="space-y-2">
+          <MicroLabel>Cover art</MicroLabel>
           <img
             src={disc.imageSrc}
             alt="Album art preview"
@@ -153,6 +170,53 @@ export function VinylSection() {
           <span className="text-[10px] text-zinc-600">PNG / JPG — used by the cover and the disc</span>
         </button>
       )}
+
+      {/* Separate disc face art — vinyl label / CD face / cassette label */}
+      <div className="space-y-2">
+        <MicroLabel>Disc face art</MicroLabel>
+        {disc.discImageSrc ? (
+          <>
+            <img
+              src={disc.discImageSrc}
+              alt="Disc face art preview"
+              className="h-24 w-full rounded-lg border border-zinc-800 object-cover"
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 flex-1 border-zinc-800 text-xs text-zinc-300 hover:border-zinc-600"
+                onClick={() => discInputRef.current?.click()}
+              >
+                <ImagePlus className="size-3.5" aria-hidden />
+                Replace disc art
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 text-zinc-500 hover:text-red-400"
+                aria-label="Remove separate disc art"
+                onClick={() => patchDisc({ discImageSrc: '' })}
+              >
+                <Trash2 className="size-4" aria-hidden />
+              </Button>
+            </div>
+            <p className="text-[11px] leading-snug text-zinc-600">
+              The record carries this picture while the cover keeps its own.
+              Remove it to share the cover art again.
+            </p>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="flex h-14 w-full flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/40 text-zinc-400 transition-colors hover:border-emerald-500/60 hover:text-emerald-400"
+            onClick={() => discInputRef.current?.click()}
+          >
+            <span className="text-xs font-medium">Use a different image on the disc</span>
+            <span className="text-[10px] text-zinc-600">Optional — the disc reuses the cover art</span>
+          </button>
+        )}
+      </div>
 
       {/* Square cover (the sleeve) */}
       <div className="flex h-8 items-center gap-2">
@@ -306,7 +370,8 @@ export function VinylSection() {
             onChange={(discY) => patchDisc({ discY })}
             format={(v) => `${Math.round(v)}%`}
           />
-          {disc.imageSrc && (disc.mode !== 'cassette' || disc.cassetteLabel === 'art') ? (
+          {(disc.imageSrc || disc.discImageSrc) &&
+          (disc.mode !== 'cassette' || disc.cassetteLabel === 'art') ? (
             <div className="space-y-1">
               <SliderRow
                 label="Art zoom"
@@ -572,9 +637,9 @@ function CassetteControls() {
         ) : null}
         {label === 'art' ? (
           <p className="text-[11px] leading-snug text-zinc-600">
-            {disc.imageSrc
-              ? 'Uses the album art uploaded above — Art zoom / X / Y below frame it.'
-              : 'Upload album art above and it becomes the cassette label.'}
+            {disc.discImageSrc || disc.imageSrc
+              ? 'Uses the disc face art — its own upload or the cover art. Art zoom / X / Y below frame it.'
+              : 'Upload art above (or a separate disc face image) and it becomes the cassette label.'}
           </p>
         ) : null}
       </div>

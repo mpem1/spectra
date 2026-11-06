@@ -71,6 +71,14 @@ export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResu
       // Fall through — the disc paints a blank face/label.
     }
   }
+  // Optional separate disc-face image (vinyl label / CD face / cassette label).
+  if (config.disc?.enabled && config.disc.discImageSrc) {
+    try {
+      await loadBackgroundImage(config.disc.discImageSrc)
+    } catch {
+      // Fall through — the disc falls back to the shared album art.
+    }
+  }
 
   // Animated background (video/GIF): GIF → deterministic frame decode;
   // video → export-private element seeked per frame. Same as the MP4 path.
