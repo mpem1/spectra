@@ -1276,3 +1276,21 @@ Work Log:
 
 Stage Summary:
 - The Presets tab now has Download/Open .spectra: one click saves your entire setup — every image included, no size cap — as a file you can keep, archive or pass to another device; opening one restores everything (then just load your song). Also fixed the watermark text hugging the right corners properly.
+
+---
+
+Task ID: 45
+Agent: Z.ai Code (main)
+Task: Beat shake + blur pulse — two more background motions alongside the beat bounce
+User: "background pulse with song can you add shake feature along side the pulse and a option to add the blur feature to pulse to match the other motions with a strength slider for blur intensity"
+
+Work Log:
+- BackgroundConfig grows two no-op-default fields: shake (0..1) and blurPulse (0..1); DEFAULT_STUDIO_CONFIG.background adds both at 0 so old saves / share links / .spectra files merge to exactly the previous behavior.
+- renderer drawMediaCover (shared by image AND video/GIF backgrounds) now does all three beat motions: bounce zoom (unchanged, ≤+8%), NEW beat shake — deterministic jitter with a fresh pseudo-random direction every 1/30s of SONG time (mulberry32 seeded by floor(time*30), the file's no-Math.random rule intact), amplitude = strength × live bass × 1.6% of min(W,H) — so it kicks with the bass and freezes when quiet, and identical song time → identical pixels in offline exports (exporter feeds time: i/fps per frame); NEW blur pulse — extra blur = strength × bass × 30px·S stacked on top of the static blur slider (40px·S max), so the background smears on every kick and snaps back.
+- Overscan rework: instead of one uniform grow from max(dw,dh) (which under-covered the short axis), the draw now grows per-axis: grow = 1 + 2·max((blurPx+|sx|)/dw, (blurPx+|sy|)/dh) — blurred edges AND shake offsets can never reveal the canvas beneath, verified at the extremes.
+- background-section.tsx: the three beat sliders now live under a "WITH THE BEAT" MicroLabel group (Beat bounce / Beat shake / Blur pulse, each 0-100% with % readout), same emerald selected-state language as the rest of the studio.
+- drive-by cleanup: two unused eslint-disable directives from Task 43/44 files removed (29 → 27 warnings, the known vendored-ffmpeg set).
+- Browser E2E with a real bass track (generated 55Hz WAV with a 2Hz thump envelope, loaded through the real file input): Beat shake 100% → background checkerboard pattern visibly shifts between frames while playing (bg-region canvas checksums 203315250 → 449527675 over 400ms) and freezes when paused; Blur pulse 100% → heavy beat-synced smear (~16-30px) while the bars stay razor sharp, paused state perfectly sharp again (blur only rides live bass); Blur pulse 35% → subtle softness that breathes with the envelope (4 consecutive checksums all differ); combo bounce 100% + shake 60% + blur pulse 35% → all three compose, edge-row probe shows 79-97% bright pixels top/middle/bottom — no uncovered canvas. 0 page errors, 0 console errors.
+
+Stage Summary:
+- The background's "With the beat" group now has three motions you can mix freely: Beat bounce (gentle zoom), Beat shake (jitter that punches with the kick) and Blur pulse (background smears on every bass hit and snaps back), each with its own 0-100% strength slider — image, video and GIF backgrounds all included, exports frame-exact.

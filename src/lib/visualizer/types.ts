@@ -105,6 +105,11 @@ export interface BackgroundConfig {
   blur: number
   /** Beat bounce — media gently zooms with the bass, 0..1 (0 = steady) */
   pulse: number
+  /** Beat shake — media jitters around with the bass, 0..1 (0 = steady) */
+  shake: number
+  /** Beat blur — extra blur that swells with the bass on top of the
+   *  static `blur`, 0..1 (0 = off). Scales up to ~30px on a full hit. */
+  blurPulse: number
 }
 
 /* ----------------------------------- Lyrics ---------------------------------- */
@@ -529,6 +534,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     grain: 0.08,
     blur: 0,
     pulse: 0,
+    shake: 0,
+    blurPulse: 0,
   },
   lyrics: {
     enabled: false,

@@ -133,8 +133,9 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
 /**
  * Cover-fit draw shared by the image AND video/GIF backgrounds: fills the
  * canvas (cropping overflow), centered, with the user's pan/zoom, mirrors,
- * and an optional media blur. The blur overscans the draw by ~2× the blur
- * radius so softened edges never reveal the canvas beneath.
+ * beat motion (bounce zoom / shake jitter / blur swell) and the static media
+ * blur. Blur + shake overscan the draw so softened or shifted edges never
+ * reveal the canvas beneath.
  */
 function drawMediaCover(
   ctx: CanvasRenderingContext2D,
@@ -145,27 +146,51 @@ function drawMediaCover(
   W: number,
   H: number,
   S: number,
-  /** Live bass energy 0..1 — drives the beat-bounce zoom. */
+  /** Live bass energy 0..1 — drives the beat-bounce zoom, shake and blur. */
   bass = 0,
+  /** Song time — keeps the beat shake's jitter direction deterministic. */
+  time = 0,
 ): void {
   if (naturalW <= 0 || naturalH <= 0) return
   const fit = Math.max(W / naturalW, H / naturalH)
   const zoom = Math.max(0.05, bg.scale ?? 1)
+  const bassLevel = clamp01(bass)
   // Beat bounce: the media breathes with the bass — at most +8% on a full
   // hit at pulse = 1. It only ever GROWS past the cover-fit base, so the
   // canvas is never left uncovered, and pulse = 0 is an exact no-op.
-  const bounce = 1 + clamp01(bg.pulse ?? 0) * clamp01(bass) * 0.08
+  const bounce = 1 + clamp01(bg.pulse ?? 0) * bassLevel * 0.08
+  // Beat shake: deterministic jitter — a fresh pseudo-random direction every
+  // 1/30 s of song time, scaled by strength × live bass, so it pulses with
+  // the kick and freezes when the song goes quiet. The seed is the song
+  // clock, not the wall clock, so exported frames stay pixel-exact.
+  const shakeAmt = clamp01(bg.shake ?? 0)
+  let sx = 0
+  let sy = 0
+  if (shakeAmt > 0.001 && bassLevel > 0.001) {
+    const rnd = mulberry32(Math.floor(time * 30))
+    const amp = shakeAmt * bassLevel * Math.min(W, H) * 0.016
+    sx = (rnd() * 2 - 1) * amp
+    sy = (rnd() * 2 - 1) * amp
+  }
   const scale = fit * zoom * bounce
   const dw = naturalW * scale
   const dh = naturalH * scale
-  const cx = W / 2 + (bg.x ?? 0) * W
-  const cy = H / 2 + (bg.y ?? 0) * H
-  const blur = clamp01(bg.blur ?? 0)
-  const blurPx = blur > 0.001 && 'filter' in ctx ? blur * 40 * S : 0
-  // Same-ratio overscan so blurred edges stay outside the visible canvas.
-  const grow = blurPx > 0 ? 1 + (blurPx * 2) / Math.max(dw, dh) : 1
+  const cx = W / 2 + (bg.x ?? 0) * W + sx
+  const cy = H / 2 + (bg.y ?? 0) * H + sy
+  // Static blur (the Blur slider) + beat blur (Blur pulse swells with the
+  // bass on top of it — up to ~30px more on a full hit at strength 1).
+  const blurPx =
+    'filter' in ctx
+      ? clamp01(bg.blur ?? 0) * 40 * S + clamp01(bg.blurPulse ?? 0) * bassLevel * 30 * S
+      : 0
+  // Overscan so blurred edges AND the shake offsets never reveal the canvas
+  // beneath — check both axes, the widest margin wins.
+  const marginX = blurPx + Math.abs(sx)
+  const marginY = blurPx + Math.abs(sy)
+  const grow =
+    marginX > 0.01 || marginY > 0.01 ? 1 + 2 * Math.max(marginX / dw, marginY / dh) : 1
   ctx.save()
-  if (blurPx > 0) ctx.filter = `blur(${blurPx.toFixed(1)}px)`
+  if (blurPx > 0.01) ctx.filter = `blur(${blurPx.toFixed(1)}px)`
   ctx.translate(cx, cy)
   ctx.scale(bg.flipX ? -1 : 1, bg.flipY ? -1 : 1)
   ctx.drawImage(media, (-dw * grow) / 2, (-dh * grow) / 2, dw * grow, dh * grow)
@@ -192,7 +217,7 @@ function drawBackground(
     if (img) {
       // Cover-fit base scale, then user zoom/pan/flip/blur (shared with the
       // video/GIF background), then the shade fader on top.
-      drawMediaCover(ctx, img, img.naturalWidth, img.naturalHeight, bg, W, H, S, frame.bass)
+      drawMediaCover(ctx, img, img.naturalWidth, img.naturalHeight, bg, W, H, S, frame.bass, frame.time)
       // Shade fader — darkens the photo so the visualizer pops.
       const shade = clamp01(bg.shade ?? 0)
       if (shade > 0) {
@@ -217,14 +242,14 @@ function drawBackground(
       if (anim) {
         const gifFrame = gifFrameAt(anim, frame.styleTime * 1000)
         if (gifFrame) {
-          drawMediaCover(ctx, gifFrame, anim.width, anim.height, bg, W, H, S, frame.bass)
+          drawMediaCover(ctx, gifFrame, anim.width, anim.height, bg, W, H, S, frame.bass, frame.time)
           drawn = true
         }
       }
     } else if (src) {
       const video = getBackgroundVideo(src)
       if (video) {
-        drawMediaCover(ctx, video, video.videoWidth, video.videoHeight, bg, W, H, S, frame.bass)
+        drawMediaCover(ctx, video, video.videoWidth, video.videoHeight, bg, W, H, S, frame.bass, frame.time)
         drawn = true
       }
     }

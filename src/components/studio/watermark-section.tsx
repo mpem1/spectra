@@ -77,7 +77,6 @@ export function WatermarkSection() {
         <>
           {watermark.imageSrc ? (
             <div className="space-y-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={watermark.imageSrc}
                 alt="Watermark preview"

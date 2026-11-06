@@ -70,7 +70,6 @@ export function PulseImageSection() {
         <>
           {pulseImage.imageSrc ? (
             <div className="space-y-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={pulseImage.imageSrc}
                 alt="Pulse image preview"
