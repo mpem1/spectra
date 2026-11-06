@@ -1260,3 +1260,19 @@ Work Log:
 
 Stage Summary:
 - New "Pulse image" panel in the Style tab: upload any PNG/SVG emblem and it floats over the scene, swelling on every kick like the blob and radial styles — with sliders for position, size and swell strength, a Behind vinyl / In front layer switch, slow spin, and a glow tinted by your visualizer palette. Works even in the idle demo now (the whole scene breathes a little before you load a track), and it's baked into every export.
+
+---
+
+Task ID: 44
+Agent: Z.ai Code (main)
+Task: .spectra project files — download/open the whole look, images included
+User: "9. Save/open project files — download your setup as a .spectra file (share links have a size limit; files don't)"
+
+Work Log:
+- New src/lib/project-file.ts: serializeProject (JSON envelope { app:'spectra', kind:'spectra-project', version:1, savedAt, name, config }), parseProject (validates app/kind/version — future versions rejected gracefully; the store's setConfig merges the config over factory defaults so older files load cleanly), sanitizeFileName, downloadProjectFile (Blob + object URL + auto-revoke, `<name>.spectra`). Unlike share links NOTHING is stripped — album art, separate disc face, background media, watermark logo and pulse image all travel; the audio track is not part of a config and is intentionally not in the file (described in the UI + toasts).
+- presets-tab.tsx: new PROJECT FILE section at the bottom of the Presets tab — "Download .spectra" + "Open .spectra" buttons (outline style), hidden input accepting .spectra/JSON, file name reuses the project-name field (falls back to the audio track name, then 'spectra-project'); success/error toasts.
+- Bug fix found by the E2E roundtrip: watermark TEXT mode double-shifted right-corner text (anchor subtracted the measured width AND ctx.textAlign='right' shifted again) so "@handle" floated center-ish instead of hugging the corner. watermark.ts text branch now always left-aligns inside the computed corner box — bottom-right and top-right verified flush.
+- Browser E2E: armed a URL.createObjectURL capture, clicked Download → envelope { app, kind, v1 } with the full config (2919 bytes); mutated the captured JSON (style→wave, watermark text→@roundtrip, name→Roundtrip Test), re-opened it through the real file input → Style tab shows Wave selected, canvas renders the wave, watermark text field = "@roundtrip" ✓ full roundtrip. Corner fix verified in bottom-right and top-right. 0 page errors; lint 0 errors.
+
+Stage Summary:
+- The Presets tab now has Download/Open .spectra: one click saves your entire setup — every image included, no size cap — as a file you can keep, archive or pass to another device; opening one restores everything (then just load your song). Also fixed the watermark text hugging the right corners properly.

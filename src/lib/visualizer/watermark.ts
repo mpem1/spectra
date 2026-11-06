@@ -58,16 +58,17 @@ export function drawWatermark(rc: RenderContext, cfg: WatermarkConfig, S: number
   ctx.save()
   ctx.globalAlpha = opacity
   ctx.font = `600 ${size}px ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif`
-  ctx.textAlign = cfg.position === 'tr' || cfg.position === 'br' ? 'right' : 'left'
-  ctx.textBaseline = 'bottom'
-  const metrics = ctx.measureText(trimmed)
-  const tw = metrics.width
+  const tw = ctx.measureText(trimmed).width
   const th = size * 1.05
+  // anchor() places a left-aligned box of (tw × th) per corner — align the
+  // fill to that box (left-aligned always; the corner math handles the rest).
   const { x, y } = anchor(cfg.position, W, H, tw, th, margin)
   // Soft shadow keeps the handle readable over bright scenes.
   ctx.shadowColor = 'rgba(0, 0, 0, 0.55)'
   ctx.shadowBlur = 6 * S
   ctx.fillStyle = '#ffffff'
-  ctx.fillText(trimmed, x, y + th - size * 0.12)
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillText(trimmed, x, y + th - th * 0.14)
   ctx.restore()
 }

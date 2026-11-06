@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { FolderOpen, Link2, Loader2, Save, Trash2, Upload, Wand2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Download, FolderOpen, Link2, Loader2, Save, Trash2, Upload, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   GRADIENT_PRESETS,
@@ -18,6 +18,7 @@ import {
 } from '@/lib/project-store'
 import { useStudioStore } from '@/store/studio'
 import { buildShareUrl } from '@/lib/share-link'
+import { downloadProjectFile, parseProject, sanitizeFileName } from '@/lib/project-file'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { gradientCss } from '@/components/studio/color-utils'
@@ -65,6 +66,7 @@ export function PresetsTab() {
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [listLoading, setListLoading] = useState(false)
   const [name, setName] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     void fetchProjects()
@@ -131,6 +133,42 @@ export function PresetsTab() {
         description: err instanceof Error ? err.message : 'Unknown error.',
       })
     }
+  }
+
+  const handleDownloadFile = () => {
+    const { config } = useStudioStore.getState()
+    const projectFile = (name.trim() || audioMeta?.name || 'spectra-project').slice(0, 80)
+    try {
+      downloadProjectFile(config, projectFile)
+      toast.success('Project file downloaded', {
+        description: `${sanitizeFileName(projectFile)}.spectra — images included, audio not.`,
+      })
+    } catch (err) {
+      toast.error('Could not create the project file', {
+        description: err instanceof Error ? err.message : 'Unknown error.',
+      })
+    }
+  }
+
+  const handleOpenFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    file
+      .text()
+      .then((text) => {
+        const parsed = parseProject(text)
+        if (!parsed) throw new Error('Not a valid .spectra project file')
+        setConfig(parsed.config)
+        toast.success('Project file opened', {
+          description: `${parsed.name} — load your audio and you are set.`,
+        })
+      })
+      .catch((err) => {
+        toast.error('Could not open project file', {
+          description: err instanceof Error ? err.message : 'Unknown error.',
+        })
+      })
   }
 
   /** Copy a URL that reconstructs the current look for anyone who opens it. */
@@ -301,6 +339,42 @@ export function PresetsTab() {
             ))}
           </div>
         )}
+      </section>
+
+      {/* Project file — the whole look (images included) as a .spectra file */}
+      <section className="space-y-2 border-t border-zinc-800 pt-4">
+        <MicroLabel className="text-[11px] tracking-widest text-zinc-500">PROJECT FILE</MicroLabel>
+        <p className="text-[11px] leading-snug text-zinc-600">
+          Download the whole look — every uploaded image included — as a
+          .spectra file, with none of the share-link size limits. Open it on
+          any device to restore everything, then load your song as usual.
+        </p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".spectra,application/json"
+          className="hidden"
+          aria-label="Open project file"
+          onChange={handleOpenFile}
+        />
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="h-9 flex-1 border-zinc-700 text-xs text-zinc-300 hover:border-zinc-500 hover:bg-zinc-900 hover:text-zinc-100"
+            onClick={handleDownloadFile}
+          >
+            <Download className="size-3.5" aria-hidden />
+            Download .spectra
+          </Button>
+          <Button
+            variant="outline"
+            className="h-9 flex-1 border-zinc-700 text-xs text-zinc-300 hover:border-zinc-500 hover:bg-zinc-900 hover:text-zinc-100"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <FolderOpen className="size-3.5" aria-hidden />
+            Open .spectra
+          </Button>
+        </div>
       </section>
     </div>
   )
