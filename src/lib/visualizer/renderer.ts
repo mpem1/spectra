@@ -129,11 +129,17 @@ function drawMediaCover(
   W: number,
   H: number,
   S: number,
+  /** Live bass energy 0..1 — drives the beat-bounce zoom. */
+  bass = 0,
 ): void {
   if (naturalW <= 0 || naturalH <= 0) return
   const fit = Math.max(W / naturalW, H / naturalH)
   const zoom = Math.max(0.05, bg.scale ?? 1)
-  const scale = fit * zoom
+  // Beat bounce: the media breathes with the bass — at most +8% on a full
+  // hit at pulse = 1. It only ever GROWS past the cover-fit base, so the
+  // canvas is never left uncovered, and pulse = 0 is an exact no-op.
+  const bounce = 1 + clamp01(bg.pulse ?? 0) * clamp01(bass) * 0.08
+  const scale = fit * zoom * bounce
   const dw = naturalW * scale
   const dh = naturalH * scale
   const cx = W / 2 + (bg.x ?? 0) * W
@@ -170,7 +176,7 @@ function drawBackground(
     if (img) {
       // Cover-fit base scale, then user zoom/pan/flip/blur (shared with the
       // video/GIF background), then the shade fader on top.
-      drawMediaCover(ctx, img, img.naturalWidth, img.naturalHeight, bg, W, H, S)
+      drawMediaCover(ctx, img, img.naturalWidth, img.naturalHeight, bg, W, H, S, frame.bass)
       // Shade fader — darkens the photo so the visualizer pops.
       const shade = clamp01(bg.shade ?? 0)
       if (shade > 0) {
@@ -195,14 +201,14 @@ function drawBackground(
       if (anim) {
         const gifFrame = gifFrameAt(anim, frame.styleTime * 1000)
         if (gifFrame) {
-          drawMediaCover(ctx, gifFrame, anim.width, anim.height, bg, W, H, S)
+          drawMediaCover(ctx, gifFrame, anim.width, anim.height, bg, W, H, S, frame.bass)
           drawn = true
         }
       }
     } else if (src) {
       const video = getBackgroundVideo(src)
       if (video) {
-        drawMediaCover(ctx, video, video.videoWidth, video.videoHeight, bg, W, H, S)
+        drawMediaCover(ctx, video, video.videoWidth, video.videoHeight, bg, W, H, S, frame.bass)
         drawn = true
       }
     }

@@ -89,6 +89,16 @@ function MediaBackgroundControls() {
         onChange={(blur) => patchBackground({ blur })}
         format={(v) => `${Math.round(v * 100)}%`}
       />
+      {/* Beat bounce — media zooms gently with the bass (image / video / GIF) */}
+      <SliderRow
+        label="Beat bounce"
+        value={background.pulse}
+        min={0}
+        max={1}
+        step={0.05}
+        onChange={(pulse) => patchBackground({ pulse })}
+        format={(v) => `${Math.round(v * 100)}%`}
+      />
       {/* Mirror toggles — compose to none / H / V / both */}
       <section className="space-y-1.5">
         <MicroLabel>Mirror</MicroLabel>

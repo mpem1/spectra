@@ -103,6 +103,8 @@ export interface BackgroundConfig {
   grain: number
   /** Blur the media (image or video/GIF background), 0..1 → up to ~40px */
   blur: number
+  /** Beat bounce — media gently zooms with the bass, 0..1 (0 = steady) */
+  pulse: number
 }
 
 /* ----------------------------------- Lyrics ---------------------------------- */
@@ -478,6 +480,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     vignette: 0.35,
     grain: 0.08,
     blur: 0,
+    pulse: 0,
   },
   lyrics: {
     enabled: false,

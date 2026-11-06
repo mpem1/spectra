@@ -1207,3 +1207,19 @@ Work Log:
 
 Stage Summary:
 - One click on "From art" (next to the GRADIENT header) reads your album cover and rebuilds the visualizer's gradient from its dominant colors — your angle, shape and cycling settings stay untouched, and lyrics/titles that follow the visualizer palette match automatically.
+
+---
+
+Task ID: 41
+Agent: Z.ai Code (main)
+Task: Beat bounce — background media gently pulses with the bass
+User: "4. Beat bounce — the whole background/cover gently pulses with the bass sounds interesting"
+
+Work Log:
+- New BackgroundConfig.pulse (0..1, default 0 — old saves/share links merge to it and render identically). Applies to image / video / GIF backgrounds (the MediaBackgroundControls trio).
+- renderer.ts drawMediaCover: scale = fit·zoom·(1 + clamp01(bg.pulse)·clamp01(frame.bass)·0.08) — at most +8% on a full-bass hit at 100%. It only ever GROWS past the cover-fit base, so the canvas is never left uncovered (no ghost-trail regression), and pulse=0 is an exact mathematical no-op. Deterministic (frame.bass is part of the deterministic AudioFrame in exports).
+- background-section.tsx: "Beat bounce" slider (0-100%) in the shared media controls, right after Blur — so it appears for image, video and GIF modes only. The vinyl/cover already had its own audio-reactive pulse (DiscConfig.pulse) — combined, both layers can now breathe with the beat.
+- Browser E2E (pixel-measured): uploaded a synthetic background (dark gradient + 7 reference squares) + an in-page-generated 58Hz bass WAV with a square-LFO on/off envelope; set Beat bounce 100%; tracked the right-most square's bitmap edge across ~2s windows: STOPPED → edge 648px (the exact no-op rest position), PLAYING → edge sweeps 668..673px (bounce up to the full +8%). Full working range verified live in the preview canvas. (Test-signal caveats documented: the square-gated tone's clicks + peak-per-bar spectrum resampling keep the synthetic bass floor high — real music swings naturally.) Also unblocked a measurement detour: aria-labels live on the slider ROOT, not the [role=slider] thumb, so sliders are located via their MicroLabel text + closest row. 0 console errors; lint 0 errors (27 pre-existing vendored-ffmpeg warnings).
+
+Stage Summary:
+- New "Beat bounce" slider for image / video / GIF backgrounds: the picture now gently breathes with the kick drum — up to 8% zoom on the hardest hit at 100%, subtle by default, and completely off at 0 so nothing moves unless you ask.
