@@ -219,8 +219,9 @@ export interface DiscConfig {
   coverArtY: number
   /** Show the spinning disc */
   showDisc: boolean
-  /** Disc face: image on the vinyl's center label, or across the full face */
-  mode: 'label' | 'full'
+  /** Disc face: art on the vinyl's center label, across the full face like a
+   *  CD, or a whole cassette tape with turning hubs */
+  mode: 'label' | 'full' | 'cassette'
   /** Disc diameter as % of canvas height */
   discSize: number
   /** Disc center, 0..100 (of width / height) */
@@ -231,6 +232,18 @@ export interface DiscConfig {
   /** Which part of the art shows on the disc face/label, 0..100 (50 = centered) */
   discArtX: number
   discArtY: number
+  /** Cassette shell plastic color */
+  shellColor: string
+  /** Cassette label: bare plastic, the album art, or the built-in mixtape label */
+  cassetteLabel: 'none' | 'art' | 'default'
+  /** Mixtape label stripe colors (top → bottom) */
+  stripes: string[]
+  /** Mixtape label top strip background (the ruled-lines card) */
+  labelColor: string
+  /** Text written on the mixtape label — \n stacks lines on the rules */
+  labelText: string
+  /** Mixtape label text color */
+  labelTextColor: string
   /** Spin speed in rotations per minute (33.33 ≈ LP, 45 ≈ single) */
   rpm: number
   /** Spin direction: 1 = clockwise, -1 = counter-clockwise */
@@ -522,6 +535,12 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     discArtZoom: 1,
     discArtX: 50,
     discArtY: 50,
+    shellColor: '#2f2f34',
+    cassetteLabel: 'default',
+    stripes: ['#e5325c', '#2bb3e6', '#f2c722'],
+    labelColor: '#f7f4ec',
+    labelText: '',
+    labelTextColor: '#1c1c1e',
     rpm: 33.33,
     direction: 1,
     pulse: 0,

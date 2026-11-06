@@ -20,39 +20,13 @@
  */
 import type { AudioFrame, DiscConfig, RenderContext } from './types'
 import { getBackgroundImage } from './image-cache'
+import { drawImageCover } from './cover-fit'
+import { drawCassette } from './cassette'
 
 const TWO_PI = Math.PI * 2
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v
-}
-
-/**
- * Cover-fit an image into a box (fills it, cropping overflow). An extra zoom
- * enlarges the art further, and fx/fy (0..1) pick which part of the art fills
- * the box — 0.5 keeps it centered, 0 shows its left/top edge, 1 its
- * right/bottom. The box is always fully covered — no empty gaps, ever.
- */
-function drawImageCover(
-  ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  zoom = 1,
-  fx = 0.5,
-  fy = 0.5,
-): void {
-  const iw = img.naturalWidth || img.width
-  const ih = img.naturalHeight || img.height
-  if (iw <= 0 || ih <= 0) return
-  const scale = Math.max(w / iw, h / ih) * Math.max(1, zoom)
-  const dw = iw * scale
-  const dh = ih * scale
-  const panX = (w - dw) * (fx < 0 ? 0 : fx > 1 ? 1 : fx)
-  const panY = (h - dh) * (fy < 0 ? 0 : fy > 1 ? 1 : fy)
-  ctx.drawImage(img, x + panX, y + panY, dw, dh)
 }
 
 export function drawDisc(rc: RenderContext, frame: AudioFrame, disc: DiscConfig): void {
@@ -66,7 +40,11 @@ export function drawDisc(rc: RenderContext, frame: AudioFrame, disc: DiscConfig)
   const pulseScale = 1 + clamp01(disc.pulse) * clamp01(frame.energy * 2)
 
   /* ------------------------------- The disc ------------------------------- */
-  if (disc.showDisc) {
+  if (disc.showDisc && disc.mode === 'cassette') {
+    // A whole cassette tape — turning sprocket hubs instead of a spinning
+    // circle. The square cover below still composes with it like the vinyl.
+    drawCassette(rc, frame, disc)
+  } else if (disc.showDisc) {
     const cx = (disc.discX / 100) * W
     const cy = (disc.discY / 100) * H
     const R = ((disc.discSize / 100) * H / 2) * pulseScale

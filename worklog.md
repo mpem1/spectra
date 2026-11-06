@@ -1059,3 +1059,20 @@ Work Log:
 
 Stage Summary:
 - The album art is now a free layer inside each shape: zoom into the emblem for the spinning label, slide the sleeve's crop to frame the title, or tighten the CD face — per-shape, deterministic in exports, no gaps at any setting.
+Task ID: 31
+Agent: Z.ai Code (main)
+Task: Cassette tape face — turning hubs, blank plastic / album art / mixtape label
+
+Work Log:
+- User request: add a cassette tape like the vinyl/CD, with the inner parts turning; shell color/style options; label = blank plastic | uploaded image | a default mixtape design with changeable colors + text (4 reference screenshots).
+- Session start: found a stray local commit (e8e3dfc, Nov 5) that re-restored the stale src/app/api routes (the old CI-breaker) + dev.pid noise, message mimicking Task 30. Never pushed (remote stayed dc9a491). Verified the Task 30 code was intact inside it, then `git reset --hard dc9a491` → local == deployed remote, api routes gone, app 200.
+- types.ts: DiscConfig.mode += 'cassette'; new fields shellColor (#2f2f34), cassetteLabel 'none'|'art'|'default' (default), stripes [pink,blue,yellow], labelColor (#f7f4ec), labelText (''), labelTextColor (#1c1c1e). setConfig merge auto-defaults old saves; share links already strip disc.imageSrc → 'art' label with no art degrades to bare plastic at render time.
+- New src/lib/visualizer/cover-fit.ts: shared drawImageCover (zoom + focal pan, gap-free) moved out of disc.ts + parseHex6/shadeHex/roundRectPath helpers (no cycle: disc.ts→cassette.ts→cover-fit.ts).
+- New src/lib/visualizer/cassette.ts: drawCassette — 100:63.5 body (width = Disc size % of canvas H, pulse-scaled), top-lit plastic gradient shell + rim + corner screws w/ slots, trapezoid bottom plate with capstan/square/center holes, stadium tape window (near-black backing), tape ribbon, two tape spools (dark donut + winding arcs rotating with angle) under white sprocket hubs with 6 teeth cut by notches, all turning at disc.direction·2π·rpm/60·styleTime (deterministic; exports lock styleTime). Labels: 'art' = album art cover-fit over the label area reusing discArtZoom/X/Y (window punches through); 'default' = mixtape — edge-to-edge stripes (window cuts them), ruled card with dark A badge + 3 rules + user text (\n stacks ≤3 lines, auto-shrunk to fit), all colors from the picker. Viewer-anchored sheen reuses disc.sheen. Pulse reuses the shared energy calibration.
+- disc.ts drawDisc: `showDisc && mode==='cassette'` dispatches to drawCassette; vinyl/CD path untouched; square cover still composes after (sleeve over tape).
+- vinyl-section.tsx: Disc face 3-button segmented (Vinyl label | Full CD | Cassette), per-face hint, new CassetteControls block (Shell plastic picker; Label Blank/Album art/Mixtape segmented + per-mode hints; Mixtape: text Textarea, Card + Text color rows, Stripe 1-3 pickers). Disc Art zoom/X/Y trio now hidden in cassette mode unless label = art; hint text adapts (cassette label / spins with the tape).
+- README vinyl bullet extended.
+- Browser E2E (fresh sandbox; /tmp regenerated): Cassette face renders mixtape default ✓; Disc size → 70% + text "NEON DRIFT\nSide A" → A badge + 2 text lines on rules ✓; hub-region pixel diff over 1.5s = 208 px (hubs turn) ✓; Blank → bare shell like ref #2 ✓; Album art → 4-quadrant art label w/ window punched + Art zoom/pan sliders appear ✓; shell → #c9c4bd → translucent-clear look like ref #1 ✓; regression Vinyl label (grooved, art label) + Full CD (punched hole) unchanged ✓; 0 console errors; lint 0 errors.
+
+Stage Summary:
+- The family is complete: square cover + vinyl + CD + cassette, all sharing move/resize, art zoom/pan, RPM spin/pulse and frame-exact exports — the cassette adds customizable shell plastic and a mixtape label you can leave blank, wrap in art, or restyle down to the last stripe.

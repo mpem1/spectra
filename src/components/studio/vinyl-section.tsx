@@ -5,6 +5,8 @@ import { Disc3, ImagePlus, RotateCcw, RotateCw, Trash2 } from 'lucide-react'
 import { useStudioStore } from '@/store/studio'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
+import { ColorPickerButton } from '@/components/studio/color-picker'
 import { MicroLabel, SectionTitle, SliderRow } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 
@@ -69,8 +71,9 @@ export function VinylSection() {
       </div>
       <p className="text-[11px] leading-snug text-zinc-600">
         A square cover with a record sliding out of it, spinning at your set
-        speed. The art goes on the vinyl&apos;s center label or across the full
-        face like a CD — cover and disc share the same image.
+        speed. The face is a vinyl with the art on its center label, a CD
+        with the art across it, or a cassette tape with turning hubs — cover
+        and disc share the same image.
       </p>
 
       {/* Album art upload */}
@@ -203,11 +206,12 @@ export function VinylSection() {
         <>
           <div className="space-y-1.5">
             <MicroLabel>Disc face</MicroLabel>
-            <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+            <div className="grid grid-cols-3 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
               {(
                 [
                   { id: 'label', label: 'Vinyl label' },
                   { id: 'full', label: 'Full CD' },
+                  { id: 'cassette', label: 'Cassette' },
                 ] as const
               ).map((m) => (
                 <button
@@ -229,9 +233,14 @@ export function VinylSection() {
             <p className="text-[11px] leading-snug text-zinc-600">
               {disc.mode === 'label'
                 ? 'Vinyl: art on the center label, grooved black record around it.'
-                : 'CD: art across the whole face with a punched center hole.'}
+                : disc.mode === 'full'
+                  ? 'CD: art across the whole face with a punched center hole.'
+                  : 'Cassette: a tape with turning hubs — its width follows Disc size.'}
             </p>
           </div>
+          {disc.mode === 'cassette' ? (
+            <CassetteControls />
+          ) : null}
           <SliderRow
             label="Disc size"
             value={disc.discSize}
@@ -259,7 +268,7 @@ export function VinylSection() {
             onChange={(discY) => patchDisc({ discY })}
             format={(v) => `${Math.round(v)}%`}
           />
-          {disc.imageSrc ? (
+          {disc.imageSrc && (disc.mode !== 'cassette' || disc.cassetteLabel === 'art') ? (
             <div className="space-y-1">
               <SliderRow
                 label="Art zoom"
@@ -289,8 +298,13 @@ export function VinylSection() {
                 format={(v) => `${Math.round(v)}%`}
               />
               <p className="text-[11px] leading-snug text-zinc-600">
-                Zooms and slides the art on the {disc.mode === 'label' ? 'center label' : 'CD face'}
-                {' '}— it keeps spinning with the record.
+                Zooms and slides the art on the{' '}
+                {disc.mode === 'cassette'
+                  ? 'cassette label'
+                  : disc.mode === 'label'
+                    ? 'center label'
+                    : 'CD face'}
+                {' '}— it keeps spinning with the {disc.mode === 'cassette' ? 'tape' : 'record'}.
               </p>
             </div>
           ) : null}
@@ -386,5 +400,123 @@ export function VinylSection() {
         </>
       ) : null}
     </section>
+  )
+}
+
+/** Mixtape label stripes as shipped — the pink / blue / yellow of the classic look. */
+const CASSETTE_STRIPES = ['#e5325c', '#2bb3e6', '#f2c722']
+
+/**
+ * Cassette face controls: shell plastic color, the label style (bare
+ * plastic, album art, or the built-in mixtape label) and — for the mixtape —
+ * the text on the rules plus the card, text and stripe colors.
+ */
+function CassetteControls() {
+  const disc = useStudioStore((s) => s.config.disc)
+  const patchDisc = useStudioStore((s) => s.patchDisc)
+  const stripes = disc.stripes?.length >= 3 ? disc.stripes.slice(0, 3) : [...CASSETTE_STRIPES]
+  const label = disc.cassetteLabel ?? 'default'
+
+  return (
+    <div className="space-y-2 rounded-lg border border-zinc-800/80 bg-zinc-950/40 p-2">
+      <div className="flex h-6 items-center justify-between">
+        <MicroLabel>Shell plastic</MicroLabel>
+        <ColorPickerButton
+          ariaLabel="Cassette shell color"
+          value={disc.shellColor}
+          onChange={(shellColor) => patchDisc({ shellColor })}
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <MicroLabel>Label</MicroLabel>
+        <div className="grid grid-cols-3 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+          {(
+            [
+              { id: 'none', label: 'Blank' },
+              { id: 'art', label: 'Album art' },
+              { id: 'default', label: 'Mixtape' },
+            ] as const
+          ).map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              aria-pressed={label === m.id}
+              onClick={() => patchDisc({ cassetteLabel: m.id })}
+              className={cn(
+                'h-7 rounded-md text-xs transition-colors',
+                label === m.id
+                  ? 'bg-emerald-500/15 text-emerald-300'
+                  : 'text-zinc-400 hover:text-zinc-200',
+              )}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        {label === 'none' ? (
+          <p className="text-[11px] leading-snug text-zinc-600">
+            Bare plastic — just the shell and the tape window.
+          </p>
+        ) : null}
+        {label === 'art' ? (
+          <p className="text-[11px] leading-snug text-zinc-600">
+            {disc.imageSrc
+              ? 'Uses the album art uploaded above — Art zoom / X / Y below frame it.'
+              : 'Upload album art above and it becomes the cassette label.'}
+          </p>
+        ) : null}
+      </div>
+
+      {label === 'default' ? (
+        <>
+          <Textarea
+            aria-label="Mixtape label text"
+            rows={2}
+            placeholder="NEON DRIFT — Side A"
+            className="min-h-0 resize-none border-zinc-800 bg-zinc-950/60 text-xs"
+            value={disc.labelText ?? ''}
+            onChange={(e) => patchDisc({ labelText: e.target.value })}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex h-6 items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/60 px-2">
+              <MicroLabel>Card</MicroLabel>
+              <ColorPickerButton
+                ariaLabel="Label card color"
+                value={disc.labelColor}
+                onChange={(labelColor) => patchDisc({ labelColor })}
+              />
+            </div>
+            <div className="flex h-6 items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/60 px-2">
+              <MicroLabel>Text</MicroLabel>
+              <ColorPickerButton
+                ariaLabel="Label text color"
+                value={disc.labelTextColor}
+                onChange={(labelTextColor) => patchDisc({ labelTextColor })}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {stripes.map((color, i) => (
+              <div
+                key={i}
+                className="flex h-6 items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/60 px-2"
+              >
+                <MicroLabel>Stripe {i + 1}</MicroLabel>
+                <ColorPickerButton
+                  ariaLabel={`Stripe ${i + 1} color`}
+                  value={color}
+                  onChange={(c) => {
+                    const next = [...stripes]
+                    next[i] = c
+                    patchDisc({ stripes: next })
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
   )
 }
