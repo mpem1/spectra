@@ -114,6 +114,10 @@ export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResu
       if (bgVideoSrc && !isGifSrc(bgVideoSrc)) {
         await seekExportVideo(bgVideoSrc, frame.styleTime)
       }
+      // Clear first so 'transparent' backgrounds (and any area the media
+      // doesn't cover) don't bleed the previous frame's pixels into the PNG;
+      // opaque modes repaint the whole canvas anyway.
+      ctx.clearRect(0, 0, width, height)
       renderFrame({ ctx, width, height, frame: i }, frame, config)
       const blob = await new Promise<Blob | null>((resolve) =>
         canvas.toBlob(resolve, 'image/png'),

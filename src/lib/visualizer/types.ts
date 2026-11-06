@@ -550,7 +550,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     labelColor: '#f7f4ec',
     labelText: '',
     labelTextColor: '#1c1c1e',
-    shadowDepth: 40,
+    shadowDepth: 55,
     shadowAngle: 90,
     shadowColor: '#000000',
     rpm: 33.33,

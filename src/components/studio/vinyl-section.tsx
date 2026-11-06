@@ -407,7 +407,7 @@ export function VinylSection() {
           <MicroLabel>Shadows</MicroLabel>
           <SliderRow
             label="Shadow depth"
-            value={disc.shadowDepth ?? 40}
+            value={disc.shadowDepth ?? 55}
             min={0}
             max={100}
             step={1}

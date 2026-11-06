@@ -20,7 +20,7 @@
  */
 import type { AudioFrame, DiscConfig, RenderContext } from './types'
 import { getBackgroundImage } from './image-cache'
-import { drawImageCover, faceShadow, withAlpha } from './cover-fit'
+import { drawImageCover, paintFaceShadow } from './cover-fit'
 import { drawCassette } from './cassette'
 
 const TWO_PI = Math.PI * 2
@@ -53,20 +53,20 @@ export function drawDisc(rc: RenderContext, frame: AudioFrame, disc: DiscConfig)
       // styleTime === song time, so every frame lands on the same pixels.
       const angle = disc.direction * TWO_PI * (disc.rpm / 60) * frame.styleTime
 
-      // Drop shadow for depth against the cover (depth/angle from the panel).
-      const sh = faceShadow(disc.shadowDepth ?? 40, disc.shadowAngle ?? 90, S)
-      if (sh) {
-        ctx.save()
-        ctx.shadowColor = withAlpha(disc.shadowColor ?? '#000000', sh.alpha)
-        ctx.shadowBlur = sh.blur
-        ctx.shadowOffsetX = sh.dx
-        ctx.shadowOffsetY = sh.dy
-        ctx.beginPath()
-        ctx.arc(cx, cy, R, 0, TWO_PI)
-        ctx.fillStyle = '#0b0b0b'
-        ctx.fill()
-        ctx.restore()
-      }
+      // Two-layer drop shadow for depth against the cover (depth/angle from
+      // the panel) — contact layer + main throw so it reads on any background.
+      paintFaceShadow(
+        ctx,
+        () => {
+          ctx.beginPath()
+          ctx.arc(cx, cy, R, 0, TWO_PI)
+        },
+        '#0b0b0b',
+        disc.shadowColor ?? '#000000',
+        disc.shadowDepth ?? 55,
+        disc.shadowAngle ?? 90,
+        S,
+      )
 
       if (disc.mode === 'label') {
         drawVinylFace(ctx, disc, img, cx, cy, R, angle, S)
@@ -112,18 +112,19 @@ export function drawDisc(rc: RenderContext, frame: AudioFrame, disc: DiscConfig)
 
       ctx.save()
       // Sleeve shadow (drawn before the art so it hugs the square).
-      const sh = faceShadow(disc.shadowDepth ?? 40, disc.shadowAngle ?? 90, S)
-      if (sh) {
-        ctx.shadowColor = withAlpha(disc.shadowColor ?? '#000000', sh.alpha)
-        ctx.shadowBlur = sh.blur
-        ctx.shadowOffsetX = sh.dx
-        ctx.shadowOffsetY = sh.dy
-      }
-      ctx.beginPath()
-      if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, side, side, r)
-      else ctx.rect(x, y, side, side)
-      ctx.fillStyle = '#101010'
-      ctx.fill()
+      paintFaceShadow(
+        ctx,
+        () => {
+          ctx.beginPath()
+          if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, side, side, r)
+          else ctx.rect(x, y, side, side)
+        },
+        '#101010',
+        disc.shadowColor ?? '#000000',
+        disc.shadowDepth ?? 55,
+        disc.shadowAngle ?? 90,
+        S,
+      )
       ctx.restore()
 
       if (img) {

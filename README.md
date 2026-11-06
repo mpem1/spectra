@@ -29,6 +29,9 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
 - **Backgrounds** — solid, gradient, image (pan/zoom/blur), looping **video
   or animated GIF** (muted, cover-fit, frame-exact in exports — GIFs are
   decoded into deterministic frames), or transparent (alpha recording).
+  Zoom an image or video out, or use a cut-out PNG: the area it doesn't
+  cover gets a clean dark backdrop — no leftover trails from previous
+  frames, in the preview and in every export.
 - **Lyrics tab** — synced lyric lines rendered into the visualizer, plus a
   **title card**: a free-positioned intro title that fades in at a set time,
   holds for a set duration, and fades out — with glow, outline, and either
@@ -51,10 +54,12 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
   a clean **vector** illustration or a shaded **realistic** render lit like a
   photo: diagonal key light with a hotspot, beveled rims, contact shadows
   under the label and screws, see-through reel silhouettes on bare
-  smoke-plastic shells, a glass window reflection, twin glossy streaks and
-  film grain. Every face also casts a **drop shadow** whose depth, direction
-  (angle) and **color** you control — on near-black backgrounds pick a
-  lighter or colored shadow so it actually shows.
+  smoke-plastic shells, a glass window reflection with a hard specular
+  streak, twin glossy streaks, a shadowed far corner and film grain. Every
+  face also casts a **two-layer drop shadow** — a tight contact shadow plus
+  a wide soft throw — whose depth (default 55), direction (angle) and
+  **color** you control; on near-black backgrounds pick a lighter or
+  colored shadow so it actually shows.
 - **Projects** — save/load studio configurations, stored locally in the
   visitor's browser (IndexedDB) — no account, no server.
 - **Shareable looks** — one click turns your whole setup into a link that

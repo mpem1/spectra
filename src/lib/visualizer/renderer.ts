@@ -154,6 +154,13 @@ function drawBackground(
   const { ctx, width: W, height: H } = rc
 
   if (bg.mode === 'image') {
+    // Zoomed-out / panned images and transparent PNGs don't necessarily
+    // repaint the whole canvas. Always lay a dark base first so uncovered
+    // areas never keep stale pixels from the previous frame (ghost trails
+    // smearing the visualizer + imagery, looking like a broken alpha
+    // filter) — in the live preview AND in every export path.
+    ctx.fillStyle = '#0a0a0a'
+    ctx.fillRect(0, 0, W, H)
     const img = getBackgroundImage(bg.imageSrc)
     if (img) {
       // Cover-fit base scale, then user zoom/pan/flip/blur (shared with the
@@ -165,15 +172,17 @@ function drawBackground(
         ctx.fillStyle = `rgba(0, 0, 0, ${shade})`
         ctx.fillRect(0, 0, W, H)
       }
-    } else {
-      // Image still decoding — dark fallback, next frame picks it up.
-      ctx.fillStyle = '#0a0a0a'
-      ctx.fillRect(0, 0, W, H)
     }
+    // Image still decoding — the base fill above is the dark fallback;
+    // the next frame picks the image up.
   } else if (bg.mode === 'video') {
     // Animated background — looping muted video, or a GIF decoded into
     // deterministic frames. Both use the same cover-fit media transform as
     // the image background; the shade fader sits on top identically.
+    // Same dark base as image mode: a zoomed-out video/GIF must not leave
+    // stale pixels outside its drawn rect.
+    ctx.fillStyle = '#0a0a0a'
+    ctx.fillRect(0, 0, W, H)
     const src = bg.videoSrc
     let drawn = false
     if (src && isGifSrc(src)) {
@@ -198,11 +207,8 @@ function drawBackground(
         ctx.fillStyle = `rgba(0, 0, 0, ${shade})`
         ctx.fillRect(0, 0, W, H)
       }
-    } else {
-      // Still decoding / missing — dark fallback, next frame picks it up.
-      ctx.fillStyle = '#0a0a0a'
-      ctx.fillRect(0, 0, W, H)
     }
+    // Still decoding / missing — the base fill above is the dark fallback.
   } else if (bg.mode === 'solid') {
     ctx.fillStyle = bg.color
     ctx.fillRect(0, 0, W, H)

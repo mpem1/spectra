@@ -76,7 +76,7 @@ export function roundRectPath(
  * Drop-shadow parameters behind the album-art faces (square cover, vinyl/CD
  * disc, cassette) from the depth (0..100) and angle (degrees) sliders.
  * Depth drives reach, blur and darkness together — depth 100 is a huge,
- * unmistakable shadow (36px reach, 75px blur, 0.9 alpha at 720p) while 0
+ * unmistakable shadow (52px reach, 110px blur, 0.95 alpha at 720p) while 0
  * returns null so callers skip the shadow pass entirely. Angle aims the
  * offset around the clock (90 = straight down). Color is applied by callers
  * via withAlpha() — a black shadow is invisible on near-black backgrounds,
@@ -87,14 +87,53 @@ export function faceShadow(
   angle: number,
   S: number,
 ): { dx: number; dy: number; blur: number; alpha: number } | null {
-  const d = Math.max(0, Math.min(100, Number.isFinite(depth) ? depth : 40)) / 100
+  const d = Math.max(0, Math.min(100, Number.isFinite(depth) ? depth : 55)) / 100
   if (d <= 0.001) return null
   const rad = ((Number.isFinite(angle) ? angle : 90) * Math.PI) / 180
   return {
-    dx: Math.cos(rad) * d * 36 * S,
-    dy: Math.sin(rad) * d * 36 * S,
-    blur: d * 75 * S,
-    alpha: 0.25 + d * 0.65,
+    dx: Math.cos(rad) * d * 52 * S,
+    dy: Math.sin(rad) * d * 52 * S,
+    blur: d * 110 * S,
+    alpha: 0.32 + d * 0.63,
+  }
+}
+
+/**
+ * Two-layer face shadow — the silhouette is filled twice:
+ * 1. a TIGHT contact shadow (short offset, small blur, near-opaque) that
+ *    hugs the edge, so the shadow reads even on very dark backgrounds;
+ * 2. the main soft throw at full depth/blur — the big cinematic one.
+ * Callers pass a buildPath() closure (path only, no fill) plus the opaque
+ * silhouette color; the real face art overdraws the silhouette right after,
+ * so the intermediate fills never show.
+ */
+export function paintFaceShadow(
+  ctx: CanvasRenderingContext2D,
+  buildPath: () => void,
+  fillColor: string,
+  color: string,
+  depth: number,
+  angle: number,
+  S: number,
+): void {
+  const sh = faceShadow(depth, angle, S)
+  if (!sh) return
+  const passes = [
+    // Contact layer: glued to the edge, makes the ANGLE legible.
+    { dx: sh.dx * 0.4, dy: sh.dy * 0.4, blur: sh.blur * 0.3, alpha: Math.min(1, sh.alpha + 0.2) },
+    // Main layer: the big soft throw.
+    { dx: sh.dx, dy: sh.dy, blur: sh.blur, alpha: sh.alpha },
+  ]
+  for (const p of passes) {
+    ctx.save()
+    ctx.shadowColor = withAlpha(color || '#000000', p.alpha)
+    ctx.shadowBlur = p.blur
+    ctx.shadowOffsetX = p.dx
+    ctx.shadowOffsetY = p.dy
+    buildPath()
+    ctx.fillStyle = fillColor
+    ctx.fill()
+    ctx.restore()
   }
 }
 
