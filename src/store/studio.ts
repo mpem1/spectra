@@ -15,6 +15,7 @@ import {
   type StudioConfig,
   type TitleConfig,
   type VisualizerConfig,
+  type WatermarkConfig,
 } from '@/lib/visualizer/types'
 import { exportMP4 } from '@/lib/export/exporter'
 import { getEngine, getPreviewControls } from '@/components/studio/engine-registry'
@@ -84,6 +85,7 @@ type StudioState = {
   patchLyrics: (partial: Partial<LyricsConfig>) => void
   patchTitle: (partial: Partial<TitleConfig>) => void
   patchDisc: (partial: Partial<DiscConfig>) => void
+  patchWatermark: (partial: Partial<WatermarkConfig>) => void
   /** Patches config.visualizer.gradient */
   patchGradient: (partial: Partial<GradientConfig>) => void
   /** Patches config.background.gradient */
@@ -176,6 +178,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, disc: { ...s.config.disc, ...partial } },
     })),
 
+  patchWatermark: (partial) =>
+    set((s) => ({
+      config: { ...s.config, watermark: { ...s.config.watermark, ...partial } },
+    })),
+
   patchGradient: (partial) =>
     set((s) => ({
       config: {
@@ -228,6 +235,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         lyrics: { ...DEFAULT_STUDIO_CONFIG.lyrics, ...config.lyrics },
         title: { ...DEFAULT_STUDIO_CONFIG.title, ...config.title },
         disc: { ...DEFAULT_STUDIO_CONFIG.disc, ...config.disc },
+        watermark: { ...DEFAULT_STUDIO_CONFIG.watermark, ...config.watermark },
       },
     }),
 

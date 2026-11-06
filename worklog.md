@@ -1223,3 +1223,22 @@ Work Log:
 
 Stage Summary:
 - New "Beat bounce" slider for image / video / GIF backgrounds: the picture now gently breathes with the kick drum — up to 8% zoom on the hardest hit at 100%, subtle by default, and completely off at 0 so nothing moves unless you ask.
+
+---
+
+Task ID: 42
+Agent: Z.ai Code (main)
+Task: Corner watermark — logo image or @handle text above everything, exports included
+User: "7. Corner watermark/logo — drop a small image or @handle in any corner, exports included"
+
+Work Log:
+- New WatermarkConfig { enabled, imageSrc, text, position: tl|tr|bl|br, size (px @720p, default 56), opacity (default 85%) } as a top-level StudioConfig section; DEFAULTS disabled/empty so old saves, projects and share links merge to a no-op.
+- New src/lib/visualizer/watermark.ts drawWatermark: image mode (aspect-preserving, clamped to 4:1 width, transparency welcome) wins when a logo is set; otherwise a text handle (600-weight system sans, white, soft black shadow for bright scenes, bottom-anchored). 28px·S margin; anchored per corner; drawn as the VERY TOP layer in renderFrame — above lyrics/title — so credits never get covered. Still-decoding image = skipped for that preview frame (cache pattern), export pipelines preload it first.
+- Export determinism: exporter.ts (MP4) + png-seq.ts preload watermark.imageSrc before frame 0 with graceful-fallback notices — the logo is on every exported frame, MP4 and PNG sequence alike.
+- share-link.ts makePortable: watermark.imageSrc joins the stripped-media set (data URLs can't fit a URL); the TEXT handle and all settings still travel in share links.
+- store: patchWatermark + setConfig merge line (watermark over DEFAULTS).
+- New watermark-section.tsx (last section of the Style tab): Stamp icon + enable switch; logo upload with checkerboard transparency preview + Replace/Remove; "…or a text handle" Input (max 40 chars, used when no logo); 2×2 corner picker (Task-37 contrast pattern: solid emerald selected); Size 24-160px + Opacity 5-100% sliders.
+- Browser E2E: generated a green "S" badge PNG in-page, uploaded via the real input, enabled → logo renders bottom-right above the bars ✓; Top left → logo moves corners ✓; Remove logo + typed "@spectra_studio" → white shadowed handle in the top-left ✓. 0 page errors; lint 0 errors; tsc clean for all touched files (remaining tsc hits are pre-existing legacy examples/editor/skills files outside the build).
+
+Stage Summary:
+- New "Corner watermark" panel at the bottom of the Style tab: drop in a logo or just type your @handle, pick a corner, set size and opacity — it sits above everything (lyrics, titles, visualizer) and is baked into every MP4 / PNG export so your videos stay credited.

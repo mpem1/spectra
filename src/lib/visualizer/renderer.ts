@@ -21,6 +21,7 @@ import { getBackgroundVideo, getGifAnimation, gifFrameAt, isGifSrc } from './ani
 import { drawLyrics } from './lyrics'
 import { drawTitle } from './title'
 import { drawDisc } from './disc'
+import { drawWatermark } from './watermark'
 
 /* --------------------------------- Utilities -------------------------------- */
 
@@ -108,6 +109,11 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // defaults in setConfig, but stay defensive here anyway.
   if (config.title?.enabled && config.title.text.trim().length > 0) {
     drawTitle(rc, frame, config.title, config.visualizer.gradient)
+  }
+  // Corner watermark — the very top layer, above lyrics/title, so posted
+  // videos always carry the credit. Optional chaining: pre-watermark saves.
+  if (config.watermark?.enabled) {
+    drawWatermark(rc, config.watermark, S)
   }
   rc.ctx.restore()
 }

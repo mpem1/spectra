@@ -259,6 +259,14 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
       onNotice?.('Disc face art could not be loaded — exporting with the shared album art.')
     }
   }
+  // Corner watermark logo — must be on frame 0 like every other layer.
+  if (config.watermark?.enabled && config.watermark.imageSrc) {
+    try {
+      await loadBackgroundImage(config.watermark.imageSrc)
+    } catch {
+      onNotice?.('Watermark logo could not be loaded — exporting without it.')
+    }
+  }
 
   // Animated background (video file or GIF): GIFs decode into deterministic
   // frame canvases; videos get an export-private element that the render loop

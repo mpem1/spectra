@@ -202,6 +202,26 @@ export interface TitleConfig {
   glowColor: string
 }
 
+/* --------------------------------- Watermark --------------------------------- */
+
+/**
+ * Corner watermark — a small logo image or @handle text sitting on top of
+ * everything (exports included), so posted videos stay credited.
+ */
+export interface WatermarkConfig {
+  enabled: boolean
+  /** Logo image (data URL, transparency welcome). Wins over text when set. */
+  imageSrc: string
+  /** Text mode: a short handle like "@you" (shown when no image is set). */
+  text: string
+  /** Which corner to sit in */
+  position: 'tl' | 'tr' | 'bl' | 'br'
+  /** Logo height / text size, px relative to the 720p canvas */
+  size: number
+  /** 0..1 — how strongly the watermark shows */
+  opacity: number
+}
+
 /* ------------------------------------ Disc ------------------------------------ */
 
 /**
@@ -286,6 +306,7 @@ export interface StudioConfig {
   lyrics: LyricsConfig
   title: TitleConfig
   disc: DiscConfig
+  watermark: WatermarkConfig
 }
 
 /* --------------------------------- Audio frame -------------------------------- */
@@ -576,5 +597,13 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     pulse: 0,
     grooves: true,
     sheen: 0.35,
+  },
+  watermark: {
+    enabled: false,
+    imageSrc: '',
+    text: '',
+    position: 'br',
+    size: 56,
+    opacity: 0.85,
   },
 }

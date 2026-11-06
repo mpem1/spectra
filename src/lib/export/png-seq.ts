@@ -79,6 +79,14 @@ export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResu
       // Fall through — the disc falls back to the shared album art.
     }
   }
+  // Corner watermark logo — must be on frame 0 like every other layer.
+  if (config.watermark?.enabled && config.watermark.imageSrc) {
+    try {
+      await loadBackgroundImage(config.watermark.imageSrc)
+    } catch {
+      // Fall through — the watermark is skipped.
+    }
+  }
 
   // Animated background (video/GIF): GIF → deterministic frame decode;
   // video → export-private element seeked per frame. Same as the MP4 path.

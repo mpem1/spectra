@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { GradientEditor } from '@/components/studio/gradient-editor'
 import { BackgroundSection } from '@/components/studio/background-section'
 import { VinylSection } from '@/components/studio/vinyl-section'
+import { WatermarkSection } from '@/components/studio/watermark-section'
 import { MicroLabel, OptionCard, SliderRow } from '@/components/studio/controls'
 
 const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] = [
@@ -274,6 +275,9 @@ export function StyleTab() {
 
       {/* Album art — square cover + spinning vinyl/CD */}
       <VinylSection />
+
+      {/* Corner watermark — logo or @handle above everything */}
+      <WatermarkSection />
     </div>
   )
 }
