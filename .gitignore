@@ -61,3 +61,6 @@ agent-ctx/
 
 # chat-gateway scratch files (auto-saved pastes) — never ship these
 upload/
+
+# sandbox-only dev database (never ship)
+/db/
