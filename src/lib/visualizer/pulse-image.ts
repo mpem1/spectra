@@ -7,9 +7,10 @@
  * silence to a loud color at full level, and an outline ring stamped from
  * the artwork's alpha silhouette and painted BEHIND the image — only the
  * band outside its edge, so the artwork keeps every pixel of detail at any
- * stroke width. The glow shadow is cast by the ring, so the aura follows
- * the outline. Deterministic: everything derives from the AudioFrame +
- * config.
+ * stroke width. With glow on, the aura is a halo blurred from the full
+ * outlined shape and tinted per frame, so it radiates outward from the
+ * outline and follows its contour. Deterministic: everything derives from
+ * the AudioFrame + config.
  */
 import type { AudioFrame, GradientConfig, PulseImageConfig, RenderContext } from './types'
 import { getBackgroundImage } from './image-cache'
@@ -192,6 +193,112 @@ function outlineRing(img: HTMLImageElement, cfg: PulseImageConfig): HTMLCanvasEl
   return entry.canvas
 }
 
+/* ------------------------------ outline halo ------------------------------ */
+/* When glow and outline are both on, the aura is this halo. Casting the
+ * shadow from the thin punched ring left nothing to see: a band a few
+ * percent wide, blurred over ~45% of the artwork's size, spreads its
+ * little ink so thin the glow simply vanishes. Instead the blur is baked
+ * once from the FULL outlined shape — the silhouette dilated out to the
+ * stroke, before the punch-out, i.e. the same mass the bare artwork used
+ * to cast — and the shape itself is then cut away ('destination-out'),
+ * leaving a pure outward halo that starts at the outline's outer edge and
+ * follows its silhouette. Stored as a colorless alpha mask, downscaled to
+ * a working size (the gradient is smooth — low res is plenty); each frame
+ * only tints it ('source-in') with the palette or custom glow color.
+ * Built at rest scale — the whole box (halo included) still breathes with
+ * the pulse because it is drawn at the swollen sprite size. */
+
+const GLOW_WORK_MAX = 512 // halo mask max dimension, px
+const GLOW_HALO_SPAN = 0.7 // outward mask padding, ×larger dimension ≈ 3σ of the blur
+
+interface GlowEntry {
+  mask: HTMLCanvasElement
+  /** Reused per-frame tint buffer, same size as the mask. */
+  scratch: HTMLCanvasElement | null
+  pad: number
+  totalW: number
+  totalH: number
+}
+const glowEntries = new WeakMap<HTMLImageElement, GlowEntry>()
+
+function glowEntryOf(img: HTMLImageElement, cfg: PulseImageConfig): GlowEntry | null {
+  const nw = img.naturalWidth
+  const nh = img.naturalHeight
+  if (nw <= 0 || nh <= 0) return null // SVG without intrinsic size — skip
+  const strokePx = clamp01(cfg.outlineWidth ?? 0.4) * 0.1 * Math.max(nw, nh)
+  const pad = Math.max(1, Math.ceil(strokePx))
+  const cached = glowEntries.get(img)
+  if (cached && cached.pad === pad) return cached
+
+  const blurNat = 0.45 * Math.max(nw, nh) // the classic shadowBlur, in natural px
+  const haloNat = Math.ceil(blurNat * GLOW_HALO_SPAN)
+  const totalW = nw + 2 * (pad + haloNat)
+  const totalH = nh + 2 * (pad + haloNat)
+  const m = Math.min(1, GLOW_WORK_MAX / Math.max(totalW, totalH))
+  const padM = pad * m
+
+  // The outlined shape at mask scale: the silhouette itself plus stamps
+  // out to the stroke width — dilated, NOT punched. (silhouetteOf recolors
+  // one shared canvas per image; every builder re-stamps synchronously
+  // right after its recolor, so sharing stays safe.) The mask only cares
+  // about alpha — the fill color is irrelevant.
+  const sil = silhouetteOf(img, '#000000')
+  if (!sil) return null
+  const blob = document.createElement('canvas')
+  blob.width = Math.max(2, Math.ceil((nw + 2 * pad) * m))
+  blob.height = Math.max(2, Math.ceil((nh + 2 * pad) * m))
+  const bg = blob.getContext('2d')
+  if (!bg) return null
+  const sw = nw * m
+  const sh = nh * m
+  bg.drawImage(sil, padM, padM, sw, sh)
+  const radialM = padM > 48 ? 3 : padM > 16 ? 2 : 1
+  for (let r = radialM; r <= padM; r += radialM) {
+    for (let k = 0; k < RING_DIRS; k++) {
+      const a = (k / RING_DIRS) * Math.PI * 2
+      bg.drawImage(sil, padM + Math.cos(a) * r, padM + Math.sin(a) * r, sw, sh)
+    }
+  }
+
+  // Blur the blob (the halo), then cut the blob back out — what remains is
+  // the outward-only glow hugging the outline's contour.
+  const mask = document.createElement('canvas')
+  mask.width = Math.max(2, Math.ceil(totalW * m))
+  mask.height = Math.max(2, Math.ceil(totalH * m))
+  const mg = mask.getContext('2d')
+  if (!mg) return null
+  const offM = (pad + haloNat) * m
+  mg.shadowColor = 'rgba(0,0,0,1)'
+  mg.shadowBlur = blurNat * m
+  mg.drawImage(blob, offM, offM)
+  mg.globalCompositeOperation = 'destination-out'
+  mg.drawImage(blob, offM, offM)
+  mg.globalCompositeOperation = 'source-over'
+
+  const built: GlowEntry = { mask, scratch: null, pad, totalW, totalH }
+  glowEntries.set(img, built)
+  return built
+}
+
+/** Colors the cached halo mask with this frame's aura color (reuses one scratch). */
+function tintedGlow(entry: GlowEntry, color: string): HTMLCanvasElement | null {
+  if (!entry.scratch) {
+    const sc = document.createElement('canvas')
+    sc.width = entry.mask.width
+    sc.height = entry.mask.height
+    entry.scratch = sc
+  }
+  const sg = entry.scratch.getContext('2d')
+  if (!sg) return null
+  sg.clearRect(0, 0, entry.scratch.width, entry.scratch.height)
+  sg.drawImage(entry.mask, 0, 0)
+  sg.globalCompositeOperation = 'source-in'
+  sg.fillStyle = color
+  sg.fillRect(0, 0, entry.scratch.width, entry.scratch.height)
+  sg.globalCompositeOperation = 'source-over'
+  return entry.scratch
+}
+
 /* -------------------------------- the layer -------------------------------- */
 
 export function drawPulseImage(
@@ -227,40 +334,61 @@ export function drawPulseImage(
     sprite = tintSprite(img, mixHex(cfg.tintLow ?? '#ff3b5c', cfg.tintHigh ?? '#2bffa8', drive, tint))
   }
 
-  // Stage 2 — outline ring: only the band OUTSIDE the artwork's edge,
-  // drawn as its own layer BEHIND the image. Nothing sits beneath the
-  // artwork's interior, so its detail survives any stroke width. With
-  // glow on, the shadow cast by this ring IS the aura — it hugs the
-  // outline instead of the bare artwork.
+  // Stage 2 — outline layers, both derived from the artwork's silhouette
+  // and painted BEHIND the image, so nothing ever sits beneath its pixels:
+  // a halo (the aura, when glowing) blurred from the full outlined shape
+  // and radiating outward from the stroke, then the crisp ring. The
+  // artwork is drawn last, untouched, at full detail.
+  const nw = img.naturalWidth || 1
+  const nh = img.naturalHeight || 1
+  const entry = cfg.outline ? glowEntryOf(img, cfg) : null
   const ring = cfg.outline ? outlineRing(img, cfg) : null
 
   ctx.save()
   ctx.translate(cx, cy)
   if (cfg.spin) ctx.rotate(frame.styleTime * 0.45 * Math.max(0, cfg.spinSpeed ?? 1))
+  // Aura color: either the visualizer palette at the image's height (so the
+  // emblem stays glued to the scene's color story) or the glow's own color
+  // when the user picked one. Missing mode = old save → palette tint.
+  let aura: string | null = null
+  let halo: HTMLCanvasElement | null = null
+  let haloW = 0
+  let haloH = 0
   if (cfg.glow) {
-    // Aura color: either the visualizer palette at the image's height (so the
-    // emblem stays glued to the scene's color story) or the glow's own color
-    // when the user picked one. Missing mode = old save → palette tint.
-    if ((cfg.glowColorMode ?? 'palette') === 'custom') {
-      ctx.shadowColor = cfg.glowColor || '#ffffff'
-    } else {
-      const t = H > 0 ? cy / H : 0.5
-      ctx.shadowColor = sampleGradient(
-        gradient.stops,
-        t,
-        frame.styleTime,
-        gradient.cycleColors,
-        gradient.cycleSpeed,
-      )
+    aura =
+      (cfg.glowColorMode ?? 'palette') === 'custom'
+        ? cfg.glowColor || '#ffffff'
+        : sampleGradient(
+            gradient.stops,
+            H > 0 ? cy / H : 0.5,
+            frame.styleTime,
+            gradient.cycleColors,
+            gradient.cycleSpeed,
+          )
+    if (entry) {
+      const tinted = tintedGlow(entry, aura)
+      if (tinted) {
+        halo = tinted
+        haloW = (w * entry.totalW) / nw
+        haloH = (h * entry.totalH) / nh
+      }
     }
+  }
+  if (halo) {
+    // The halo carries the aura — painted first, spread freely around the
+    // outlined shape.
+    ctx.shadowColor = 'rgba(0,0,0,0)'
+    ctx.shadowBlur = 0
+    ctx.drawImage(halo, -haloW / 2, -haloH / 2, haloW, haloH)
+  }
+  if (aura) {
+    ctx.shadowColor = aura
     ctx.shadowBlur = Math.max(w, h) * 0.45
   }
-  const nw = img.naturalWidth || 1
-  const nh = img.naturalHeight || 1
   if (ring) {
-    // Ring box = artwork box plus the stroke on every side; drawn first,
-    // under the sprite. Then the shadow is dropped so the artwork itself
-    // doesn't cast a second, competing aura.
+    // Ring box = artwork box plus the stroke on every side; drawn over the
+    // halo, under the sprite. Then the shadow is dropped: with the outline
+    // on, the halo IS the aura — the artwork casts no second, competing one.
     const rw = w * (ring.width / nw)
     const rh = h * (ring.height / nh)
     ctx.drawImage(ring, -rw / 2, -rh / 2, rw, rh)
@@ -268,6 +396,9 @@ export function drawPulseImage(
       ctx.shadowColor = 'rgba(0,0,0,0)'
       ctx.shadowBlur = 0
     }
+  } else if (halo && cfg.glow) {
+    ctx.shadowColor = 'rgba(0,0,0,0)'
+    ctx.shadowBlur = 0
   }
   ctx.drawImage(sprite, -w / 2, -h / 2, w, h)
   ctx.restore()
