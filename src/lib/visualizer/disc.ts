@@ -19,8 +19,9 @@
  *   face with a real punched center hole (evenodd clip) and an iridescent
  *   sheen.
  *
- * The square cover is drawn AFTER the disc so the sleeve overlaps the record.
- * Deterministic — a pure function of (rc, frame, disc).
+ * The square cover is drawn AFTER the disc by default so the sleeve overlaps
+ * the record; `discInFront` flips the order so the record rides on top of
+ * the sleeve. Deterministic — a pure function of (rc, frame, disc).
  */
 import type { AudioFrame, DiscConfig, RenderContext } from './types'
 import { getBackgroundImage } from './image-cache'
@@ -48,114 +49,130 @@ export function drawDisc(rc: RenderContext, frame: AudioFrame, disc: DiscConfig)
   // ~0.1–0.4, stretched to full scale by 0.5 so the slider feels alive.
   const pulseScale = 1 + clamp01(disc.pulse) * clamp01(frame.energy * 2)
 
-  /* ------------------------------- The disc ------------------------------- */
-  if (disc.showDisc && disc.mode === 'cassette') {
-    // A whole cassette tape — turning sprocket hubs instead of a spinning
-    // circle. The square cover below still composes with it like the vinyl.
-    drawCassette(rc, frame, disc)
-  } else if (disc.showDisc) {
-    const cx = (disc.discX / 100) * W
-    const cy = (disc.discY / 100) * H
-    const R = ((disc.discSize / 100) * H / 2) * pulseScale
-    if (R > 1) {
-      // Spin angle — deterministic from the decorative clock. In exports
-      // styleTime === song time, so every frame lands on the same pixels.
-      const angle = disc.direction * TWO_PI * (disc.rpm / 60) * frame.styleTime
+  const drawDiscArt = () => {
+    /* ------------------------------- The disc ------------------------------- */
+    if (disc.showDisc && disc.mode === 'cassette') {
+      // A whole cassette tape — turning sprocket hubs instead of a spinning
+      // circle. The square cover composes with it like the vinyl.
+      drawCassette(rc, frame, disc)
+    } else if (disc.showDisc) {
+      const cx = (disc.discX / 100) * W
+      const cy = (disc.discY / 100) * H
+      const R = ((disc.discSize / 100) * H / 2) * pulseScale
+      if (R > 1) {
+        // Spin angle — deterministic from the decorative clock. In exports
+        // styleTime === song time, so every frame lands on the same pixels.
+        const angle = disc.direction * TWO_PI * (disc.rpm / 60) * frame.styleTime
 
-      // Two-layer drop shadow for depth against the cover (depth/angle from
-      // the panel) — contact layer + main throw so it reads on any background.
-      paintFaceShadow(
-        ctx,
-        () => {
+        // Two-layer drop shadow for depth against the cover (depth/angle from
+        // the panel) — contact layer + main throw so it reads on any background.
+        paintFaceShadow(
+          ctx,
+          () => {
+            ctx.beginPath()
+            ctx.arc(cx, cy, R, 0, TWO_PI)
+          },
+          '#0b0b0b',
+          disc.shadowColor ?? '#000000',
+          disc.shadowDepth ?? 55,
+          disc.shadowAngle ?? 90,
+          S,
+        )
+
+        if (disc.mode === 'label') {
+          drawVinylFace(ctx, disc, faceImg, cx, cy, R, angle, S)
+        } else {
+          drawCdFace(ctx, disc, faceImg, cx, cy, R, angle, S)
+        }
+
+        // Static light sheen — fixed to the viewer (the light source doesn't
+        // spin with the record).
+        if (disc.sheen > 0.01) {
+          ctx.save()
           ctx.beginPath()
           ctx.arc(cx, cy, R, 0, TWO_PI)
-        },
-        '#0b0b0b',
-        disc.shadowColor ?? '#000000',
-        disc.shadowDepth ?? 55,
-        disc.shadowAngle ?? 90,
-        S,
-      )
+          ctx.clip()
+          const sheen = ctx.createLinearGradient(cx - R, cy - R, cx + R * 0.4, cy + R)
+          const a = 0.16 * clamp01(disc.sheen)
+          sheen.addColorStop(0, `rgba(255, 255, 255, ${a})`)
+          sheen.addColorStop(0.45, 'rgba(255, 255, 255, 0)')
+          sheen.addColorStop(1, 'rgba(255, 255, 255, 0)')
+          ctx.fillStyle = sheen
+          ctx.fillRect(cx - R, cy - R, R * 2, R * 2)
+          ctx.restore()
+        }
 
-      if (disc.mode === 'label') {
-        drawVinylFace(ctx, disc, faceImg, cx, cy, R, angle, S)
-      } else {
-        drawCdFace(ctx, disc, faceImg, cx, cy, R, angle, S)
-      }
-
-      // Static light sheen — fixed to the viewer (the light source doesn't
-      // spin with the record).
-      if (disc.sheen > 0.01) {
+        // Crisp rim so the disc reads on any background.
         ctx.save()
         ctx.beginPath()
         ctx.arc(cx, cy, R, 0, TWO_PI)
-        ctx.clip()
-        const sheen = ctx.createLinearGradient(cx - R, cy - R, cx + R * 0.4, cy + R)
-        const a = 0.16 * clamp01(disc.sheen)
-        sheen.addColorStop(0, `rgba(255, 255, 255, ${a})`)
-        sheen.addColorStop(0.45, 'rgba(255, 255, 255, 0)')
-        sheen.addColorStop(1, 'rgba(255, 255, 255, 0)')
-        ctx.fillStyle = sheen
-        ctx.fillRect(cx - R, cy - R, R * 2, R * 2)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'
+        ctx.lineWidth = 1 * S
+        ctx.stroke()
         ctx.restore()
       }
-
-      // Crisp rim so the disc reads on any background.
-      ctx.save()
-      ctx.beginPath()
-      ctx.arc(cx, cy, R, 0, TWO_PI)
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'
-      ctx.lineWidth = 1 * S
-      ctx.stroke()
-      ctx.restore()
     }
   }
 
-  /* --------------------------- The square cover --------------------------- */
-  if (disc.showCover) {
-    const side = (disc.coverSize / 100) * H
-    if (side > 2) {
-      const x = (disc.coverX / 100) * W - side / 2
-      const y = (disc.coverY / 100) * H - side / 2
-      const r = 6 * S
+  const drawCoverArt = () => {
+    /* --------------------------- The square cover --------------------------- */
+    if (disc.showCover) {
+      const side = (disc.coverSize / 100) * H
+      if (side > 2) {
+        const x = (disc.coverX / 100) * W - side / 2
+        const y = (disc.coverY / 100) * H - side / 2
+        const r = 6 * S
 
-      ctx.save()
-      // Sleeve shadow (drawn before the art so it hugs the square).
-      paintFaceShadow(
-        ctx,
-        () => {
+        ctx.save()
+        // Sleeve shadow (drawn before the art so it hugs the square).
+        paintFaceShadow(
+          ctx,
+          () => {
+            ctx.beginPath()
+            if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, side, side, r)
+            else ctx.rect(x, y, side, side)
+          },
+          '#101010',
+          disc.shadowColor ?? '#000000',
+          disc.shadowDepth ?? 55,
+          disc.shadowAngle ?? 90,
+          S,
+        )
+        ctx.restore()
+
+        if (coverImg) {
+          ctx.save()
           ctx.beginPath()
           if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, side, side, r)
           else ctx.rect(x, y, side, side)
-        },
-        '#101010',
-        disc.shadowColor ?? '#000000',
-        disc.shadowDepth ?? 55,
-        disc.shadowAngle ?? 90,
-        S,
-      )
-      ctx.restore()
-
-      if (coverImg) {
-        ctx.save()
-        ctx.beginPath()
-        if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, side, side, r)
-        else ctx.rect(x, y, side, side)
-        ctx.clip()
-        drawImageCover(
-          ctx,
-          coverImg,
-          x,
-          y,
-          side,
-          side,
-          disc.coverArtZoom ?? 1,
-          (disc.coverArtX ?? 50) / 100,
-          (disc.coverArtY ?? 50) / 100,
-        )
-        ctx.restore()
+          ctx.clip()
+          drawImageCover(
+            ctx,
+            coverImg,
+            x,
+            y,
+            side,
+            side,
+            disc.coverArtZoom ?? 1,
+            (disc.coverArtX ?? 50) / 100,
+            (disc.coverArtY ?? 50) / 100,
+          )
+          ctx.restore()
+        }
       }
     }
+  }
+
+  // Layer order: by default the record peeks out from behind its sleeve
+  // (disc first, cover over it). `discInFront` flips the pass order so the
+  // record rides on top of the sleeve — both passes are self-contained, so
+  // swapping them is pixel-identical apart from the overlap.
+  if (disc.discInFront) {
+    drawCoverArt()
+    drawDiscArt()
+  } else {
+    drawDiscArt()
+    drawCoverArt()
   }
 }
 

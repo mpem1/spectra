@@ -326,6 +326,8 @@ export interface DiscConfig {
   /** Disc center, 0..100 (of width / height) */
   discX: number
   discY: number
+  /** Draw the disc in front of the square cover instead of peeking out behind it */
+  discInFront: boolean
   /** Art zoom on the disc face/label on top of cover-fit (1 = fills it) */
   discArtZoom: number
   /** Which part of the art shows on the disc face/label, 0..100 (50 = centered) */
@@ -669,6 +671,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     discSize: 46,
     discX: 46,
     discY: 50,
+    discInFront: false,
     discArtZoom: 1,
     discArtX: 50,
     discArtY: 50,

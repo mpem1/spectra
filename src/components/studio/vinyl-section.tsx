@@ -340,6 +340,39 @@ export function VinylSection() {
               {' '}Sizes over 100% bleed past the frame edges.
             </p>
           </div>
+          {/* Disc layer order — peeking out behind the sleeve or riding on top of it */}
+          {disc.showCover ? (
+            <div className="space-y-1.5">
+              <MicroLabel>Disc layer</MicroLabel>
+              <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+                {(
+                  [
+                    { id: false, label: 'Behind cover' },
+                    { id: true, label: 'In front' },
+                  ] as const
+                ).map((o) => (
+                  <button
+                    key={String(o.id)}
+                    type="button"
+                    aria-pressed={disc.discInFront === o.id}
+                    onClick={() => patchDisc({ discInFront: o.id })}
+                    className={cn(
+                      'h-7 rounded-md text-xs transition-colors',
+                      disc.discInFront === o.id
+                        ? 'bg-emerald-500 font-medium text-zinc-950'
+                        : 'text-zinc-300 hover:text-zinc-100',
+                    )}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] leading-snug text-zinc-600">
+                Keep the record peeking out from behind the cover, or slide it
+                in front so it overlaps the sleeve.
+              </p>
+            </div>
+          ) : null}
           {disc.mode === 'cassette' ? (
             <CassetteControls />
           ) : null}

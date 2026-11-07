@@ -1446,3 +1446,17 @@ Work Log:
 
 Stage Summary:
 - The dimmed "ghost" copy of the previous lyric line is now optional: it was the karaoke echo (the old line lingers above at 60% strength by design), which read as broken see-through text. New Echo switch in the Lyrics tab — on (default, exactly as before) keeps the two-line karaoke look; off makes each line vanish the moment the next one appears. All fill modes verified fully opaque; nothing about fonts, fills, glow or exports changed.
+
+Task ID: 55
+Agent: Z.ai Code (main)
+Task: Disc face layer order — in front of or behind the cover
+User: "can you add an option where the disc face can be in front or behind the cover"
+
+Work Log:
+- New DiscConfig.discInFront (default false → the record still peeks out from behind the sleeve; old saves, share links and .spectra files load bit-identical through the standard config merge — the field is a plain boolean that round-trips untouched).
+- disc.ts refactored: the disc pass (vinyl/CD/cassette + its shadow, sheen, rim) and the square-cover pass are now self-contained local closures; draw order flips with discInFront (cover→disc puts the record on top of the sleeve, with the disc's own drop shadow naturally landing on the cover art). No drawing code changed inside either pass — swapping two independent passes, so the non-overlap pixels are identical by construction.
+- UI: a "Disc layer" Behind cover / In front segmented picker (same style as the existing Visualizer layer control) in the Vinyl & cover section right after the Disc face picker, shown when both the cover and the disc are visible.
+- Browser E2E (green #00cc44 cover art injected, bars sent behind vinyl, canvas-pixel sampled at the disc∩cover overlap): Behind cover → overlap [0,204,68] (cover on top), disc-only [24,24,25], cover-only green; In front → overlap [23,23,24] (vinyl body over the sleeve) with the other two regions unchanged — the toggle flips exactly the overlap and nothing else. Fresh reload returns to the Behind-cover default; screenshots show the straight sleeve edge over the record vs the record riding on the sleeve. Mobile 390px: zero horizontal overflow, control fits. 0 page errors; lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- The vinyl section now has a Disc layer picker: "Behind cover" (classic record-in-the-sleeve look, the previous default) or "In front" (the record overlaps the sleeve, shadow and sheen included). Works in all three disc modes (vinyl label, full CD, cassette), travels inside saved projects and share links, and existing looks render exactly as before.
