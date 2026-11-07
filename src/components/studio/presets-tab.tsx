@@ -19,6 +19,7 @@ import {
 import { useStudioStore } from '@/store/studio'
 import { buildShareUrl } from '@/lib/share-link'
 import { downloadProjectFile, parseProject, sanitizeFileName } from '@/lib/project-file'
+import { SIGNATURE_PRESETS, type SignaturePreset } from '@/lib/signature-presets'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { gradientCss } from '@/components/studio/color-utils'
@@ -63,6 +64,7 @@ export function PresetsTab() {
   const setConfig = useStudioStore((s) => s.setConfig)
 
   const [saving, setSaving] = useState(false)
+  const [loadingPreset, setLoadingPreset] = useState<string | null>(null)
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [listLoading, setListLoading] = useState(false)
   const [name, setName] = useState('')
@@ -219,8 +221,77 @@ export function PresetsTab() {
     toast.success(`Applied “${preset.name}”`)
   }
 
+  /**
+   * Signature presets are whole .spectra projects shipped with the app —
+   * fetched on demand and applied through the same door as "Open .spectra"
+   * (the store merges the file over the factory defaults, so presets saved
+   * by older versions keep working).
+   */
+  const applySignature = async (preset: SignaturePreset) => {
+    setLoadingPreset(preset.id)
+    try {
+      const res = await fetch(preset.file)
+      if (!res.ok) throw new Error(`The preset file could not be loaded (${res.status})`)
+      const parsed = parseProject(await res.text())
+      if (!parsed) throw new Error('The preset file is not a valid .spectra project')
+      setConfig(parsed.config)
+      toast.success(`Applied “${preset.name}”`, {
+        description: 'Full look loaded — load a song and you are set.',
+      })
+    } catch (err) {
+      toast.error('Could not apply the preset', {
+        description: err instanceof Error ? err.message : 'Unknown error.',
+      })
+    } finally {
+      setLoadingPreset(null)
+    }
+  }
+
   return (
     <div className="space-y-5">
+      {/* Signature presets — complete looks that ship with the app */}
+      {SIGNATURE_PRESETS.length > 0 ? (
+        <section className="space-y-2">
+          <MicroLabel className="text-[11px] tracking-widest text-zinc-500">
+            SIGNATURE PRESETS
+          </MicroLabel>
+          <div className="space-y-1.5">
+            {SIGNATURE_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                aria-label={`Apply ${preset.name} signature preset`}
+                onClick={() => void applySignature(preset)}
+                className="group flex w-full items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/50 p-2 text-left transition-colors hover:border-emerald-500/50 hover:bg-emerald-500/5"
+              >
+                <span
+                  className="h-8 w-12 shrink-0 rounded-md border border-zinc-800"
+                  style={{ background: gradientCss(preset.swatch.stops, preset.swatch.angle) }}
+                  aria-hidden
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium text-zinc-200">
+                    {preset.name}
+                  </span>
+                  <span className="block truncate text-[10px] text-zinc-500">{preset.caption}</span>
+                </span>
+                {loadingPreset === preset.id ? (
+                  <Loader2 className="size-3.5 shrink-0 animate-spin text-emerald-400" aria-hidden />
+                ) : (
+                  <Wand2
+                    className="size-3.5 shrink-0 text-zinc-600 group-hover:text-emerald-400"
+                    aria-hidden
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] leading-snug text-zinc-600">
+            Complete looks — every slider, color and layer travels with them.
+          </p>
+        </section>
+      ) : null}
+
       {/* Look presets */}
       <section className="space-y-2">
         <MicroLabel className="text-[11px] tracking-widest text-zinc-500">LOOK PRESETS</MicroLabel>

@@ -1460,3 +1460,17 @@ Work Log:
 
 Stage Summary:
 - The vinyl section now has a Disc layer picker: "Behind cover" (classic record-in-the-sleeve look, the previous default) or "In front" (the record overlaps the sleeve, shadow and sheen included). Works in all three disc modes (vinyl label, full CD, cassette), travels inside saved projects and share links, and existing looks render exactly as before.
+
+Task ID: 56
+Agent: Z.ai Code (main)
+Task: Signature presets — user-supplied .spectra files as built-in defaults (first: "vinyl and cover")
+User: "can i feed you some .spectra presets that you can have as preset defaults" → pasted the first one ("vinyl and cover") to test
+
+Work Log:
+- New system: signature presets are complete .spectra project files shipped in public/presets/ and listed in a new SIGNATURE PRESETS section at the top of the Presets tab. Each entry pairs a tiny manifest entry (name, caption, background-gradient swatch mirrored from the file) with the real file, which is fetched only on click — presets with baked-in images never weigh down the page load. Applying goes through parseProject + setConfig, the exact same door as "Open .spectra", so factory-default merging keeps presets saved by older app versions loading cleanly.
+- src/lib/signature-presets.ts: the manifest (id/name/file/caption/swatch + how-to-add doc). First entry: "Vinyl & Cover" — indigo dusk gradient background (#283386→#0a0a0a @160°), wave visualizer (custom indigo palette, right-anchored, behind the disc), vinyl & cover layer enabled (59% sleeve at x23, 53% record at x41, label mode, 33.33 RPM), everything else off — exactly the user's pasted file, byte-for-byte.
+- presets-tab.tsx: SIGNATURE PRESETS section (swatch + name + caption + Wand icon, loading spinner while fetching), above LOOK PRESETS. Relative fetch('presets/<id>.spectra') so it resolves under the /spectra/ basePath on GitHub Pages and at / in dev. Errors surface as toasts like every other handler.
+- Browser E2E: preset button renders with correct name/caption; clicking shows the success toast and applies the config — pixel-verified on the 675x380 preview (background gradient [32,40,105]→[9,10,13] matching #283386→#0a0a0a + vignette; vinyl groove ring [20,20,21] black; spindle hole [4,4,4] at disc center; wave curve painting the indigo palette [68,71,114] on the right); Style tab shows Wave as the active style. Mobile 390px: section fits, zero horizontal overflow. 0 page errors; lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- The Presets tab now opens with a SIGNATURE PRESETS section: full-look presets that ship inside the app, one click to apply (every slider, color and layer travels with them — unlike the one-click LOOK presets which only touch style/gradient/background). First preset is the user's own "Vinyl & Cover" look. Adding more is a two-step recipe (drop the .spectra file in public/presets/, add a manifest line), so the remaining presets can be wired in as they arrive.
