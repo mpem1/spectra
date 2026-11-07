@@ -1294,3 +1294,20 @@ Work Log:
 
 Stage Summary:
 - The background's "With the beat" group now has three motions you can mix freely: Beat bounce (gentle zoom), Beat shake (jitter that punches with the kick) and Blur pulse (background smears on every bass hit and snaps back), each with its own 0-100% strength slider — image, video and GIF backgrounds all included, exports frame-exact.
+
+---
+
+Task ID: 46
+Agent: Z.ai Code (main)
+Task: Vertical visualizer — choose which side (left/right edge) the column hangs from
+User: "vertical visual only on one side could i have the option to choose which side the vertical side is played from"
+
+Work Log:
+- VisualizerConfig grows anchor: 'left' | 'right' (default 'right' = exactly the Task 38 behavior, so old saves / share links / .spectra files merge to a no-op). Only meaningful for bars/wave/grid when orientation = 'vertical'; radial/particles/blob ignore it.
+- renderer drawVisualizer vertical branch: when anchor = 'left', an extra T(0, W)·S(1, −1) is appended INSIDE the strip's shape space, after the existing T(0, H)·R(−π/2). Point map stays provable: shape (x, y) → canvas (W − y, H − x) — the same rotated strip mirrored around the canvas' vertical center line, so bars hang from the LEFT edge and grow rightward while bass stays at the bottom. Because the mirror lives in shape space, every existing slider (bar count, mirror modes + mirrorOffset, glow, gradient sweep, Position X/Y, Size, layer order) composes unchanged — they all just mirror with the wall. Zero impact on the horizontal path (branch only runs when vertical).
+- style-tab.tsx: a "Side" chip row (Left edge / Right edge, emerald selected-state language) appears directly under Orientation only when a strip style is Vertical; picking Horizontal hides it again.
+- README: vertical bullet now mentions the Side picker; also added the missing Beat motions bullet from Task 45.
+- Browser E2E: bars + Vertical + Left edge → spectrum wall hugs the LEFT edge growing rightward, bass at the bottom; Right edge → classic Task 38 look restored (right edge, growing leftward); wave + Left edge mirrors identically. 0 page errors, lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- Vertical strips (bars / wave / grid) now have a Side picker under Orientation: hang the spectrum wall off the left edge or the right edge — one click, everything else (mirror, glow, position, size, layering) keeps behaving exactly as before, and exports stay frame-exact.

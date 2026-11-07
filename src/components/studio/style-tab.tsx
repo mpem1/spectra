@@ -138,6 +138,35 @@ export function StyleTab() {
                 </button>
               ))}
             </div>
+            {/* Side — vertical strips can hang from either edge */}
+            {visualizer.orientation === 'vertical' ? (
+              <div className="space-y-1.5">
+                <MicroLabel>Side</MicroLabel>
+                <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+                  {(
+                    [
+                      { id: 'left', label: 'Left edge' },
+                      { id: 'right', label: 'Right edge' },
+                    ] as const
+                  ).map((side) => (
+                    <button
+                      key={side.id}
+                      type="button"
+                      aria-pressed={visualizer.anchor === side.id}
+                      onClick={() => patchVisualizer({ anchor: side.id })}
+                      className={cn(
+                        'h-7 rounded-md text-xs transition-colors',
+                        visualizer.anchor === side.id
+                          ? 'bg-emerald-500 font-medium text-zinc-950'
+                          : 'text-zinc-300 hover:text-zinc-100',
+                      )}
+                    >
+                      {side.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

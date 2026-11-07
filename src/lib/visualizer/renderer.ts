@@ -365,10 +365,19 @@ function drawVisualizer(
       // so every slider (count, mirror, glow, position, size) keeps behaving
       // exactly as in horizontal mode, and the strip always fits the canvas
       // without cropping (a plain rotation of a wide strip would overflow).
+      // anchor = 'left' mirrors the rotated strip horizontally: same math,
+      // flipped around the canvas' vertical center line, so the bars hang
+      // from the LEFT edge and grow rightward instead.
       const vertical = (cfg.orientation ?? 'horizontal') === 'vertical'
       if (vertical) {
         ctx.translate(0, H)
         ctx.rotate(-Math.PI / 2)
+        if ((cfg.anchor ?? 'right') === 'left') {
+          // In the strip's own space the canvas mirror is a vertical flip:
+          // shape (x, y) → (W − y, H − x) on the canvas.
+          ctx.translate(0, W)
+          ctx.scale(1, -1)
+        }
       }
       const styleRc: RenderContext = vertical ? { ...rc, width: H, height: W } : rc
       if (cfg.style === 'bars') drawBars(styleRc, frame, cfg, S)

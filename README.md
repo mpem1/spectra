@@ -19,6 +19,9 @@ Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
 - **Vertical orientation** — Bars, Wave and Grid can flip from the classic
   left→right strip to a full-height top→bottom column (bass stays at the
   bottom; mirror modes, layer order, and every other slider keep working).
+  A Side picker chooses which edge the column hangs from — left or right.
+- **Beat motions** — the background can bounce (zoom), shake (jitter) and
+  blur-pulse (smear on the kick) with the bass, each with its own strength.
 - **Auto-palette** — one click next to the gradient header pulls the
   visualizer's colors straight from the uploaded album art (angle, shape and
   cycling settings are preserved; lyrics/titles following the visualizer

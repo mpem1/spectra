@@ -69,6 +69,10 @@ export interface VisualizerConfig {
    *  rotated 90° into a full-height column (bass stays at the bottom, bars
    *  grow sideways). Radial / particles / blob ignore it. */
   orientation: 'horizontal' | 'vertical'
+  /** Which edge the vertical strip hangs from: 'right' = bars grow leftward
+   *  from the right edge (classic, default) · 'left' = mirrored, bars grow
+   *  rightward from the left edge. Only used when orientation = 'vertical'. */
+  anchor: 'left' | 'right'
 }
 
 /* --------------------------------- Background -------------------------------- */
@@ -502,6 +506,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     scale: 1,
     layer: 'front',
     orientation: 'horizontal',
+    anchor: 'right',
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 48,
