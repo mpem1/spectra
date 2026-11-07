@@ -231,6 +231,8 @@ export interface PulseImageConfig {
   pulse: number
   /** Slow continuous rotation */
   spin: boolean
+  /** Spin speed multiplier for the rotation (1 = the classic slow turn) */
+  spinSpeed: number
   /** Soft aura behind the image */
   glow: boolean
   /** Where the glow takes its color: 'palette' tints it with the visualizer
@@ -239,6 +241,14 @@ export interface PulseImageConfig {
   glowColorMode: 'palette' | 'custom'
   /** Glow color when glowColorMode = 'custom' (#rgb / #rrggbb / #rrggbbaa) */
   glowColor: string
+  /** Beat color overlay strength 0..1 — washes the image in a color that
+   *  shifts from `tintLow` at silence to `tintHigh` at the loudest level
+   *  (0 = the artwork keeps its own colors) */
+  tint: number
+  /** Beat overlay color when quiet (silence) */
+  tintLow: string
+  /** Beat overlay color at the loudest level */
+  tintHigh: string
   /** Layer order vs. the vinyl & visualizer (same semantics as the bars) */
   layer: 'front' | 'back'
 }
@@ -659,9 +669,13 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     size: 30,
     pulse: 0.6,
     spin: false,
+    spinSpeed: 1,
     glow: true,
     glowColorMode: 'palette',
     glowColor: '#ffffff',
+    tint: 0,
+    tintLow: '#ff3b5c',
+    tintHigh: '#2bffa8',
     layer: 'front',
   },
 }

@@ -1327,3 +1327,19 @@ Work Log:
 
 Stage Summary:
 - The pulse image's glow no longer has to copy the visualizer: keep "Match scene" for the old auto tint, or switch to "Custom" and give the aura any color (with its own opacity) via the color picker — live preview and exports both included through the shared renderer.
+
+---
+
+Task ID: 48
+Agent: Z.ai Code (main)
+Task: Pulse image — spin speed slider + audio-reactive color overlay (quiet color → loud color)
+User: "pulse image: slow spin slider for speed adjustments / vector/png color and glow adjustments. allow a overlay of colors on the png that can change with the pulse of the beat example red/green red at no sound shifts to green at highest sound"
+
+Work Log:
+- PulseImageConfig grows four no-op-default fields: spinSpeed (multiplier, default 1 = the classic slow turn), tint (overlay strength 0..1, default 0 = artwork untouched), tintLow / tintHigh (overlay colors at silence / at the loudest level, defaults #ff3b5c → #2bffa8). Old saves, share links and .spectra files merge to exactly the previous rendering; share-link (spread) and project-file (whole-config) need no extra wiring.
+- pulse-image.ts: spin rotation becomes styleTime · 0.45 · max(0, spinSpeed) — speed 0 effectively freezes, 300% turns 3× faster. The beat color overlay reuses the swell's drive (min(1, 0.6·bass + 0.4·energy)) and blends tintLow→tintHigh by that level, then washes the sprite through a per-image scratch canvas (WeakMap-cached at natural size): draw the image, fillRect the mixed color with globalCompositeOperation 'source-atop' — the color stays strictly inside the PNG/SVG's own alpha shape (transparent stays transparent), then the tinted sprite is drawn instead of the raw image. tint ≤ 0 skips the whole path. mixHex/parseHexRGB are local and deterministic (no Math.random); drive comes from the AudioFrame, so exports stay frame-exact.
+- pulse-image-section.tsx: "Spin speed" slider (0–300%, % readout) appears under the switches only while Slow spin is on; a "Beat tint" slider (0–100%) always renders when the layer is enabled, and above 0 it reveals QUIET COLOR / LOUD COLOR picker rows (ColorPickerButton, wheel + hex + opacity). Description copy explains the red→green idea.
+- Browser E2E: default tint 0 keeps the emblem's own white (center px [244,244,245] — no-op verified); Slow spin on reveals Spin speed at 100%, rotation checksum delta over 600ms = 168039 → End key to 300% (aria-valuenow 3) → delta 233214 (clearly faster, same 600ms window, paused). Beat tint 100% + Quiet #ff0000 / Loud #00ff00 via the real picker hex inputs: audio loaded + paused = real silence → center pixel EXACTLY [255,0,0]; during playback of the thump track the same pixel rides [48,207,0]…[73,182,0] (green-dominant, tracking the beat envelope) and returns to exact red when the track ends. Note: with NO audio loaded the idle demo breathes (bass 0.32–0.68) so the tint visibly cycles even before pressing play — intended demo behavior. Screenshots captured: red-at-silence emblem, green-at-thumps emblem with lit bars, full panel UI. 0 page errors; lint 0 errors (27 known vendored warnings); tsc clean for all changed files (one pre-existing videoSrc literal warning elsewhere, confirmed pre-change).
+
+Stage Summary:
+- The pulse image now has a Spin speed slider (slow drift up to 300%) and a Beat tint: wash the emblem in a color that sits at the quiet color when the song is silent and slides to the loud color on the biggest hits — any two colors you like, strength 0–100%, clipped perfectly to the logo's shape, and identical in exports.

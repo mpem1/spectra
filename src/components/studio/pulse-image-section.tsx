@@ -64,7 +64,9 @@ export function PulseImageSection() {
       <p className="text-[11px] leading-snug text-zinc-600">
         A logo or emblem that floats over the scene and pulses with the music
         — it swells on the bass the same way the blob and radial styles
-        react. PNG with transparency works best.
+        react. PNG with transparency works best. Turn on Beat tint to wash
+        it in a color that shifts with the sound: calm color at silence,
+        hot color at full blast.
       </p>
 
       {pulseImage.enabled ? (
@@ -190,6 +192,18 @@ export function PulseImageSection() {
             ))}
           </div>
 
+          {pulseImage.spin ? (
+            <SliderRow
+              label="Spin speed"
+              value={pulseImage.spinSpeed}
+              min={0}
+              max={3}
+              step={0.05}
+              onChange={(spinSpeed) => patchPulseImage({ spinSpeed })}
+              format={(v) => `${Math.round(v * 100)}%`}
+            />
+          ) : null}
+
           {pulseImage.glow ? (
             <div className="space-y-1.5">
               <div className="flex h-5 items-center justify-between">
@@ -228,6 +242,46 @@ export function PulseImageSection() {
               </div>
             </div>
           ) : null}
+
+          <div className="space-y-1.5">
+            <SliderRow
+              label="Beat tint"
+              value={pulseImage.tint}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={(tint) => patchPulseImage({ tint })}
+              format={(v) => `${Math.round(v * 100)}%`}
+            />
+            {pulseImage.tint > 0 ? (
+              <div className="grid grid-cols-2 gap-3">
+                {(
+                  [
+                    { label: 'Quiet color', value: pulseImage.tintLow, aria: 'Quiet color', pick: 'tintLow' },
+                    { label: 'Loud color', value: pulseImage.tintHigh, aria: 'Loud color', pick: 'tintHigh' },
+                  ] as const
+                ).map((c) => (
+                  <div
+                    key={c.pick}
+                    className="flex h-8 items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5"
+                  >
+                    <MicroLabel>{c.label}</MicroLabel>
+                    <ColorPickerButton
+                      value={c.value}
+                      onChange={(color) => patchPulseImage({ [c.pick]: color })}
+                      showAlpha
+                      ariaLabel={c.aria}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <p className="text-[11px] leading-snug text-zinc-600">
+              Washes the image with a color that rides the music — the quiet
+              color shows at silence and slides to the loud color on the
+              biggest hits.
+            </p>
+          </div>
         </>
       ) : null}
     </section>
