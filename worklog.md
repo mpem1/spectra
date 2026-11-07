@@ -1504,3 +1504,16 @@ Work Log:
 
 Stage Summary:
 - Back to one signature preset: only the user's "Vinyl & Cover" ships in the SIGNATURE PRESETS section. The section is ready for the user's own looks whenever the screenshots / .spectra files arrive; nothing about the preset system changed.
+
+Task ID: 59
+Agent: Z.ai Code (main)
+Task: Add the user's "radial fade" look as a signature preset
+User: pasted the full .spectra JSON ("here is the next preset")
+
+Work Log:
+- Saved the user's pasted file byte-for-byte as public/presets/radial-fade.spectra (3211 bytes, name "radial  fade" preserved with its original double space); validated the envelope (app/kind/version 1), the required sections, and the key values: radial visualizer, 144 spokes, glow off, radial-shaped palette #271720→#8f6b7c→#ffffff, radial-shaped background gradient (#000000 core → #36273a violet bloom ring → #111212), vignette 0.35, grain 0.08, disc/lyrics/title/watermark/pulse-image all off.
+- Manifest entry: id radial-fade, name "Radial Fade", caption "Plum-to-white sunburst over a violet bloom", swatch mirrors the visualizer's fade palette.
+- Browser E2E (desktop 1280px): Presets tab lists both signature presets in order (Vinyl & Cover, Radial Fade); applying shows the success toast; pixel checks — canvas center [255,255,255] (radial signature center dot on the white palette stop), mid-ring row scan found 57 bright pixels in 29 alternating runs (the 144-spoke pattern) averaging [100,72,87] (plum→mauve zone), upper background [37,29,40] (the violet bloom #36273a zone), corners [14,15,15] (#111212 far zone + vignette); screenshot confirms the full sunburst-over-bloom look. Mobile 390px: both presets listed, zero horizontal overflow, Radial Fade applies with toast. 0 page errors; lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- Second signature preset shipped: the user's "Radial Fade" (moody 144-spoke radial sunburst in plum→mauve→white over a near-black background with a violet bloom) joins "Vinyl & Cover" in the SIGNATURE PRESETS section, applied through the same door as "Open .spectra" and fully editable after applying.

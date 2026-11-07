@@ -36,6 +36,20 @@ export const SIGNATURE_PRESETS: SignaturePreset[] = [
       angle: 160,
     },
   },
+  {
+    id: 'radial-fade',
+    name: 'Radial Fade',
+    file: 'presets/radial-fade.spectra',
+    caption: 'Plum-to-white sunburst over a violet bloom',
+    swatch: {
+      stops: [
+        { color: '#271720', position: 12 },
+        { color: '#8f6b7c', position: 35 },
+        { color: '#ffffff', position: 50 },
+      ],
+      angle: 90,
+    },
+  },
   // Future entries arrive with the user's own looks (screenshots / .spectra
   // files) — the recipe stays: drop <id>.spectra into public/presets/, add
   // a manifest line here. The three designs explored in Task 57 (Neon Bars,
