@@ -13,14 +13,16 @@
  * around forever.
  *
  * Text can be filled with a flat color, a sweep of the visualizer palette,
- * or the lyrics' own gradient (angle-aware, respects stop positions), plus
- * optional outline stroke and glow halo. Long lines auto-shrink to fit.
+ * the lyrics' own gradient (angle-aware, respects stop positions), or left
+ * empty — a see-through hollow letter showing only its outline stroke
+ * and/or glow halo. Long lines auto-shrink to fit.
  *
  * Deterministic — a pure function of (rc, frame, lyrics, palette).
  */
 import type { AudioFrame, GradientConfig, LyricLine, LyricsConfig, RenderContext } from './types'
 import { fontStack } from './custom-fonts'
 import { buildGradient, buildRadialGradient, gradientLine } from './gradients'
+import { drawHollowGlow } from './hollow-glow'
 
 /**
  * Index of the last line whose start time is <= `time`, or -1 if none yet.
@@ -92,29 +94,55 @@ export function drawLyrics(
       px = Math.max(10, px * (maxW / measured))
       ctx.font = `${lyrics.weight} ${px}px ${fontStack(lyrics.font)}`
     }
+    const font = `${lyrics.weight} ${px}px ${fontStack(lyrics.font)}`
+
+    // Hollow fill: no body is drawn, so the glow has to be a pure outward
+    // halo baked from the full dilated glyph (see hollow-glow) — the old
+    // pass's solid body would otherwise show through the empty fill.
+    const hollow = lyrics.fill === 'empty'
+    const strokePx = lyrics.outline && lyrics.outlineWidth > 0 ? lyrics.outlineWidth * S : 0
 
     // Glow halo: a colored pass under the crisp fill. Double-drawn so the
     // halo reads at low strengths too.
     if (lyrics.glow) {
-      ctx.save()
-      ctx.shadowColor = lyrics.glowColor
-      ctx.shadowBlur = (6 + 34 * clamp01(lyrics.glowStrength)) * S
-      ctx.fillStyle = lyrics.glowColor
-      ctx.fillText(text, width / 2, py)
-      ctx.fillText(text, width / 2, py)
-      ctx.restore()
+      if (hollow) {
+        drawHollowGlow(
+          ctx,
+          width / 2,
+          py,
+          text,
+          font,
+          px,
+          (6 + 34 * clamp01(lyrics.glowStrength)) * S,
+          lyrics.glowColor,
+          strokePx,
+        )
+      } else {
+        ctx.save()
+        ctx.shadowColor = lyrics.glowColor
+        ctx.shadowBlur = (6 + 34 * clamp01(lyrics.glowStrength)) * S
+        ctx.fillStyle = lyrics.glowColor
+        ctx.fillText(text, width / 2, py)
+        ctx.fillText(text, width / 2, py)
+        ctx.restore()
+      }
     }
 
     // Outline stroke behind the fill.
-    if (lyrics.outline && lyrics.outlineWidth > 0) {
-      ctx.lineWidth = lyrics.outlineWidth * S
+    if (strokePx > 0) {
+      ctx.lineWidth = strokePx
       ctx.strokeStyle = lyrics.outlineColor
       ctx.lineJoin = 'round'
       ctx.miterLimit = 2
       ctx.strokeText(text, width / 2, py)
     }
 
-    // Fill: palette sweep or flat color.
+    // Fill: palette sweep, flat color — or nothing at all when the fill is
+    // empty and only the outline/glow should show.
+    if (hollow) {
+      ctx.restore()
+      return
+    }
     if (lyrics.fill === 'gradient' && fillPalette.stops.length > 0) {
       const tw = Math.max(ctx.measureText(text).width, 1)
       const th = px

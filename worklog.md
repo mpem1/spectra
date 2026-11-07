@@ -1417,3 +1417,18 @@ Work Log:
 
 Stage Summary:
 - The Lyrics tab now scans as color-coded blocks like the Style tab — Source text (orange), Lines (yellow), Style (green), Title card (purple) — and you can import your own font files (.ttf/.otf/.woff/.woff2) right next to any Font menu: they appear in both Lyrics and Title font pickers, work with all the styling (gradient, outline, glow), travel inside saved projects, and exports render with them. Share links still fit in a URL (fonts fall back to the built-ins there, like images do).
+
+Task ID: 53
+Agent: Z.ai Code (main)
+Task: Empty fill for text — show just the outline and/or glow
+User: "can you also add an empty fill on text so we can have just outline and or glow"
+
+Work Log:
+- New "Empty" third option on the Fill pickers (Lyrics + Title card, grid widened to 3): the text body is not drawn at all, so only the outline stroke and/or the glow halo show. Defaults stay 'solid'/'gradient' — old saves, share links and presets render pixel-identical; 'empty' is a plain string that round-trips through saved projects and share links untouched.
+- New lib/visualizer/hollow-glow.ts: pure-outward halo baked the same way as the Task 50 pulse-image glow — the full dilated glyph (body + the outline stroke band when one is enabled, so the halo follows the outermost visible contour) is drawn into a module-level scratch canvas with a heavy shadow in the glow color, then the same shapes are punched back out with 'destination-out', leaving only the shadow outside the contour; composited under the caller's crisp stroke via drawImage (inherits transform, so swivel/pulse apply). Scratch canvas grow-only, cleared per call, deterministic in exports (no workers anywhere in the pipeline).
+- lyrics.ts / title.ts: when fill = empty the final fill pass (and the readability shadow tied to it) is skipped; the glow branch routes to drawHollowGlow (the old glow pass would leave a solid glow-colored letter behind with no crisp fill to cover it); the outline stroke draws as before. Solid/gradient paths byte-identical to before.
+- UI: both pickers gain the Empty button with a hint line ("See-through text — the letters show only their Outline and Glow below.") replacing the color/gradient block while active.
+- Browser E2E (audio loaded, paused at t≈2.2s, zero-noise-floor pixel diffs on the 998x561 preview): solid→empty removes exactly the glyph body (3162 px, and empty+nothing is pixel-IDENTICAL to no lyrics at all); +white 12px outline adds 7450 bright pixels; outline off + red glow strength 1 adds 16078 proportionally-red halo pixels (peak R=124, interior stays clear); outline+glow together show both (17k red + 5.1k white); title card matrix same (glow 8130 white-ish px, +outline 9484 bright px); both fill pickers round-trip back to gradient/solid. Screenshots confirm see-through letters with halo hugging the glyph edges. Mobile 390px: 3-column picker fits (302px), zero horizontal overflow. 0 page errors, lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- Text can now be hollow: pick "Empty" in the Lyrics or Title card Fill picker and the letters become see-through — you see only their Outline, their Glow, or both, with the glow radiating cleanly outward from the letter/outline contour instead of filling the letter. Everything else (gradient sweeps, fonts, pulse, swivel, exports) behaves exactly as before, and existing looks are untouched.

@@ -7,10 +7,10 @@
  * widest one fits 92% of the canvas.
  *
  * Fill mirrors the lyrics design language: flat color, a sweep of the
- * visualizer palette, or the title's own gradient (angle-aware, honors stop
- * positions and ping-pong color cycling) — plus optional outline stroke and
- * glow halo. The card is positioned freely via positionX/positionY (0..100,
- * 50/50 = dead center).
+ * visualizer palette, the title's own gradient (angle-aware, honors stop
+ * positions and ping-pong color cycling), or empty — a see-through hollow
+ * letter showing only its outline stroke and/or glow halo. The card is
+ * positioned freely via positionX/positionY (0..100, 50/50 = dead center).
  *
  * Motion: `pulse` swells the px size with the track's loudness (energy-driven,
  * deterministic in exports), and `swivel` swings the whole block rotationally
@@ -21,6 +21,7 @@
 import type { AudioFrame, GradientConfig, RenderContext, TitleConfig } from './types'
 import { fontStack } from './custom-fonts'
 import { buildGradient, buildRadialGradient, gradientLine } from './gradients'
+import { drawHollowGlow } from './hollow-glow'
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v
@@ -85,28 +86,55 @@ export function drawTitle(
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
 
+    const font = fontFor(px)
+
+    // Hollow fill: no body is drawn, so the glow has to be a pure outward
+    // halo baked from the full dilated glyph (see hollow-glow) — the old
+    // pass's solid body would otherwise show through the empty fill.
+    const hollow = title.fill === 'empty'
+    const strokePx = title.outline && title.outlineWidth > 0 ? title.outlineWidth * S * pulseScale : 0
+
     // Glow halo: a colored pass under the crisp fill. Double-drawn so the
     // halo reads at low strengths too. Breathes with the pulse.
     if (title.glow) {
-      ctx.save()
-      ctx.shadowColor = title.glowColor
-      ctx.shadowBlur = (6 + 34 * clamp01(title.glowStrength)) * S * pulseScale
-      ctx.fillStyle = title.glowColor
-      ctx.fillText(text, x, py)
-      ctx.fillText(text, x, py)
-      ctx.restore()
+      if (hollow) {
+        drawHollowGlow(
+          ctx,
+          x,
+          py,
+          text,
+          font,
+          px,
+          (6 + 34 * clamp01(title.glowStrength)) * S * pulseScale,
+          title.glowColor,
+          strokePx,
+        )
+      } else {
+        ctx.save()
+        ctx.shadowColor = title.glowColor
+        ctx.shadowBlur = (6 + 34 * clamp01(title.glowStrength)) * S * pulseScale
+        ctx.fillStyle = title.glowColor
+        ctx.fillText(text, x, py)
+        ctx.fillText(text, x, py)
+        ctx.restore()
+      }
     }
 
     // Outline stroke behind the fill (scales with the pulse).
-    if (title.outline && title.outlineWidth > 0) {
-      ctx.lineWidth = title.outlineWidth * S * pulseScale
+    if (strokePx > 0) {
+      ctx.lineWidth = strokePx
       ctx.strokeStyle = title.outlineColor
       ctx.lineJoin = 'round'
       ctx.miterLimit = 2
       ctx.strokeText(text, x, py)
     }
 
-    // Fill: palette sweep or flat color.
+    // Fill: palette sweep, flat color — or nothing at all when the fill is
+    // empty and only the outline/glow should show.
+    if (hollow) {
+      ctx.restore()
+      return
+    }
     if (title.fill === 'gradient' && fillPalette.stops.length > 0) {
       const tw = Math.max(ctx.measureText(text).width, 1)
       const th = px

@@ -141,8 +141,9 @@ export interface LyricsConfig {
   uppercase: boolean
   /** Seconds a line stays before fading out when no newer line replaces it */
   holdTime: number
-  /** Text fill: flat color or a gradient sweep */
-  fill: 'solid' | 'gradient'
+  /** Text fill: flat color, a gradient sweep, or empty (see-through — only
+   *  the outline stroke and/or glow halo show) */
+  fill: 'solid' | 'gradient' | 'empty'
   /** Where the gradient sweep gets its colors: the visualizer palette or lyrics' own */
   gradientMode: 'visualizer' | 'custom'
   /** Lyrics' own gradient (used when fill = gradient and gradientMode = custom) */
@@ -196,8 +197,9 @@ export interface TitleConfig {
   swivelRange: number
   /** Full back-and-forth swings per second */
   swivelSpeed: number
-  /** Text fill: flat color or a gradient sweep */
-  fill: 'solid' | 'gradient'
+  /** Text fill: flat color, a gradient sweep, or empty (see-through — only
+   *  the outline stroke and/or glow halo show) */
+  fill: 'solid' | 'gradient' | 'empty'
   color: string
   /** Where the gradient sweep gets its colors: the visualizer palette or the title's own */
   gradientMode: 'visualizer' | 'custom'

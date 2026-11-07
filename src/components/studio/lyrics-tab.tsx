@@ -679,8 +679,8 @@ export function LyricsTab() {
         {/* Fill: flat color or palette sweep */}
         <div className="space-y-1.5">
           <MicroLabel>Fill</MicroLabel>
-          <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
-            {(['solid', 'gradient'] as const).map((mode) => (
+          <div className="grid grid-cols-3 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+            {(['solid', 'gradient', 'empty'] as const).map((mode) => (
               <button
                 key={mode}
                 type="button"
@@ -747,6 +747,10 @@ export function LyricsTab() {
                 </p>
               )}
             </div>
+          ) : lyrics.fill === 'empty' ? (
+            <p className="text-[11px] leading-snug text-zinc-600">
+              See-through text — the letters show only their Outline and Glow below.
+            </p>
           ) : (
             <div className="flex h-8 items-center gap-2">
               <MicroLabel className="flex-1">Color</MicroLabel>
@@ -991,8 +995,8 @@ export function LyricsTab() {
         {/* Fill: flat color or palette sweep */}
         <div className="space-y-1.5">
           <MicroLabel>Fill</MicroLabel>
-          <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
-            {(['solid', 'gradient'] as const).map((mode) => (
+          <div className="grid grid-cols-3 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+            {(['solid', 'gradient', 'empty'] as const).map((mode) => (
               <button
                 key={mode}
                 type="button"
@@ -1058,6 +1062,10 @@ export function LyricsTab() {
                 </p>
               )}
             </div>
+          ) : title.fill === 'empty' ? (
+            <p className="text-[11px] leading-snug text-zinc-600">
+              See-through text — the letters show only their Outline and Glow below.
+            </p>
           ) : (
             <div className="flex h-8 items-center gap-2">
               <MicroLabel className="flex-1">Color</MicroLabel>
