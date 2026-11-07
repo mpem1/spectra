@@ -1530,3 +1530,16 @@ Work Log:
 
 Stage Summary:
 - Third signature preset shipped: the user's "Side EQ Cover" (symmetric dot-matrix grid EQs running down both sides in green/yellow, square album cover centered over a green radial bloom) joins Vinyl & Cover and Radial Fade in the SIGNATURE PRESETS section.
+
+Task ID: 61
+Agent: Z.ai Code (main)
+Task: Add the user's "cassette blob" look as a signature preset
+User: pasted the full .spectra JSON (fourth preset, after "side eq cover")
+
+Work Log:
+- Saved the user's pasted file byte-for-byte as public/presets/cassette-blob.spectra (3166 bytes, name "cassette blob"); validated envelope + required sections + key values: blob visualizer, 88 bars, mirror mode, layer back (behind the cassette), radial palette cyan #34b6e7@55 → yellow #fff700@87 (stop order exactly as exported), sunset radial background #f97316 → #ec4899 → #8b5cf6 (angle 160), vignette 0.35, grain 0.08, disc layer in cassette mode (showDisc on, showCover off) with realistic-style purple shell #7648bd, default cream label, rpm 33.33; lyrics/title/watermark/pulse-image all off.
+- Manifest entry: id cassette-blob, name "Cassette Blob", caption "Sunset blob backdrop · realistic purple cassette", swatch mirrors the three-stop sunset background palette at 160°.
+- Browser E2E (desktop 1280px): Presets tab lists all four signature presets in order (Vinyl & Cover, Radial Fade, Side EQ Cover, Cassette Blob); applying shows the success toast. Pixel checks — symmetric purple field at all four edges (the radial sunset's outer #8b5cf6 zone, top-row scan purple→salmon→purple), yellow blob ring [248,244,8]≈#fff700 above center with teal-cyan blob glow [114,196,219]/[58,166,199] peeking out both sides of the cassette, cream cassette label [249,246,241]≈#f7f4ec in the center region; screenshot confirms the full composition (purple realistic cassette with striped label over the cyan/yellow blob, sunset bloom behind). Mobile 390px: all four presets listed, zero horizontal overflow, Cassette Blob applies with toast. 0 page errors; lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- Fourth signature preset shipped: the user's "Cassette Blob" (realistic purple cassette front and center over a cyan-to-yellow blob glow, all inside a sunset orange→pink→purple radial bloom) joins Vinyl & Cover, Radial Fade and Side EQ Cover in the SIGNATURE PRESETS section.

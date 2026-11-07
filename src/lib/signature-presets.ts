@@ -65,6 +65,20 @@ export const SIGNATURE_PRESETS: SignaturePreset[] = [
       angle: 180,
     },
   },
+  {
+    id: 'cassette-blob',
+    name: 'Cassette Blob',
+    file: 'presets/cassette-blob.spectra',
+    caption: 'Sunset blob backdrop · realistic purple cassette',
+    swatch: {
+      stops: [
+        { color: '#f97316', position: 0 },
+        { color: '#ec4899', position: 50 },
+        { color: '#8b5cf6', position: 100 },
+      ],
+      angle: 160,
+    },
+  },
   // Future entries arrive with the user's own looks (screenshots / .spectra
   // files) — the recipe stays: drop <id>.spectra into public/presets/, add
   // a manifest line here. The three designs explored in Task 57 (Neon Bars,
