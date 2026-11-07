@@ -6,14 +6,15 @@ import { toast } from 'sonner'
 import { useStudioStore } from '@/store/studio'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { ColorPickerButton } from '@/components/studio/color-picker'
 import { MicroLabel, SliderRow } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 
 /**
  * Pulse image — a PNG/SVG emblem that floats over (or behind) the scene and
  * breathes with the music: it swells on the bass and energy the same way the
- * blob and radial visualizers react, with optional slow spin and a
- * palette-tinted glow.
+ * blob and radial visualizers react, with optional slow spin and a glow
+ * tinted by the scene palette or by a color of its own.
  */
 export function PulseImageSection() {
   const pulseImage = useStudioStore((s) => s.config.pulseImage)
@@ -175,7 +176,7 @@ export function PulseImageSection() {
             {(
               [
                 { key: 'spin', label: 'Slow spin' },
-                { key: 'glow', label: 'Palette glow' },
+                { key: 'glow', label: 'Glow' },
               ] as const
             ).map(({ key, label }) => (
               <div key={key} className="flex h-8 items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5">
@@ -188,6 +189,45 @@ export function PulseImageSection() {
               </div>
             ))}
           </div>
+
+          {pulseImage.glow ? (
+            <div className="space-y-1.5">
+              <div className="flex h-5 items-center justify-between">
+                <MicroLabel>Glow color</MicroLabel>
+                {pulseImage.glowColorMode === 'custom' ? (
+                  <ColorPickerButton
+                    value={pulseImage.glowColor}
+                    onChange={(glowColor) => patchPulseImage({ glowColor })}
+                    showAlpha
+                    ariaLabel="Glow color"
+                  />
+                ) : null}
+              </div>
+              <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+                {(
+                  [
+                    { id: 'palette', label: 'Match scene' },
+                    { id: 'custom', label: 'Custom' },
+                  ] as const
+                ).map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    aria-pressed={pulseImage.glowColorMode === m.id}
+                    onClick={() => patchPulseImage({ glowColorMode: m.id })}
+                    className={cn(
+                      'h-7 rounded-md text-xs transition-colors',
+                      pulseImage.glowColorMode === m.id
+                        ? 'bg-emerald-500 font-medium text-zinc-950'
+                        : 'text-zinc-300 hover:text-zinc-100',
+                    )}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </>
       ) : null}
     </section>

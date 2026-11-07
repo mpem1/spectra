@@ -231,8 +231,14 @@ export interface PulseImageConfig {
   pulse: number
   /** Slow continuous rotation */
   spin: boolean
-  /** Soft palette-tinted aura behind the image */
+  /** Soft aura behind the image */
   glow: boolean
+  /** Where the glow takes its color: 'palette' tints it with the visualizer
+   *  palette (pre-glow-color behavior), 'custom' uses `glowColor`. Default
+   *  keeps old saves/share links rendering exactly as before. */
+  glowColorMode: 'palette' | 'custom'
+  /** Glow color when glowColorMode = 'custom' (#rgb / #rrggbb / #rrggbbaa) */
+  glowColor: string
   /** Layer order vs. the vinyl & visualizer (same semantics as the bars) */
   layer: 'front' | 'back'
 }
@@ -654,6 +660,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     pulse: 0.6,
     spin: false,
     glow: true,
+    glowColorMode: 'palette',
+    glowColor: '#ffffff',
     layer: 'front',
   },
 }

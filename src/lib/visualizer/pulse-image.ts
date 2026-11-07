@@ -36,16 +36,21 @@ export function drawPulseImage(
   ctx.translate(cx, cy)
   if (cfg.spin) ctx.rotate(frame.styleTime * 0.45)
   if (cfg.glow) {
-    // Aura tinted by the visualizer palette at the image's height so the
-    // emblem never looks detached from the scene's color story.
-    const t = H > 0 ? cy / H : 0.5
-    ctx.shadowColor = sampleGradient(
-      gradient.stops,
-      t,
-      frame.styleTime,
-      gradient.cycleColors,
-      gradient.cycleSpeed,
-    )
+    // Aura color: either the visualizer palette at the image's height (so the
+    // emblem stays glued to the scene's color story) or the glow's own color
+    // when the user picked one. Missing mode = old save → palette tint.
+    if ((cfg.glowColorMode ?? 'palette') === 'custom') {
+      ctx.shadowColor = cfg.glowColor || '#ffffff'
+    } else {
+      const t = H > 0 ? cy / H : 0.5
+      ctx.shadowColor = sampleGradient(
+        gradient.stops,
+        t,
+        frame.styleTime,
+        gradient.cycleColors,
+        gradient.cycleSpeed,
+      )
+    }
     ctx.shadowBlur = Math.max(w, h) * 0.45
   }
   ctx.drawImage(img, -w / 2, -h / 2, w, h)

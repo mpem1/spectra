@@ -1311,3 +1311,19 @@ Work Log:
 
 Stage Summary:
 - Vertical strips (bars / wave / grid) now have a Side picker under Orientation: hang the spectrum wall off the left edge or the right edge — one click, everything else (mirror, glow, position, size, layering) keeps behaving exactly as before, and exports stay frame-exact.
+
+---
+
+Task ID: 47
+Agent: Z.ai Code (main)
+Task: Pulse image glow — its own color instead of the visualizer palette
+User: "under pulse image the glow color shouldnt be tied to visualizer should have its own color pallette"
+
+Work Log:
+- PulseImageConfig grows two no-op-default fields: glowColorMode: 'palette' | 'custom' (default 'palette' = exactly the old palette-tinted behavior, so old saves / share links / .spectra files merge to identical rendering) and glowColor: string (default '#ffffff', only used in custom mode). The renderer also guards `cfg.glowColorMode ?? 'palette'` defensively for very old configs.
+- pulse-image.ts: the glow branch now picks the shadow color by mode — 'palette' keeps sampling the visualizer gradient at the image's height (that code path is untouched), 'custom' feeds the dedicated color straight into ctx.shadowColor (8-digit hex alpha renders natively on canvas).
+- pulse-image-section.tsx: the "Palette glow" switch is now just "Glow"; when glow is on, a GLOW COLOR block appears below the spin/glow switches — Match scene / Custom segmented control (same emerald selected-state language as Layer) with the ColorPickerButton (native color wheel + hex input + opacity slider) on the label row, shown only in Custom mode. Both fields flow through patchPulseImage; share-link (spread) and .spectra (whole-config serialize) pick them up with zero extra wiring.
+- Browser E2E with a real emblem upload + bass track: palette-mode glow ring avg RGB [67,25,46] (pink, palette tint) → Custom + hex 00ff00 → ring avg [7,71,7] (pure green, a color the sunset palette can never produce) → final #ff0044 red glow confirmed on screenshot; panel shows the red swatch + selected Custom chip; fresh reload defaults back to Match scene (no-op default re-verified). 0 page errors, lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- The pulse image's glow no longer has to copy the visualizer: keep "Match scene" for the old auto tint, or switch to "Custom" and give the aura any color (with its own opacity) via the color picker — live preview and exports both included through the shared renderer.
