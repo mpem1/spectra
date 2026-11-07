@@ -50,6 +50,21 @@ export const SIGNATURE_PRESETS: SignaturePreset[] = [
       angle: 90,
     },
   },
+  {
+    id: 'side-eq-cover',
+    name: 'Side EQ Cover',
+    file: 'presets/side-eq-cover.spectra',
+    caption: 'Green grid EQ down the side · centered cover',
+    swatch: {
+      stops: [
+        { color: '#073b14', position: 0 },
+        { color: '#fff700', position: 31 },
+        { color: '#fff700', position: 60 },
+        { color: '#073b14', position: 96 },
+      ],
+      angle: 180,
+    },
+  },
   // Future entries arrive with the user's own looks (screenshots / .spectra
   // files) — the recipe stays: drop <id>.spectra into public/presets/, add
   // a manifest line here. The three designs explored in Task 57 (Neon Bars,

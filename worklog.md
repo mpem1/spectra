@@ -1517,3 +1517,16 @@ Work Log:
 
 Stage Summary:
 - Second signature preset shipped: the user's "Radial Fade" (moody 144-spoke radial sunburst in plum→mauve→white over a near-black background with a violet bloom) joins "Vinyl & Cover" in the SIGNATURE PRESETS section, applied through the same door as "Open .spectra" and fully editable after applying.
+
+Task ID: 60
+Agent: Z.ai Code (main)
+Task: Add the user's "side eq cover" look as a signature preset
+User: pasted the full .spectra JSON (third preset, after "radial fade")
+
+Work Log:
+- Saved the user's pasted file byte-for-byte as public/presets/side-eq-cover.spectra (3207 bytes, name "side eq cover" preserved); validated envelope + required sections + key values: grid visualizer, 88 bars, sensitivity 0.4, scale 1.1, vertical orientation anchored right with mirror mode (the strip renders on both sides), green/yellow palette #073b14→#fff700 (angle 180), radial background bloom #0b6f12→#000000, cover-only disc layer (showCover on, showDisc off) centered at 51% of canvas height.
+- Manifest entry: id side-eq-cover, name "Side EQ Cover", caption "Green grid EQ down the side · centered cover", swatch mirrors the four-stop green/yellow palette at 180°.
+- Browser E2E (desktop 1280px): Presets tab lists all three signature presets in order (Vinyl & Cover, Radial Fade, Side EQ Cover); applying shows the success toast. Pixel scan across all columns found lit dot-matrix cells on BOTH flanks (columns at x≈0.036–0.12 and x≈0.83–0.92 — the mirrored vertical grid), the centered cover square, and the green bloom glow behind it; screenshot confirms the full composition (dark sleeve awaiting album art, symmetric side EQs, green halo). Mobile 390px: all three presets listed, zero horizontal overflow, Side EQ Cover applies with toast. 0 page errors; lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- Third signature preset shipped: the user's "Side EQ Cover" (symmetric dot-matrix grid EQs running down both sides in green/yellow, square album cover centered over a green radial bloom) joins Vinyl & Cover and Radial Fade in the SIGNATURE PRESETS section.
