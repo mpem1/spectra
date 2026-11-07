@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { ColorPickerButton } from '@/components/studio/color-picker'
-import { MicroLabel, SectionTitle, SliderRow } from '@/components/studio/controls'
+import { MicroLabel, SectionTitle, SliderRow, sectionShell } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 
 /** Read a File into a data URL (for the canvas + project persistence). */
@@ -54,7 +54,7 @@ export function VinylSection() {
   }
 
   return (
-    <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
+    <section className={sectionShell('lime')}>
       <input
         ref={inputRef}
         type="file"
@@ -79,7 +79,7 @@ export function VinylSection() {
       />
 
       <div className="flex h-7 items-center justify-between">
-        <SectionTitle icon={Disc3}>Vinyl &amp; cover</SectionTitle>
+        <SectionTitle icon={Disc3} accent="lime">Vinyl &amp; cover</SectionTitle>
         <Switch
           aria-label="Enable album art layer"
           checked={disc.enabled}

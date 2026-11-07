@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button'
 import { GradientEditor } from '@/components/studio/gradient-editor'
 import { ColorPickerButton } from '@/components/studio/color-picker'
 import { parseColor, toHex6 } from '@/components/studio/color-utils'
-import { MicroLabel, OptionCard, SliderRow } from '@/components/studio/controls'
+import { MicroLabel, OptionCard, SECTION_ACCENT, SliderRow, sectionShell } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 import {
   forgetAnimatedBackground,
@@ -393,8 +393,8 @@ export function BackgroundSection() {
   const solidRgb = parseColor(background.color) ?? { r: 10, g: 10, b: 10, a: 1 }
 
   return (
-    <div className="space-y-4">
-      <span className="text-[11px] font-medium uppercase tracking-widest text-zinc-500">
+    <div className={sectionShell('rose', 'space-y-4')}>
+      <span className={cn('text-[11px] font-medium uppercase tracking-widest', SECTION_ACCENT.rose.label)}>
         BACKGROUND
       </span>
 

@@ -1388,3 +1388,17 @@ Work Log:
 
 Stage Summary:
 - The glow is back and it finally follows the outline: the aura is blurred from the whole outlined shape instead of the thin stroke band (which spread to nothing), radiating outward from the outline's contour, tinted per frame by the palette or the custom color, breathing and spinning with the emblem. Outline-off behavior and no-op defaults untouched; exports stay frame-exact.
+
+Task ID: 51
+Agent: Z.ai Code (main)
+Task: Color-code the Style tab sections with subtle separation
+User: "can we color coat each section with subtle differences so i can clearly see the separation between sections visualizer / SHAPES AND MOTION / background / vinyl cover / pulse image / corner watermark"
+
+Work Log:
+- controls.tsx: new SECTION_ACCENT system — 8 hues (emerald / violet / amber / cyan / rose / lime / fuchsia / teal), each with a card shell (border at 20% alpha + background tint at 4%), an icon class and a label class, all full literal Tailwind strings so the scanner picks them up. sectionShell(accent, extra?) builds the standard rounded-xl bordered card; SectionTitle gained an optional accent prop (icon + label tinted; default emerald/zinc preserved for any un-accented use).
+- All 8 Style-tab sections carded, hues assigned so vertical neighbors always contrast: VISUALIZER emerald (the app accent stays home), GRADIENT violet, SHAPE & MOTION amber, LAYOUT cyan, BACKGROUND rose, Vinyl & cover lime, Pulse image fuchsia, Corner watermark teal. Vinyl already was a zinc card (swapped to lime); background's outer wrapper (label + mode/sub-sections) became the rose card; pulse image / watermark / the four inline style-tab sections got shells. Internal controls stay neutral zinc with the shared emerald active states — the color coding lives on the card + header only.
+- No config/type/store changes; pure presentation. Lyrics/Export/Presets tabs untouched.
+- Browser E2E: computed-style sweep of the panel — all 8 cards resolve to distinct oklab border colors (emerald/violet/amber/cyan/rose/lime/fuchsia/teal at 0.2 alpha, bg 0.04), nested gradient-editor card untouched; screenshots of top/mid/bottom of the panel show clearly separated tinted blocks; 0 page errors; lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- The Style tab now reads as color-coded blocks — each section (Visualizer, Gradient, Shape & Motion, Layout, Background, Vinyl & cover, Pulse image, Corner watermark) sits in its own faintly tinted card with a matching header color, so you can tell at a glance where one section ends and the next begins. Nothing about how any effect behaves changed.

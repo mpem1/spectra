@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
-import { MicroLabel, SliderRow } from '@/components/studio/controls'
+import { MicroLabel, SliderRow, sectionShell } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 
 const CORNERS: { id: WatermarkConfig['position']; label: string }[] = [
@@ -44,7 +44,7 @@ export function WatermarkSection() {
   }
 
   return (
-    <section className="space-y-3">
+    <section className={sectionShell('teal')}>
       <input
         ref={inputRef}
         type="file"
@@ -59,8 +59,8 @@ export function WatermarkSection() {
 
       <div className="flex h-7 items-center justify-between">
         <div className="flex items-center gap-2">
-          <Stamp className="size-3.5 text-emerald-500" aria-hidden />
-          <MicroLabel className="text-zinc-400">Corner watermark</MicroLabel>
+          <Stamp className="size-3.5 text-teal-500" aria-hidden />
+          <MicroLabel className="text-teal-300/80">Corner watermark</MicroLabel>
         </div>
         <Switch
           aria-label="Enable corner watermark"

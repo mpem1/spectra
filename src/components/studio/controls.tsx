@@ -13,6 +13,68 @@ export function MicroLabel({ children, className }: { children: React.ReactNode;
   )
 }
 
+/** Subtle per-section accent hues — every section of the Style tab lives in
+ * its own faintly tinted card with a matching header, so the panel scans as
+ * clearly separated, color-coded blocks. Full literal class strings so the
+ * Tailwind scanner picks them all up. */
+export type SectionAccent =
+  | 'emerald'
+  | 'violet'
+  | 'amber'
+  | 'cyan'
+  | 'rose'
+  | 'lime'
+  | 'fuchsia'
+  | 'teal'
+
+export const SECTION_ACCENT: Record<SectionAccent, { shell: string; icon: string; label: string }> = {
+  emerald: {
+    shell: 'border-emerald-500/20 bg-emerald-500/[0.04]',
+    icon: 'text-emerald-500',
+    label: 'text-emerald-300/80',
+  },
+  violet: {
+    shell: 'border-violet-500/20 bg-violet-500/[0.04]',
+    icon: 'text-violet-500',
+    label: 'text-violet-300/80',
+  },
+  amber: {
+    shell: 'border-amber-500/20 bg-amber-500/[0.04]',
+    icon: 'text-amber-500',
+    label: 'text-amber-300/80',
+  },
+  cyan: {
+    shell: 'border-cyan-500/20 bg-cyan-500/[0.04]',
+    icon: 'text-cyan-500',
+    label: 'text-cyan-300/80',
+  },
+  rose: {
+    shell: 'border-rose-500/20 bg-rose-500/[0.04]',
+    icon: 'text-rose-500',
+    label: 'text-rose-300/80',
+  },
+  lime: {
+    shell: 'border-lime-500/20 bg-lime-500/[0.04]',
+    icon: 'text-lime-500',
+    label: 'text-lime-300/80',
+  },
+  fuchsia: {
+    shell: 'border-fuchsia-500/20 bg-fuchsia-500/[0.04]',
+    icon: 'text-fuchsia-500',
+    label: 'text-fuchsia-300/80',
+  },
+  teal: {
+    shell: 'border-teal-500/20 bg-teal-500/[0.04]',
+    icon: 'text-teal-500',
+    label: 'text-teal-300/80',
+  },
+}
+
+/** Standard card shell for a studio section — the accent-tinted separation card. */
+export function sectionShell(accent: SectionAccent, extra?: string): string {
+  return cn('space-y-3 rounded-xl border p-3', SECTION_ACCENT[accent].shell, extra)
+}
+
 /** Formats seconds as m:ss for time readouts. */
 export function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
@@ -20,22 +82,26 @@ export function formatTime(seconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
-/** Section header: small lucide icon + uppercase title + optional right slot. */
+/** Section header: small lucide icon + uppercase title + optional right slot.
+ * With an accent, the icon + label pick up the section's color coding. */
 export function SectionTitle({
   icon: Icon,
   children,
   right,
   className,
+  accent,
 }: {
   icon: LucideIcon
   children: React.ReactNode
   right?: React.ReactNode
   className?: string
+  accent?: SectionAccent
 }) {
+  const a = accent ? SECTION_ACCENT[accent] : null
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      <Icon className="size-3.5 text-emerald-500" aria-hidden />
-      <MicroLabel className="text-zinc-400">{children}</MicroLabel>
+      <Icon className={cn('size-3.5', a ? a.icon : 'text-emerald-500')} aria-hidden />
+      <MicroLabel className={a ? a.label : 'text-zinc-400'}>{children}</MicroLabel>
       {right ? <div className="ml-auto flex items-center gap-1">{right}</div> : null}
     </div>
   )

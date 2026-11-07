@@ -14,7 +14,7 @@ import { BackgroundSection } from '@/components/studio/background-section'
 import { VinylSection } from '@/components/studio/vinyl-section'
 import { WatermarkSection } from '@/components/studio/watermark-section'
 import { PulseImageSection } from '@/components/studio/pulse-image-section'
-import { MicroLabel, OptionCard, SliderRow } from '@/components/studio/controls'
+import { MicroLabel, OptionCard, SECTION_ACCENT, SliderRow, sectionShell, type SectionAccent } from '@/components/studio/controls'
 
 const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] = [
   { id: 'bars', label: 'Bars', icon: BarChart3 },
@@ -26,8 +26,12 @@ const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] =
 ]
 
 /** Plain uppercase section label (VISUALIZER / GRADIENT / …) like the reference UI. */
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <MicroLabel className="text-[11px] tracking-widest text-zinc-500">{children}</MicroLabel>
+function SectionLabel({ children, accent }: { children: React.ReactNode; accent?: SectionAccent }) {
+  return (
+    <MicroLabel className={cn('text-[11px] tracking-widest', accent ? SECTION_ACCENT[accent].label : 'text-zinc-500')}>
+      {children}
+    </MicroLabel>
+  )
 }
 
 /** One click: pull the visualizer palette straight from the uploaded album art. */
@@ -80,9 +84,9 @@ export function StyleTab() {
 
   return (
     <div className="space-y-5">
-      {/* Visualizer style — 2-column icon grid */}
-      <section className="space-y-2">
-        <SectionLabel>VISUALIZER</SectionLabel>
+      {/* Visualizer style — 2-column icon grid (emerald = the app accent) */}
+      <section className={sectionShell('emerald', 'space-y-2')}>
+        <SectionLabel accent="emerald">VISUALIZER</SectionLabel>
         <div className="grid grid-cols-2 gap-2">
           {STYLES.map(({ id, label, icon }) => (
             <OptionCard
@@ -97,17 +101,17 @@ export function StyleTab() {
       </section>
 
       {/* Gradient */}
-      <section className="space-y-2">
+      <section className={sectionShell('violet', 'space-y-2')}>
         <div className="flex items-center justify-between">
-          <SectionLabel>GRADIENT</SectionLabel>
+          <SectionLabel accent="violet">GRADIENT</SectionLabel>
           <AutoPaletteButton />
         </div>
         <GradientEditor value={visualizer.gradient} onChange={patchGradient} />
       </section>
 
       {/* Shape & motion */}
-      <section className="space-y-3">
-        <SectionLabel>SHAPE &amp; MOTION</SectionLabel>
+      <section className={sectionShell('amber')}>
+        <SectionLabel accent="amber">SHAPE &amp; MOTION</SectionLabel>
 
         {/* Orientation — the strip styles can run left→right or top→bottom */}
         {visualizer.style === 'bars' ||
@@ -264,8 +268,8 @@ export function StyleTab() {
       </section>
 
       {/* Layout — move & resize the whole visualizer layer */}
-      <section className="space-y-3">
-        <SectionLabel>LAYOUT</SectionLabel>
+      <section className={sectionShell('cyan')}>
+        <SectionLabel accent="cyan">LAYOUT</SectionLabel>
         <p className="text-xs leading-relaxed text-zinc-500">
           Move &amp; resize the visualizer as one layer — e.g. shrink it into a spectrum column
           beside the spinning disc (pair it with Orientation&nbsp;→&nbsp;Vertical for a full-height
