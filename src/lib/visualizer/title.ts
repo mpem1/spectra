@@ -19,6 +19,7 @@
  * Deterministic — a pure function of (rc, frame, title, palette).
  */
 import type { AudioFrame, GradientConfig, RenderContext, TitleConfig } from './types'
+import { fontStack } from './custom-fonts'
 import { buildGradient, buildRadialGradient, gradientLine } from './gradients'
 
 function clamp01(v: number): number {
@@ -65,7 +66,7 @@ export function drawTitle(
   // Auto-shrink the block until its widest line fits 92% of the canvas (fit is
   // computed at the base size so layout stays stable — the pulse then swells
   // from there).
-  const fontFor = (size: number) => `${title.weight} ${size}px ${family(title.font)}`
+  const fontFor = (size: number) => `${title.weight} ${size}px ${fontStack(title.font)}`
   let px = title.size * S
   ctx.save()
   ctx.font = fontFor(px)
@@ -165,12 +166,4 @@ export function drawTitle(
     paint(lines[i], cx, cy - blockH / 2 + i * lineH)
   }
   ctx.restore()
-}
-
-function family(font: TitleConfig['font']): string {
-  return font === 'sans'
-    ? 'system-ui, sans-serif'
-    : font === 'serif'
-      ? 'Georgia, serif'
-      : 'monospace'
 }

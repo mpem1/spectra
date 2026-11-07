@@ -17,6 +17,7 @@ import {
   type VisualizerConfig,
   type WatermarkConfig,
   type PulseImageConfig,
+  type CustomFontConfig,
 } from '@/lib/visualizer/types'
 import { exportMP4 } from '@/lib/export/exporter'
 import { getEngine, getPreviewControls } from '@/components/studio/engine-registry'
@@ -88,6 +89,10 @@ type StudioState = {
   patchDisc: (partial: Partial<DiscConfig>) => void
   patchWatermark: (partial: Partial<WatermarkConfig>) => void
   patchPulseImage: (partial: Partial<PulseImageConfig>) => void
+  /** Adds an imported font file to the shared lyrics/title library */
+  addCustomFont: (font: CustomFontConfig) => void
+  /** Removes a font; any text layer using it falls back to Sans */
+  removeCustomFont: (id: string) => void
   /** Patches config.visualizer.gradient */
   patchGradient: (partial: Partial<GradientConfig>) => void
   /** Patches config.background.gradient */
@@ -190,6 +195,21 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, pulseImage: { ...s.config.pulseImage, ...partial } },
     })),
 
+  addCustomFont: (font) =>
+    set((s) => ({ config: { ...s.config, fonts: [...s.config.fonts, font] } })),
+
+  removeCustomFont: (id) =>
+    set((s) => ({
+      config: {
+        ...s.config,
+        fonts: s.config.fonts.filter((f) => f.id !== id),
+        // Layers pointing at the removed font fall back to Sans.
+        lyrics:
+          s.config.lyrics.font === id ? { ...s.config.lyrics, font: 'sans' } : s.config.lyrics,
+        title: s.config.title.font === id ? { ...s.config.title, font: 'sans' } : s.config.title,
+      },
+    })),
+
   patchGradient: (partial) =>
     set((s) => ({
       config: {
@@ -244,6 +264,13 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         disc: { ...DEFAULT_STUDIO_CONFIG.disc, ...config.disc },
         watermark: { ...DEFAULT_STUDIO_CONFIG.watermark, ...config.watermark },
         pulseImage: { ...DEFAULT_STUDIO_CONFIG.pulseImage, ...config.pulseImage },
+        // Imported font library — keep only well-formed entries.
+        fonts: Array.isArray(config.fonts)
+          ? config.fonts.filter(
+              (f): f is CustomFontConfig =>
+                !!f && typeof f.id === 'string' && typeof f.data === 'string' && f.data.length > 0,
+            )
+          : [],
       },
     }),
 

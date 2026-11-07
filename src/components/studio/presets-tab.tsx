@@ -178,7 +178,7 @@ export function PresetsTab() {
     const description = tooLong
       ? 'Lyrics were too long for a link, so they were left out — the look itself travels.'
       : imageDropped
-        ? 'Background images can’t travel in a link — it opens with a solid color instead.'
+        ? 'Images and imported fonts can’t travel in a link — it opens with a solid background and built-in fonts instead.'
         : 'Anyone who opens it gets this exact look. Paste it in a chat, post, or forum.'
     try {
       await navigator.clipboard.writeText(url)

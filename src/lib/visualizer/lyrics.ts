@@ -19,6 +19,7 @@
  * Deterministic — a pure function of (rc, frame, lyrics, palette).
  */
 import type { AudioFrame, GradientConfig, LyricLine, LyricsConfig, RenderContext } from './types'
+import { fontStack } from './custom-fonts'
 import { buildGradient, buildRadialGradient, gradientLine } from './gradients'
 
 /**
@@ -84,12 +85,12 @@ export function drawLyrics(
 
     // Shrink long sentences until they fit 92% of the canvas width.
     let px = lyrics.size * S
-    ctx.font = `${lyrics.weight} ${px}px ${family(lyrics.font)}`
+    ctx.font = `${lyrics.weight} ${px}px ${fontStack(lyrics.font)}`
     const maxW = width * 0.92
     const measured = ctx.measureText(text).width
     if (measured > maxW && measured > 0) {
       px = Math.max(10, px * (maxW / measured))
-      ctx.font = `${lyrics.weight} ${px}px ${family(lyrics.font)}`
+      ctx.font = `${lyrics.weight} ${px}px ${fontStack(lyrics.font)}`
     }
 
     // Glow halo: a colored pass under the crisp fill. Double-drawn so the
@@ -194,12 +195,4 @@ export function drawLyrics(
     }
     paint(lines[i].text, y, alpha)
   }
-}
-
-function family(font: LyricsConfig['font']): string {
-  return font === 'sans'
-    ? 'system-ui, sans-serif'
-    : font === 'serif'
-      ? 'Georgia, serif'
-      : 'monospace'
 }

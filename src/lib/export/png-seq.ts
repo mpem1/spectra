@@ -10,6 +10,7 @@ import { zipSync } from 'fflate'
 import { OfflineAnalyzer } from '../audio/offline'
 import { renderFrame } from '../visualizer/renderer'
 import { loadBackgroundImage } from '../visualizer/image-cache'
+import { registerCustomFonts } from '../visualizer/custom-fonts'
 import {
   isGifSrc,
   prepareExportVideo,
@@ -95,6 +96,9 @@ export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResu
       // Fall through — the pulse image is skipped.
     }
   }
+  // Imported fonts (lyrics / title) — registered before frame 0 so every
+  // frame uses the same faces (broken files silently fall back).
+  await registerCustomFonts(config.fonts)
 
   // Animated background (video/GIF): GIF → deterministic frame decode;
   // video → export-private element seeked per frame. Same as the MP4 path.

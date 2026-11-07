@@ -26,6 +26,11 @@ export type SectionAccent =
   | 'lime'
   | 'fuchsia'
   | 'teal'
+  | 'orange'
+  | 'yellow'
+  | 'green'
+  | 'purple'
+  | 'pink'
 
 export const SECTION_ACCENT: Record<SectionAccent, { shell: string; icon: string; label: string }> = {
   emerald: {
@@ -67,6 +72,31 @@ export const SECTION_ACCENT: Record<SectionAccent, { shell: string; icon: string
     shell: 'border-teal-500/20 bg-teal-500/[0.04]',
     icon: 'text-teal-500',
     label: 'text-teal-300/80',
+  },
+  orange: {
+    shell: 'border-orange-500/20 bg-orange-500/[0.04]',
+    icon: 'text-orange-500',
+    label: 'text-orange-300/80',
+  },
+  yellow: {
+    shell: 'border-yellow-500/20 bg-yellow-500/[0.04]',
+    icon: 'text-yellow-500',
+    label: 'text-yellow-300/80',
+  },
+  green: {
+    shell: 'border-green-500/20 bg-green-500/[0.04]',
+    icon: 'text-green-500',
+    label: 'text-green-300/80',
+  },
+  purple: {
+    shell: 'border-purple-500/20 bg-purple-500/[0.04]',
+    icon: 'text-purple-500',
+    label: 'text-purple-300/80',
+  },
+  pink: {
+    shell: 'border-pink-500/20 bg-pink-500/[0.04]',
+    icon: 'text-pink-500',
+    label: 'text-pink-300/80',
   },
 }
 

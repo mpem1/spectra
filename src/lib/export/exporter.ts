@@ -20,6 +20,7 @@ import { ArrayBufferTarget, Muxer } from 'mp4-muxer'
 import { OfflineAnalyzer } from '../audio/offline'
 import { renderFrame } from '../visualizer/renderer'
 import { loadBackgroundImage } from '../visualizer/image-cache'
+import { registerCustomFonts } from '../visualizer/custom-fonts'
 import {
   isGifSrc,
   prepareExportVideo,
@@ -275,6 +276,9 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
       onNotice?.('Pulse image could not be loaded — exporting without it.')
     }
   }
+  // Imported fonts (lyrics / title) — registered before frame 0 so every
+  // frame uses the same faces (broken files silently fall back).
+  await registerCustomFonts(config.fonts)
 
   // Animated background (video file or GIF): GIFs decode into deterministic
   // frame canvases; videos get an export-private element that the render loop

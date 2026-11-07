@@ -42,9 +42,10 @@ function fromBase64Url(text: string): Uint8Array {
 
 /**
  * Make a config safe to travel in a URL. Media pixels (background image,
- * background video/GIF, album art, separate disc face art, watermark logo)
- * are the only oversized fields; the background falls back to its solid
- * color and the disc keeps its shape with a blank face/label.
+ * background video/GIF, album art, separate disc face art, watermark logo,
+ * pulse image) and imported font files are the only oversized fields; the
+ * background falls back to its solid color, the disc keeps its shape with a
+ * blank face/label, and text falls back to the built-in fonts.
  */
 export function makePortable(config: StudioConfig): {
   config: StudioConfig
@@ -55,7 +56,8 @@ export function makePortable(config: StudioConfig): {
   const discDrop = !!config.disc?.imageSrc || !!config.disc?.discImageSrc
   const wmDrop = !!config.watermark?.imageSrc
   const pulseDrop = !!config.pulseImage?.imageSrc
-  if (!bgDrop && !videoDrop && !discDrop && !wmDrop && !pulseDrop) {
+  const fontsDrop = (config.fonts?.length ?? 0) > 0
+  if (!bgDrop && !videoDrop && !discDrop && !wmDrop && !pulseDrop && !fontsDrop) {
     return { config, imageDropped: false }
   }
   return {
@@ -83,6 +85,9 @@ export function makePortable(config: StudioConfig): {
         pulseDrop && config.pulseImage
           ? { ...config.pulseImage, imageSrc: '' }
           : config.pulseImage,
+      // Font files are megabytes of base64 — recipients fall back to the
+      // built-in fonts (the same graceful loss as images).
+      fonts: fontsDrop ? [] : config.fonts,
     },
     imageDropped: true,
   }

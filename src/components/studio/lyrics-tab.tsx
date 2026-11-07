@@ -1,19 +1,20 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Captions, Copy, Heading1, Plus, Timer, Trash2, Type } from 'lucide-react'
-import type { LyricLine } from '@/lib/visualizer/types'
+import { AlignLeft, Captions, Copy, Heading1, Loader2, Palette, Plus, Timer, Trash2, Type, Upload, X } from 'lucide-react'
+import { toast } from 'sonner'
+import type { CustomFontConfig, LyricLine } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { getPreviewControls } from '@/components/studio/engine-registry'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { ColorPickerButton } from '@/components/studio/color-picker'
 import { GradientEditor, defaultLyricsGradient } from '@/components/studio/gradient-editor'
 import { parseColor, toHex6 } from '@/components/studio/color-utils'
-import { MicroLabel, SectionTitle, SliderRow } from '@/components/studio/controls'
+import { MicroLabel, SectionTitle, sectionShell, SliderRow } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 
 function formatTimeInput(seconds: number): string {
@@ -53,6 +54,114 @@ export function parseLrc(text: string): LyricLine[] {
     for (const time of times) out.push({ time, text: lineText })
   }
   return out.sort((a, b) => a.time - b.time)
+}
+
+/* ------------------------- imported font files ------------------------- */
+
+const FONT_EXTS = ['ttf', 'otf', 'woff', 'woff2']
+const MAX_FONT_BYTES = 8 * 1024 * 1024
+
+/** Reads a font file into a config entry: data URL + display name + id. */
+async function fileToCustomFont(file: File): Promise<CustomFontConfig> {
+  const ext = (file.name.match(/\.([a-z0-9]+)$/i)?.[1] ?? '').toLowerCase()
+  if (!FONT_EXTS.includes(ext)) {
+    throw new Error('Use a .ttf, .otf, .woff or .woff2 file')
+  }
+  if (file.size > MAX_FONT_BYTES) {
+    throw new Error('Font file is larger than 8 MB')
+  }
+  const data = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error('Could not read the file'))
+    reader.readAsDataURL(file)
+  })
+  const name =
+    file.name
+      .replace(/\.[a-z0-9]+$/i, '')
+      .replace(/[-_]+/g, ' ')
+      .trim()
+      .slice(0, 28) || 'Imported font'
+  const id = `cf_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+  return { id, name, data }
+}
+
+/** Outline icon button that opens a font file picker; importing adds the
+ * font to the shared library and selects it for the calling layer. */
+function ImportFontButton({ onSelect }: { onSelect: (id: string) => void }) {
+  const addCustomFont = useStudioStore((s) => s.addCustomFont)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const [busy, setBusy] = useState(false)
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2"
+        className="hidden"
+        aria-label="Import font file"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          e.target.value = ''
+          if (!file) return
+          setBusy(true)
+          fileToCustomFont(file)
+            .then((font) => {
+              addCustomFont(font)
+              onSelect(font.id)
+              toast.success(`Font "${font.name}" imported`, {
+                description: 'Pick it from any Font menu — lyrics and title.',
+              })
+            })
+            .catch((err: unknown) => {
+              toast.error('Could not import that font', {
+                description: err instanceof Error ? err.message : 'Unsupported font file.',
+              })
+            })
+            .finally(() => setBusy(false))
+        }}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8 w-9 shrink-0 border-zinc-800 px-0 hover:border-emerald-500/60 hover:text-emerald-400"
+        aria-label="Import font file"
+        title="Import a .ttf / .otf / .woff font file"
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+      >
+        {busy ? (
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />
+        ) : (
+          <Upload className="size-3.5" aria-hidden />
+        )}
+      </Button>
+    </>
+  )
+}
+
+/** The built-in + imported font items shared by both Font menus. */
+function FontItems({ fonts }: { fonts: CustomFontConfig[] }) {
+  return (
+    <>
+      <SelectItem value="sans">Sans</SelectItem>
+      <SelectItem value="serif">Serif</SelectItem>
+      <SelectItem value="mono">Mono</SelectItem>
+      {fonts.length > 0 ? (
+        <>
+          <SelectSeparator />
+          <SelectGroup>
+            <SelectLabel>Imported fonts</SelectLabel>
+            {fonts.map((f) => (
+              <SelectItem key={f.id} value={f.id}>
+                {f.name}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </>
+      ) : null}
+    </>
+  )
 }
 
 function LyricRow({
@@ -159,10 +268,12 @@ function LyricRow({
 export function LyricsTab() {
   const lyrics = useStudioStore((s) => s.config.lyrics)
   const title = useStudioStore((s) => s.config.title)
+  const fonts = useStudioStore((s) => s.config.fonts)
   const visualizerGradient = useStudioStore((s) => s.config.visualizer.gradient)
   const audioMeta = useStudioStore((s) => s.audioMeta)
   const patchLyrics = useStudioStore((s) => s.patchLyrics)
   const patchTitle = useStudioStore((s) => s.patchTitle)
+  const removeCustomFont = useStudioStore((s) => s.removeCustomFont)
   const [raw, setRaw] = useState('')
   const [selected, setSelected] = useState<number | null>(null)
   const [activeLine, setActiveLine] = useState(-1)
@@ -344,7 +455,10 @@ export function LyricsTab() {
       </div>
 
       {/* Source text */}
-      <section className="space-y-2">
+      <section className={sectionShell('orange', 'space-y-2')}>
+        <SectionTitle icon={AlignLeft} accent="orange">
+          Source text
+        </SectionTitle>
         <Textarea
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
@@ -375,9 +489,10 @@ export function LyricsTab() {
       </section>
 
       {/* Parsed lines */}
-      <section className="space-y-2">
+      <section className={sectionShell('yellow', 'space-y-2')}>
         <SectionTitle
           icon={Type}
+          accent="yellow"
           right={
             <>
               <span className="text-[11px] tabular-nums text-zinc-500">
@@ -458,24 +573,48 @@ export function LyricsTab() {
       </section>
 
       {/* Style */}
-      <section className="space-y-3">
-        <SectionTitle icon={Type}>Style</SectionTitle>
+      <section className={sectionShell('green')}>
+        <SectionTitle icon={Palette} accent="green">Style</SectionTitle>
 
         <div className="space-y-1.5">
           <MicroLabel>Font</MicroLabel>
-          <Select
-            value={lyrics.font}
-            onValueChange={(font) => patchLyrics({ font: font as typeof lyrics.font })}
-          >
-            <SelectTrigger size="sm" className="w-full" aria-label="Lyrics font">
-              <SelectValue placeholder="Font" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="sans">Sans</SelectItem>
-              <SelectItem value="serif">Serif</SelectItem>
-              <SelectItem value="mono">Mono</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex gap-1.5">
+            <Select
+              value={lyrics.font}
+              onValueChange={(font) => patchLyrics({ font })}
+            >
+              <SelectTrigger size="sm" className="w-full" aria-label="Lyrics font">
+                <SelectValue placeholder="Font" />
+              </SelectTrigger>
+              <SelectContent>
+                <FontItems fonts={fonts} />
+              </SelectContent>
+            </Select>
+            <ImportFontButton onSelect={(id) => patchLyrics({ font: id })} />
+          </div>
+          {fonts.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {fonts.map((f) => (
+                <span
+                  key={f.id}
+                  className="inline-flex h-6 items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900/60 py-0 pl-2 pr-1 text-[11px] text-zinc-300"
+                >
+                  <span className="max-w-32 truncate" title={f.name}>
+                    {f.name}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Remove font ${f.name}`}
+                    title="Remove font"
+                    onClick={() => removeCustomFont(f.id)}
+                    className="rounded p-0.5 text-zinc-500 transition-colors hover:text-red-400"
+                  >
+                    <X className="size-3" aria-hidden />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <SliderRow
@@ -680,9 +819,9 @@ export function LyricsTab() {
       </section>
 
       {/* Title card — timed intro text with its own styling */}
-      <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
+      <section className={sectionShell('purple')}>
         <div className="flex h-7 items-center justify-between">
-          <SectionTitle icon={Heading1}>Title card</SectionTitle>
+          <SectionTitle icon={Heading1} accent="purple">Title card</SectionTitle>
           <Switch
             aria-label="Enable title card"
             checked={title.enabled}
@@ -741,19 +880,20 @@ export function LyricsTab() {
         {/* Type */}
         <div className="space-y-1.5">
           <MicroLabel>Font</MicroLabel>
-          <Select
-            value={title.font}
-            onValueChange={(font) => patchTitle({ font: font as typeof title.font })}
-          >
-            <SelectTrigger size="sm" className="w-full" aria-label="Title font">
-              <SelectValue placeholder="Font" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="sans">Sans</SelectItem>
-              <SelectItem value="serif">Serif</SelectItem>
-              <SelectItem value="mono">Mono</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex gap-1.5">
+            <Select
+              value={title.font}
+              onValueChange={(font) => patchTitle({ font })}
+            >
+              <SelectTrigger size="sm" className="w-full" aria-label="Title font">
+                <SelectValue placeholder="Font" />
+              </SelectTrigger>
+              <SelectContent>
+                <FontItems fonts={fonts} />
+              </SelectContent>
+            </Select>
+            <ImportFontButton onSelect={(id) => patchTitle({ font: id })} />
+          </div>
         </div>
         <SliderRow
           label="Size"

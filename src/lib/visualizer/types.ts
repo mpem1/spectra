@@ -128,7 +128,8 @@ export interface LyricLine {
 export interface LyricsConfig {
   enabled: boolean
   lines: LyricLine[]
-  font: 'sans' | 'serif' | 'mono'
+  /** 'sans' | 'serif' | 'mono' — or the id of an imported custom font ("cf_…") */
+  font: string
   size: number // px relative to 720p canvas
   weight: number // 300..800
   /** Vertical position 0..100 (50 = center) */
@@ -176,7 +177,8 @@ export interface TitleConfig {
   duration: number
   /** Fade in/out seconds */
   fade: number
-  font: 'sans' | 'serif' | 'mono'
+  /** 'sans' | 'serif' | 'mono' — or the id of an imported custom font ("cf_…") */
+  font: string
   /** px relative to 720p canvas */
   size: number
   /** 300..800 */
@@ -356,6 +358,23 @@ export interface DiscConfig {
   sheen: number
 }
 
+/* -------------------------------- Custom fonts ------------------------------- */
+
+/**
+ * An imported font file (usable by the lyrics and the title card). `data` is
+ * the file as a base64 data URL — it travels inside saved projects but is
+ * stripped from share links (far too big for a URL), exactly like image
+ * pixels. Absent/empty `fonts` arrays mean built-in fonts only.
+ */
+export interface CustomFontConfig {
+  /** Stable id ("cf_…") referenced by lyrics.font / title.font */
+  id: string
+  /** Display name — the imported file name without extension */
+  name: string
+  /** Font file bytes as a data URL */
+  data: string
+}
+
 /* ----------------------------------- Project --------------------------------- */
 
 export interface StudioConfig {
@@ -366,6 +385,8 @@ export interface StudioConfig {
   disc: DiscConfig
   pulseImage: PulseImageConfig
   watermark: WatermarkConfig
+  /** Imported font library — shared by the lyrics and the title card */
+  fonts: CustomFontConfig[]
 }
 
 /* --------------------------------- Audio frame -------------------------------- */
@@ -514,6 +535,7 @@ export const GRADIENT_PRESETS: Record<GradientPresetId, { name: string; stops: C
 }
 
 export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
+  fonts: [],
   visualizer: {
     style: 'bars',
     barCount: 64,
