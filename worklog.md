@@ -1474,3 +1474,19 @@ Work Log:
 
 Stage Summary:
 - The Presets tab now opens with a SIGNATURE PRESETS section: full-look presets that ship inside the app, one click to apply (every slider, color and layer travels with them — unlike the one-click LOOK presets which only touch style/gradient/background). First preset is the user's own "Vinyl & Cover" look. Adding more is a two-step recipe (drop the .spectra file in public/presets/, add a manifest line), so the remaining presets can be wired in as they arrive.
+
+Task ID: 57
+Agent: Z.ai Code (main)
+Task: More signature presets
+User: "ok lets add some more and i will then send you some screenshots to add to the github"
+
+Work Log:
+- Three new built-in looks generated over DEFAULT_STUDIO_CONFIG with a one-off merge script (deleted after use), so every field is present and correctly typed — the files are byte-shape identical to what the app's "Download .spectra" button produces, and each design was verified field-by-field after writing:
+  - Neon Bars (presets/neon-bars.spectra): classic equalizer — bars, lime→cyan→fuchsia palette with color cycling on, glow, scale 0.9 at y64, solid #060709 bg with 0.5 vignette, plus the gradient title card ("NEON PULSE", visualizer palette, glowing) as an intro card (0.5s→7.5s).
+  - Retro Tape (presets/retro-tape.spectra): wave at y24 scale 0.5 in gold→coral→magenta, plum→near-black gradient bg (165°) with heavy 0.16 grain, and a standalone vector cassette (no sleeve) — dark warm shell #211b20, coral/gold/teal stripes, "MIXTAPE · SIDE A" label, 0.3 sheen, deep drop shadow.
+  - Aurora Mirror (presets/aurora-mirror.spectra): wave with mirror mode around the 0.5 axis in the aurora cyan→green→lime palette, deep green-black gradient bg (180°), 0.5 vignette.
+- signature-presets.ts manifest: three new entries with captions and swatches (swatch doc updated — it mirrors the palette that best identifies the look, visualizer palette for these three).
+- Browser E2E (desktop 1280px + mobile 390px): all four signature presets render in order with names/captions/swatches. Neon Bars: bg pixel [6,7,9] = #060709 exact, corner dimmed by vignette, animated glowing bars (217→265 saturated px between rows), title row scan found the glowing gradient glyphs — screenshot captured "NEON PULSE" in fuchsia→cyan→lime over the equalizer (demo clock seeked into the 0.5–7.5s window). Retro Tape: bg [46,23,52] ≈ #3d1e46 + vignette, shell [30,30,32] ≈ #211b20, cream label card rows 0.417–0.497, thin warm wave line crossing the top band; screenshot shows the full cassette look. Aurora Mirror: symmetric mirrored bands ([49,172,110] above vs [51,176,111] below), teal [24,170,140] at the crossing axis, bg #021510→#010403; screenshot shows the twin aurora envelope. Regression: Vinyl & Cover re-applied — bg [32,40,104] matches Task 56's [32,40,105] (±1 grain), vinyl face dark, toast correct. Mobile 390px: all four entries visible, zero horizontal overflow, Retro Tape applies with toast. 0 page errors; lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- The SIGNATURE PRESETS section now ships four complete looks: the user's "Vinyl & Cover" plus three new built-ins — Neon Bars (cycling neon equalizer with a glowing gradient title card), Retro Tape (sunset wave over a striped mixtape cassette) and Aurora Mirror (twin waves folded around the center). Each is a full .spectra file served from /public and applied through the same door as "Open .spectra", so they travel with every slider, color and layer and stay editable after applying. Ready for the user's screenshot-driven presets next.

@@ -17,7 +17,8 @@ export interface SignaturePreset {
   /** Relative path of the .spectra file inside /public */
   file: string
   caption: string
-  /** Background gradient mirrored from the file, for the swatch preview */
+  /** Gradient mirrored from the file, for the swatch preview (the palette
+   *  that best identifies the look — background or visualizer) */
   swatch: { stops: { color: string; position: number }[]; angle: number }
 }
 
@@ -33,6 +34,48 @@ export const SIGNATURE_PRESETS: SignaturePreset[] = [
         { color: '#0a0a0a', position: 100 },
       ],
       angle: 160,
+    },
+  },
+  {
+    id: 'neon-bars',
+    name: 'Neon Bars',
+    file: 'presets/neon-bars.spectra',
+    caption: 'Cycling neon equalizer · glowing gradient title card',
+    swatch: {
+      stops: [
+        { color: '#a3e635', position: 0 },
+        { color: '#22d3ee', position: 52 },
+        { color: '#e879f9', position: 100 },
+      ],
+      angle: 90,
+    },
+  },
+  {
+    id: 'retro-tape',
+    name: 'Retro Tape',
+    file: 'presets/retro-tape.spectra',
+    caption: 'Sunset wave over a spinning mixtape cassette',
+    swatch: {
+      stops: [
+        { color: '#ffd166', position: 0 },
+        { color: '#ff6b6b', position: 55 },
+        { color: '#d72683', position: 100 },
+      ],
+      angle: 90,
+    },
+  },
+  {
+    id: 'aurora-mirror',
+    name: 'Aurora Mirror',
+    file: 'presets/aurora-mirror.spectra',
+    caption: 'Twin aurora waves folded around the center',
+    swatch: {
+      stops: [
+        { color: '#06b6d4', position: 0 },
+        { color: '#10b981', position: 52 },
+        { color: '#a3e635', position: 100 },
+      ],
+      angle: 90,
     },
   },
 ]
