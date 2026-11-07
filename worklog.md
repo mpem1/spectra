@@ -1432,3 +1432,17 @@ Work Log:
 
 Stage Summary:
 - Text can now be hollow: pick "Empty" in the Lyrics or Title card Fill picker and the letters become see-through — you see only their Outline, their Glow, or both, with the glow radiating cleanly outward from the letter/outline contour instead of filling the letter. Everything else (gradient sweeps, fonts, pulse, swivel, exports) behaves exactly as before, and existing looks are untouched.
+
+Task ID: 54
+Agent: Z.ai Code (main)
+Task: Diagnose "solid fill is partially transparent" on lyrics
+User: "there is something wrong with the lyric font s on fill the ssolid fill is partially transparent"
+
+Work Log:
+- Reproduction sweep (audio loaded, paused at t≈2.6s, pixel-sampled the lyric band): solid fill renders FULLY OPAQUE in every combination — sans and an imported Bungee font × glow on/off × outline on/off (max brightness 255, 8-12k pure-white glyph-core pixels each); the Empty→Solid round trip diffs 0 pixels; the Task 52 fontStack refactor is byte-identical for built-ins (checked against ee4eb88^). No render-path regression.
+- Root cause: the karaoke ECHO line — the previous lyric line lingers in the echo slot above at 0.6 alpha by design, so with multi-line lyrics a dimmed copy is (almost) always on screen and reads as "the solid fill is partially transparent". Screenshot confirms the look (bright current line + gray previous line).
+- Fix (additive, user-controlled): new LyricsConfig.echo (default true → old saves/share links render bit-identical; setConfig merge backfills). lyrics.ts: with echo off, a replaced line is cut the instant its replacement arrives (the incoming line fades in at the same spot and masks the cut); trailing-line auto-hide and all other timing untouched. UI: an "Echo" switch with a plain-language hint right after the Auto-hide explainer in the Lyrics tab — on: explains the dimmed line above and how to turn it off; off: "Each line vanishes the moment the next line appears."
+- E2E: echo on (default) = original render bit-exact (0-pixel diff on toggle off→on); echo off removes exactly the echo band (1271 px) while the current line stays untouched; 0 page errors; lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- The dimmed "ghost" copy of the previous lyric line is now optional: it was the karaoke echo (the old line lingers above at 60% strength by design), which read as broken see-through text. New Echo switch in the Lyrics tab — on (default, exactly as before) keeps the two-line karaoke look; off makes each line vanish the moment the next one appears. All fill modes verified fully opaque; nothing about fonts, fills, glow or exports changed.

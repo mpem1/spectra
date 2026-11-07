@@ -141,6 +141,9 @@ export interface LyricsConfig {
   uppercase: boolean
   /** Seconds a line stays before fading out when no newer line replaces it */
   holdTime: number
+  /** The replaced line lingers in the echo slot above, dimmed, until the line
+   *  after it arrives. Off = each line leaves the moment the next one shows. */
+  echo: boolean
   /** Text fill: flat color, a gradient sweep, or empty (see-through — only
    *  the outline stroke and/or glow halo show) */
   fill: 'solid' | 'gradient' | 'empty'
@@ -600,6 +603,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     fade: 0.35,
     uppercase: false,
     holdTime: 4,
+    echo: true,
     fill: 'solid',
     gradientMode: 'visualizer',
     gradient: {

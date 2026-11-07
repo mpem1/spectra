@@ -12,6 +12,10 @@
  * or a long gap to the next one) fades out on its own instead of sticking
  * around forever.
  *
+ * The replaced line's echo slot is optional (`echo`, default on): with the
+ * echo off, each line leaves the moment the next one arrives — no dimmed
+ * copy lingers above.
+ *
  * Text can be filled with a flat color, a sweep of the visualizer palette,
  * the lyrics' own gradient (angle-aware, respects stop positions), or left
  * empty — a see-through hollow letter showing only its outline stroke
@@ -205,6 +209,10 @@ export function drawLyrics(
       if (t < replaceAt) {
         // Current line: stays fully on screen until the next line arrives.
         alpha = clamp01((t - start) / fade)
+      } else if (!lyrics.echo) {
+        // Echo off: the line leaves the moment its replacement arrives —
+        // the incoming line fades in at the same spot and masks the cut.
+        continue
       } else {
         // Replaced: glide up to the echo slot while dimming to 0.6.
         const p = clamp01((t - replaceAt) / fade)

@@ -667,6 +667,21 @@ export function LyricsTab() {
           many seconds.
         </p>
 
+        {/* Echo: does the replaced line linger above, dimmed? */}
+        <div className="flex h-7 items-center justify-between">
+          <MicroLabel>Echo</MicroLabel>
+          <Switch
+            aria-label="Lyrics echo line"
+            checked={lyrics.echo}
+            onCheckedChange={(echo) => patchLyrics({ echo })}
+          />
+        </div>
+        <p className="-mt-1 text-[11px] leading-snug text-zinc-600">
+          {lyrics.echo
+            ? 'The previous line lingers above at reduced strength until the line after it arrives — turn off if it reads as faded text.'
+            : 'Each line vanishes the moment the next line appears — no dimmed copy above.'}
+        </p>
+
         <div className="flex h-7 items-center justify-between">
           <MicroLabel>Uppercase</MicroLabel>
           <Switch
