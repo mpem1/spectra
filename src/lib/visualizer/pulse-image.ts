@@ -4,10 +4,12 @@
  * energy (sustain) so it dances like the blob/radial styles do. Optional
  * spin (with a speed multiplier), an aura in the palette's or its own
  * color, a beat color overlay that washes the image from a quiet color at
- * silence to a loud color at full level, and an outline stroke traced
- * around the artwork's alpha silhouette — the glow shadow is cast by the
- * stroked composite, so the aura follows the outline. Deterministic:
- * everything derives from the AudioFrame + config.
+ * silence to a loud color at full level, and an outline ring stamped from
+ * the artwork's alpha silhouette and painted BEHIND the image — only the
+ * band outside its edge, so the artwork keeps every pixel of detail at any
+ * stroke width. The glow shadow is cast by the ring, so the aura follows
+ * the outline. Deterministic: everything derives from the AudioFrame +
+ * config.
  */
 import type { AudioFrame, GradientConfig, PulseImageConfig, RenderContext } from './types'
 import { getBackgroundImage } from './image-cache'
@@ -44,10 +46,10 @@ function mixHex(a: string, b: string, t: number, alpha: number): string {
 }
 
 /* ------------------------------ sprite stages ------------------------------ */
-/* Both stages are clipped to the image's own alpha shape via 'source-atop'
- * on scratch canvases, so transparent stays transparent. Both are cached by
- * image identity; scratch canvases are rebuilt each frame they are active
- * (a couple of drawImage/fillRect ops at natural size — cheap for logos).  */
+/* Scratch canvases are cached by image identity: the tint wash recolors per
+ * frame via 'source-atop' (transparent stays transparent), the punch stencil
+ * is built once, and the outline ring rebuilds only when width/color move —
+ * all a handful of drawImage/fillRect ops at natural size, cheap for logos. */
 
 /** One scratch canvas per source image for the beat color wash. */
 const tintCanvases = new WeakMap<HTMLImageElement, HTMLCanvasElement>()
@@ -100,52 +102,94 @@ function silhouetteOf(img: HTMLImageElement, color: string): HTMLCanvasElement |
 }
 
 /**
- * Outline stroke: the silhouette is stamped in 16 directions around the
- * sprite (a cheap morphological dilation), so only the band just outside
- * the artwork's edge stays visible under the sprite. Lives on a padded
- * canvas (pad = stroke width) so the ring never clips. Cached by image +
- * pad; rebuilt when the width slider moves.
+ * Punch stencil: the artwork's alpha stacked 8× toward opaque (0.45 →
+ * ~0.996, 0.3 → ~0.94). Used to cut the ring, so translucent fills (glass,
+ * baked shadows, soft overlays) don't pick up the paint behind them, while
+ * the anti-aliased edge keeps a whisper of paint so the ring hugs the
+ * artwork without a seam. Built once per image.
  */
-const STAMP_DIRS = 16
+const punchStencils = new WeakMap<HTMLImageElement, HTMLCanvasElement>()
 
-interface PaddedEntry {
-  canvas: HTMLCanvasElement
-  pad: number
-}
-const paddedCanvases = new WeakMap<HTMLImageElement, PaddedEntry>()
-
-function strokedComposite(
-  img: HTMLImageElement,
-  sprite: HTMLImageElement | HTMLCanvasElement,
-  cfg: PulseImageConfig,
-): HTMLCanvasElement | null {
+function punchStencilOf(img: HTMLImageElement): HTMLCanvasElement | null {
   const nw = img.naturalWidth
   const nh = img.naturalHeight
   if (nw <= 0 || nh <= 0) return null
+  let pc = punchStencils.get(img)
+  if (!pc) {
+    pc = document.createElement('canvas')
+    pc.width = nw
+    pc.height = nh
+    const pg = pc.getContext('2d')
+    if (!pg) return null
+    for (let k = 0; k < 8; k++) pg.drawImage(img, 0, 0)
+    punchStencils.set(img, pc)
+  }
+  return pc
+}
+
+/**
+ * Outline ring: the silhouette is stamped on rings from the edge out to
+ * the stroke width (a proper morphological dilation — the old single-ring
+ * stamp scalloped at wide strokes), then the artwork's own footprint is
+ * punched back out ('destination-out'), leaving ONLY the band just
+ * outside the edge. The ring is drawn as its own layer BEHIND the
+ * artwork, so nothing is ever painted beneath its pixels — transparent
+ * holes and translucent fills stay clean no matter how wide the stroke
+ * gets. Lives on a padded canvas (pad = stroke width) so the ring never
+ * clips. Cached by image + width + color; rebuilt only when a slider or
+ * the color moves.
+ */
+const RING_DIRS = 24
+
+interface RingEntry {
+  canvas: HTMLCanvasElement
+  pad: number
+  color: string
+}
+const ringCanvases = new WeakMap<HTMLImageElement, RingEntry>()
+
+function outlineRing(img: HTMLImageElement, cfg: PulseImageConfig): HTMLCanvasElement | null {
+  const nw = img.naturalWidth
+  const nh = img.naturalHeight
+  if (nw <= 0 || nh <= 0) return null // SVG without intrinsic size — skip
   const strokePx = clamp01(cfg.outlineWidth ?? 0.4) * 0.1 * Math.max(nw, nh)
   const pad = Math.max(1, Math.ceil(strokePx))
-  let entry = paddedCanvases.get(img)
-  if (!entry || entry.pad !== pad) {
-    const oc = document.createElement('canvas')
-    oc.width = nw + 2 * pad
-    oc.height = nh + 2 * pad
-    entry = { canvas: oc, pad }
-    paddedCanvases.set(img, entry)
-  }
-  const oc = entry.canvas
+  const color = cfg.outlineColor || '#ffffff'
+  const cached = ringCanvases.get(img)
+  if (cached && cached.pad === pad && cached.color === color) return cached.canvas
+
+  const sil = silhouetteOf(img, color)
+  if (!sil) return null
+  const oc = document.createElement('canvas')
+  oc.width = nw + 2 * pad
+  oc.height = nh + 2 * pad
   const og = oc.getContext('2d')
   if (!og) return null
-  const sil = silhouetteOf(img, cfg.outlineColor || '#ffffff')
-  if (!sil) return null
 
-  og.clearRect(0, 0, oc.width, oc.height)
-  for (let k = 0; k < STAMP_DIRS; k++) {
-    const a = (k / STAMP_DIRS) * Math.PI * 2
-    og.drawImage(sil, pad + Math.cos(a) * pad, pad + Math.sin(a) * pad)
+  // Dilate: stamp the silhouette on rings out to the stroke width. The
+  // radial step widens on very large strokes to keep the one-off rebuild
+  // cheap — playback always reuses the cached canvas.
+  const radial = pad > 48 ? 3 : pad > 16 ? 2 : 1
+  for (let r = radial; r <= pad; r += radial) {
+    for (let k = 0; k < RING_DIRS; k++) {
+      const a = (k / RING_DIRS) * Math.PI * 2
+      og.drawImage(sil, pad + Math.cos(a) * r, pad + Math.sin(a) * r)
+    }
   }
-  // The artwork goes on top — only the band just outside its edge shows.
-  og.drawImage(sprite, pad, pad)
-  return oc
+  // Punch the artwork's own footprint back out (alpha boosted toward
+  // opaque) — the ring keeps only what lies OUTSIDE the artwork's pixels,
+  // so as a layer behind the image it never bleeds through translucent
+  // fills, and holes only show paint where a nearby edge's outline
+  // legitimately reaches.
+  const stencil = punchStencilOf(img)
+  if (!stencil) return null
+  og.globalCompositeOperation = 'destination-out'
+  og.drawImage(stencil, pad, pad)
+  og.globalCompositeOperation = 'source-over'
+
+  const entry: RingEntry = { canvas: oc, pad, color }
+  ringCanvases.set(img, entry)
+  return entry.canvas
 }
 
 /* -------------------------------- the layer -------------------------------- */
@@ -183,18 +227,12 @@ export function drawPulseImage(
     sprite = tintSprite(img, mixHex(cfg.tintLow ?? '#ff3b5c', cfg.tintHigh ?? '#2bffa8', drive, tint))
   }
 
-  // Stage 2 — outline stroke: dilated silhouette ring on a padded canvas.
-  // The glow shadow below is cast by whatever is drawn, so with the ring
-  // on, the aura hugs the outline instead of the bare artwork.
-  let source: HTMLImageElement | HTMLCanvasElement = sprite
-  let pad = 0
-  if (cfg.outline) {
-    const oc = strokedComposite(img, sprite, cfg)
-    if (oc) {
-      source = oc
-      pad = (oc.width - img.naturalWidth) / 2
-    }
-  }
+  // Stage 2 — outline ring: only the band OUTSIDE the artwork's edge,
+  // drawn as its own layer BEHIND the image. Nothing sits beneath the
+  // artwork's interior, so its detail survives any stroke width. With
+  // glow on, the shadow cast by this ring IS the aura — it hugs the
+  // outline instead of the bare artwork.
+  const ring = cfg.outline ? outlineRing(img, cfg) : null
 
   ctx.save()
   ctx.translate(cx, cy)
@@ -217,11 +255,20 @@ export function drawPulseImage(
     }
     ctx.shadowBlur = Math.max(w, h) * 0.45
   }
-  // Draw box grows with the stroke padding (stroke scales with the artwork).
   const nw = img.naturalWidth || 1
   const nh = img.naturalHeight || 1
-  const dw = w * ((nw + 2 * pad) / nw)
-  const dh = h * ((nh + 2 * pad) / nh)
-  ctx.drawImage(source, -dw / 2, -dh / 2, dw, dh)
+  if (ring) {
+    // Ring box = artwork box plus the stroke on every side; drawn first,
+    // under the sprite. Then the shadow is dropped so the artwork itself
+    // doesn't cast a second, competing aura.
+    const rw = w * (ring.width / nw)
+    const rh = h * (ring.height / nh)
+    ctx.drawImage(ring, -rw / 2, -rh / 2, rw, rh)
+    if (cfg.glow) {
+      ctx.shadowColor = 'rgba(0,0,0,0)'
+      ctx.shadowBlur = 0
+    }
+  }
+  ctx.drawImage(sprite, -w / 2, -h / 2, w, h)
   ctx.restore()
 }

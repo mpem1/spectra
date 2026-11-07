@@ -265,8 +265,9 @@ export function PulseImageSection() {
                 format={(v) => `${Math.round(v * 100)}%`}
               />
               <p className="text-[11px] leading-snug text-zinc-600">
-                Traces a stroke around the edge of your logo — with Glow on,
-                the aura shines from the outline instead of the artwork.
+                Painted behind your logo — only the band outside its edge, so
+                the artwork stays crisp at any width. With Glow on, the aura
+                shines from the outline and follows its shape.
               </p>
             </div>
           ) : null}

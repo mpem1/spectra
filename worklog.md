@@ -1359,3 +1359,18 @@ Work Log:
 
 Stage Summary:
 - Pulse image gains an Outline stroke: traces the PNG/SVG's own shape with a color + width you pick (up to 10% of the logo size), sits cleanly outside the artwork (never covers it), and the glow now shines from the outline — compose it with beat tint, spin and any glow color; exports identical.
+
+Task ID: 49b
+Agent: Z.ai Code (main)
+Task: Outline ring truly behind the artwork, glow hugging it (user feedback round on Task 49)
+User: "the outline should be behind the png not centered cause when the stroke gets larger the omage loses detail and the glow behind still doesnt follow the outline"
+
+Work Log:
+- Diagnosis (browser repro with a donut emblem + a translucent bar): the old strokedComposite stamped the full silhouette UNDER the artwork inside one padded canvas — flat stroke color showed through transparent holes and semi-transparent pixels, and hundreds of stacked 45%-alpha dilation copies turned effectively opaque, flooding the emblem's own detail at wide strokes. The glow shadow did cast from the composite, but the flooded blob read as "the glow doesn't follow the outline".
+- pulse-image.ts outline stage rewritten: outlineRing() stamps the silhouette on RINGS from the edge out to the stroke width (24 directions, adaptive radial step — a proper morphological dilation, no more single-ring scalloping at wide strokes), then punches the artwork's own footprint back out with 'destination-out' using an 8× alpha-boosted stencil (0.45 alpha → ~0.996): no paint remains under any artwork pixel (translucent fills stay clean), while anti-aliased edges keep a whisper of paint so the ring hugs the edge without a seam. The ring is drawn as its own layer BEHIND the sprite — the artwork itself is drawn last, untouched, at full detail. Ring canvas cached by image + width + color; rebuilt only when a slider or the color moves (playback reuses it).
+- Glow: with outline on, the aura is the shadow cast by the ring layer (shadow state dropped before the sprite draw, so the artwork casts no competing second aura); with outline off, the exact pre-49 glow path (shadow on the artwork draw) is preserved — old saves stay pixel-identical (no-op defaults intact: outline false / width 0.4 / color #ffffff).
+- pulse-image-section.tsx: outline explainer copy now reads "Painted behind your logo — only the band outside its edge, so the artwork stays crisp at any width. With Glow on, the aura shines from the outline and follows its shape."
+- Browser E2E (donut + translucent bar emblem, audio loaded + paused = true silence): artwork opaque pixel [236,236,236] EXACT; ring band [0,255,0] EXACT just outside the edge; bar-over-background pixel [110,112,110] = pure 45%-alpha gray, zero green beneath (was green-flooded before the fix); hole clear point [10,10,10] at 30% width; glow A/B with custom red: just outside the ring [51,8,8] red-dominant, farther [38,8,8] falloff, ring stays [0,255,0] over the glow, glow off → [10,10,10]; beat tint 100% + silence → artwork [255,59,92] EXACT tintLow while the ring stays [0,255,0]. Playing state: ring swells with the bass and the glow hugs it. 0 page errors; lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- The outline is now honest paint-behind: a clean ring stamped outside the artwork's edge as its own layer — the emblem keeps every pixel of detail at any width (translucent fills included), holes only show paint where a nearby edge's outline legitimately reaches, and the glow casts from the ring so the aura follows the outline's shape. Composes with beat tint, spin and any glow color; exports stay frame-exact.
