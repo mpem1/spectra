@@ -1343,3 +1343,19 @@ Work Log:
 
 Stage Summary:
 - The pulse image now has a Spin speed slider (slow drift up to 300%) and a Beat tint: wash the emblem in a color that sits at the quiet color when the song is silent and slides to the loud color on the biggest hits — any two colors you like, strength 0–100%, clipped perfectly to the logo's shape, and identical in exports.
+
+---
+
+Task ID: 49
+Agent: Z.ai Code (main)
+Task: Pulse image outline stroke that the glow follows
+User: "under pulse image if its a png can add a outline stroke that the glow can use as reference of following?"
+
+Work Log:
+- PulseImageConfig grows three no-op-default fields: outline (bool, default false), outlineWidth (0..1 = % of the larger image dimension, up to 10%, default 0.4), outlineColor (default #ffffff). Old saves / share links / .spectra files merge to exactly the previous rendering.
+- pulse-image.ts two-stage sprite pipeline. Stage 1 (existing): beat tint washes the artwork through a natural-size 'source-atop' scratch. Stage 2 (new): an outline composite on a PADDED canvas (pad = stroke width, so the ring never clips) — the image's alpha silhouette is recolored per frame ('source-in' fill, cached canvas per image) and stamped in 16 directions (cheap morphological dilation); the tinted sprite is then drawn on top, so only the band just outside the artwork's edge shows as the ring. Stroke width lives in natural pixels and scales with the artwork (draw box grows by the same factor). The glow shadow is cast by whatever is drawn — with the ring on, the aura emanates from the outline instead of the bare artwork. Composes freely: beat tint (tint fills the artwork, ring stays its own color), spin/rotation, spin speed, palette or custom glow color. No Math.random — everything derives from AudioFrame + config, exports stay frame-exact.
+- pulse-image-section.tsx: third switch "Outline" in the spin/glow grid; when on, an OUTLINE STROKE block appears (color picker with wheel + hex + opacity on the label row, Outline width slider 5–100%) plus a one-line explainer. Description copy mentions the outline.
+- Browser E2E (circle emblem, audio loaded + paused = true silence): outline 100% + yellow — ray samples from center at 45°: inside artwork [244,244,245] (untouched), ring at 0.15H [255,255,0] EXACT, ring outer edge [255,255,0], outside 0.19H [10,10,10] with glow off. Glow A/B: pulse glow ON → outside the ring [73,27,50] (pink aura shining from the outline), OFF → [10,10,10], ON again → [73,27,50] — the shadow provably follows the stroked composite. Composition: beat tint 100% + silence → artwork becomes exact tintLow [255,59,92] while the ring stays [255,255,0]; spin on with the padded composite renders clean. 0 page errors; lint 0 errors (27 known vendored warnings); tsc clean for changed files (only the pre-existing videoSrc literal note elsewhere).
+
+Stage Summary:
+- Pulse image gains an Outline stroke: traces the PNG/SVG's own shape with a color + width you pick (up to 10% of the logo size), sits cleanly outside the artwork (never covers it), and the glow now shines from the outline — compose it with beat tint, spin and any glow color; exports identical.

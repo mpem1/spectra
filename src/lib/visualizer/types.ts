@@ -249,6 +249,13 @@ export interface PulseImageConfig {
   tintLow: string
   /** Beat overlay color at the loudest level */
   tintHigh: string
+  /** Outline stroke traced around the image's alpha silhouette; the glow
+   *  shadow is cast by the stroked composite, so the aura follows the ring */
+  outline: boolean
+  /** Outline width 0..1 — % of the larger image dimension (up to 10%) */
+  outlineWidth: number
+  /** Outline color (#rgb / #rrggbb / #rrggbbaa) */
+  outlineColor: string
   /** Layer order vs. the vinyl & visualizer (same semantics as the bars) */
   layer: 'front' | 'back'
 }
@@ -676,6 +683,9 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     tint: 0,
     tintLow: '#ff3b5c',
     tintHigh: '#2bffa8',
+    outline: false,
+    outlineWidth: 0.4,
+    outlineColor: '#ffffff',
     layer: 'front',
   },
 }

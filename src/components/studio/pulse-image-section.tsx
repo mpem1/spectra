@@ -65,8 +65,8 @@ export function PulseImageSection() {
         A logo or emblem that floats over the scene and pulses with the music
         — it swells on the bass the same way the blob and radial styles
         react. PNG with transparency works best. Turn on Beat tint to wash
-        it in a color that shifts with the sound: calm color at silence,
-        hot color at full blast.
+        it in a color that shifts with the sound, or Outline to trace its
+        shape with a stroke the glow hugs.
       </p>
 
       {pulseImage.enabled ? (
@@ -179,6 +179,7 @@ export function PulseImageSection() {
               [
                 { key: 'spin', label: 'Slow spin' },
                 { key: 'glow', label: 'Glow' },
+                { key: 'outline', label: 'Outline' },
               ] as const
             ).map(({ key, label }) => (
               <div key={key} className="flex h-8 items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5">
@@ -240,6 +241,33 @@ export function PulseImageSection() {
                   </button>
                 ))}
               </div>
+            </div>
+          ) : null}
+
+          {pulseImage.outline ? (
+            <div className="space-y-1.5">
+              <div className="flex h-5 items-center justify-between">
+                <MicroLabel>Outline stroke</MicroLabel>
+                <ColorPickerButton
+                  value={pulseImage.outlineColor}
+                  onChange={(outlineColor) => patchPulseImage({ outlineColor })}
+                  showAlpha
+                  ariaLabel="Outline color"
+                />
+              </div>
+              <SliderRow
+                label="Outline width"
+                value={pulseImage.outlineWidth}
+                min={0.05}
+                max={1}
+                step={0.05}
+                onChange={(outlineWidth) => patchPulseImage({ outlineWidth })}
+                format={(v) => `${Math.round(v * 100)}%`}
+              />
+              <p className="text-[11px] leading-snug text-zinc-600">
+                Traces a stroke around the edge of your logo — with Glow on,
+                the aura shines from the outline instead of the artwork.
+              </p>
             </div>
           ) : null}
 
