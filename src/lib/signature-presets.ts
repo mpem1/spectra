@@ -36,46 +36,8 @@ export const SIGNATURE_PRESETS: SignaturePreset[] = [
       angle: 160,
     },
   },
-  {
-    id: 'neon-bars',
-    name: 'Neon Bars',
-    file: 'presets/neon-bars.spectra',
-    caption: 'Cycling neon equalizer · glowing gradient title card',
-    swatch: {
-      stops: [
-        { color: '#a3e635', position: 0 },
-        { color: '#22d3ee', position: 52 },
-        { color: '#e879f9', position: 100 },
-      ],
-      angle: 90,
-    },
-  },
-  {
-    id: 'retro-tape',
-    name: 'Retro Tape',
-    file: 'presets/retro-tape.spectra',
-    caption: 'Sunset wave over a spinning mixtape cassette',
-    swatch: {
-      stops: [
-        { color: '#ffd166', position: 0 },
-        { color: '#ff6b6b', position: 55 },
-        { color: '#d72683', position: 100 },
-      ],
-      angle: 90,
-    },
-  },
-  {
-    id: 'aurora-mirror',
-    name: 'Aurora Mirror',
-    file: 'presets/aurora-mirror.spectra',
-    caption: 'Twin aurora waves folded around the center',
-    swatch: {
-      stops: [
-        { color: '#06b6d4', position: 0 },
-        { color: '#10b981', position: 52 },
-        { color: '#a3e635', position: 100 },
-      ],
-      angle: 90,
-    },
-  },
+  // Future entries arrive with the user's own looks (screenshots / .spectra
+  // files) — the recipe stays: drop <id>.spectra into public/presets/, add
+  // a manifest line here. The three designs explored in Task 57 (Neon Bars,
+  // Retro Tape, Aurora Mirror) are documented in worklog.md if ever wanted.
 ]

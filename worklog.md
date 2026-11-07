@@ -1490,3 +1490,17 @@ Work Log:
 
 Stage Summary:
 - The SIGNATURE PRESETS section now ships four complete looks: the user's "Vinyl & Cover" plus three new built-ins — Neon Bars (cycling neon equalizer with a glowing gradient title card), Retro Tape (sunset wave over a striped mixtape cassette) and Aurora Mirror (twin waves folded around the center). Each is a full .spectra file served from /public and applied through the same door as "Open .spectra", so they travel with every slider, color and layer and stay editable after applying. Ready for the user's screenshot-driven presets next.
+
+Task ID: 58
+Agent: Z.ai Code (main)
+Task: Revert to a single signature preset ("Vinyl & Cover" only)
+User: "why did you add those 3? vinyl and cover should be the only one at the moment"
+
+Work Log:
+- Root cause: misread of "ok lets add some more and i will then send you some screenshots" — took "add some more" as a request to design additional built-in presets immediately, when the user meant they would supply the extra looks themselves (screenshots / .spectra files) next.
+- Revert: signature-presets.ts manifest back to the single vinyl-and-cover entry (with a comment noting the add-a-preset recipe and where the Task 57 designs are documented); deleted public/presets/neon-bars.spectra, retro-tape.spectra and aurora-mirror.spectra. The signature-preset machinery (section UI, on-demand fetch, parse+merge apply door) is untouched — that was approved in Task 56.
+- Design insurance: the three looks' full field-level configurations are documented in the Task 57 worklog entry, so they can be regenerated in minutes if the user ever wants them.
+- Sanity E2E: Presets tab renders exactly one signature preset button ("Apply Vinyl & Cover signature preset"); clicking applies with the success toast and the known indigo dusk bg [32,41,105]. No page errors; lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- Back to one signature preset: only the user's "Vinyl & Cover" ships in the SIGNATURE PRESETS section. The section is ready for the user's own looks whenever the screenshots / .spectra files arrive; nothing about the preset system changed.
