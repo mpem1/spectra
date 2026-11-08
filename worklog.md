@@ -1556,3 +1556,16 @@ Work Log:
 
 Stage Summary:
 - Fifth signature preset shipped: the user's "Large Vinyl" (full-height grooved record parked left-of-center over a maroon→red→amber radial bloom, with gold/white horizontal bars mirrored on the right) joins Vinyl & Cover, Radial Fade, Side EQ Cover and Cassette Blob in the SIGNATURE PRESETS section.
+
+Task ID: 63
+Agent: Z.ai Code (main)
+Task: Add the user's "minimal grid" look as a signature preset
+User: pasted the full .spectra JSON (sixth preset, after "large vinyl")
+
+Work Log:
+- Saved the user's pasted file byte-for-byte as public/presets/minimal-grid.spectra (3208 bytes, name "minimal grid"); validated envelope + required sections + key values: grid visualizer, 96 cells, sensitivity 1.2, tight gap 0.2, centered at 50/50 with center mirror, horizontal orientation, scale 1.1, layer back, glow off, monochrome linear palette white #e5e5e5@0 → gray #a3a3a3@50 → dark #525252@100 (angle 180), SOLID background #050505 (the file carries the previous look's radial stops in the gradient block but mode solid keeps them unused — preserved exactly as exported), vignette 0.35, grain 0.08, disc layer fully disabled; lyrics/title/watermark/pulse-image all off.
+- Manifest entry: id minimal-grid, name "Minimal Grid", caption "Monochrome gray grid on near-black", swatch mirrors the three-stop white→gray→dark visualizer palette at 180°.
+- Browser E2E (desktop 1280px): Presets tab lists all six signature presets in order (Vinyl & Cover, Radial Fade, Side EQ Cover, Cassette Blob, Large Vinyl, Minimal Grid); applying shows the success toast. Pixel checks — background near-black everywhere (corner [4,4,4], top-center [5,5,5] ≈ #050505, 1236/1307 outer samples < 18), monochrome dot-matrix cells present in the center band with the mirrored-wave envelope (row scan through the mirror axis y=0.5 found 43 lit columns while peak rows light only where the wave reaches — correct center-mirror behavior with the idle signal); screenshot confirms the full composition (fine white-to-gray dot waveform mirrored around the horizontal center on near-black). Mobile 390px: all six presets listed, zero horizontal overflow, Minimal Grid applies with toast. 0 page errors; lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- Sixth signature preset shipped: the user's "Minimal Grid" (monochrome dot-matrix waveform mirrored around the center line on a near-black stage) joins Vinyl & Cover, Radial Fade, Side EQ Cover, Cassette Blob and Large Vinyl in the SIGNATURE PRESETS section.

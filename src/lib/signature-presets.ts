@@ -93,6 +93,20 @@ export const SIGNATURE_PRESETS: SignaturePreset[] = [
       angle: 160,
     },
   },
+  {
+    id: 'minimal-grid',
+    name: 'Minimal Grid',
+    file: 'presets/minimal-grid.spectra',
+    caption: 'Monochrome gray grid on near-black',
+    swatch: {
+      stops: [
+        { color: '#e5e5e5', position: 0 },
+        { color: '#a3a3a3', position: 50 },
+        { color: '#525252', position: 100 },
+      ],
+      angle: 180,
+    },
+  },
   // Future entries arrive with the user's own looks (screenshots / .spectra
   // files) — the recipe stays: drop <id>.spectra into public/presets/, add
   // a manifest line here. The three designs explored in Task 57 (Neon Bars,
