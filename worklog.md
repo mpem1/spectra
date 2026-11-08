@@ -1822,3 +1822,22 @@ Work Log:
 
 Stage Summary:
 - The VHS tape plays again — the whole regression was Task 76 adding a beatAmount call to vhs-filter.ts without adding the import, so enabled VHS threw on every frame before drawing a pixel (beat switch irrelevant) and the throw also cut off film, halftone, glitch and 3D glasses stacked after it. One-line fix, verified headlessly on the real filter sources and in the browser, 0 page errors, beat reactions punch, full six-filter stack renders.
+
+---
+
+Task ID: 78
+Agent: main orchestrator (Z.ai Code)
+Task: Film reel — decouple artifact churn speed from the amount dials
+User: "under film reel why do you tie dust and scratch hair particle amount to speed i dont like how i dont have control over both"
+
+Work Log:
+- Diagnosis: the film filter had NO cadence dial at all. Dust & hairs re-seeded at a hardcoded 16 fps and the scratch layout re-wandered every hardcoded 2.5 s, so the ONLY handle on the reel's busy-ness was the amount sliders — exactly the coupling the user called out, and the same design lesson as Task 71 (VHS tracking speed).
+- Fix: new `speed` field on FilmFilterConfig (0..1, default 0.5) wired as the pure CADENCE dial — dust churn = 2 + 28·speed fps (2..30, 16 at the default) and the scratch layout epoch = 6·(2.5/6)^(2·speed) seconds (geometric so it never stalls: 6 s at 0, 2.5 s at the default, ~1 s at 1). The amount dials (Scratches, Dust & hair) still own count/opacity; speed never touches them. Flicker rides the same reel rate (it was already per-film-frame), which reads as one projector. Default 0.5 reproduces the shipped look bit-for-bit (16 fps + 2.5 s), and old saved projects merge to it via the existing DEFAULT_STUDIO_CONFIG spread + `?? 0.5` fallback in the filter.
+- UI: "Reel speed" slider row between "Dust & hair" and "Flicker"; card copy updated; README film bullet updated.
+- Gates: bunx tsc --noEmit (visualizer = pre-existing types.ts quirk only), lint 0 errors (27 known warnings).
+- Headless harness on the REAL filter source (deleted after use): counting distinct dust layouts over 4 s of song time at FIXED dust 0.5 — speed 0 → 7 layout changes (≈2 fps), speed 0.5 → 63 (≈16 fps, the old hardcoded rate), speed 1 → 119 (≈30 fps). Cadence follows the dial exactly; amounts untouched.
+- Browser E2E (kick WAV looped, playing): film card shows SCRATCHES / DUST & HAIR / REEL SPEED / FLICKER; frame-diff probe on a quiet patch at fixed dust 50% + scratches 0 + flicker 0: Reel speed 0 → meanDiff 0.24 (reel nearly still), speed 1 → 2.12 (8.8× the churn). Zero page errors. Measurement note: agent-browser `fill` does NOT reach the Radix slider store (identical readings both states) — sliders must be driven by click+keyboard (Home/End/arrows), verified via aria value before probing.
+- Mobile 390px: no overflow.
+
+Stage Summary:
+- The film reel gets its own speed dial: Reel speed sets how fast the dust pops and the scratches wander, fully independent of the Scratches and Dust & hair amount dials (which still own how many/faint). The default sits exactly at the old hardcoded churn, so existing projects look identical until you touch it.

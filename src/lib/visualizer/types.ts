@@ -439,6 +439,11 @@ export interface FilmFilterConfig {
   scratches: number
   /** Dust specks & hairs 0..1 (density) */
   dust: number
+  /** Reel speed 0..1 — how fast dust pops in/out and scratches wander.
+   *  Cadence only: it never changes how many artifacts there are, that is
+   *  the scratches/dust dials. Default 0.5 = the classic 16 fps silent-film
+   *  projection churn; 0 = the reel barely turns, 1 = frantic. */
+  speed: number
   /** Exposure flicker 0..1 (per-film-frame brightness wobble) */
   flicker: number
   /** React to beat — scratches/dust darken and the lamp flares on the
@@ -889,6 +894,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     enabled: false,
     scratches: 0.5,
     dust: 0.5,
+    speed: 0.5,
     flicker: 0.35,
     beatReactive: false,
     beatStrength: 0.5,

@@ -3,10 +3,12 @@
  *
  *   1. Scratches — a handful of persistent vertical emulsion scratches: thin
  *      wavy light (or dark) lines running the full height. The scratch layout
- *      is hashed from a "segment" seed that changes every ~2.5 s, so a
- *      scratch stays put for a moment, then the reel moves on.
- *   2. Dust & hairs — specks and short curved hairs re-seeded at 16 fps
- *      (silent-film projection rate), some light, some dark.
+ *      is hashed from a "segment" seed that changes on the reel-speed dial
+ *      (2.5 s at the default), so a scratch stays put for a moment, then the
+ *      reel moves on.
+ *   2. Dust & hairs — specks and short curved hairs re-seeded at the reel
+ *      speed dial's churn rate (16 fps at the default — the silent-film
+ *      projection rate), some light, some dark.
  *   3. Flicker — per-film-frame exposure wobble: a hashed ±brightness lift
  *      applied to the whole frame, the uneven projection lamp look.
  *
@@ -36,13 +38,23 @@ export function drawFilmFilter(
   const scratches = Math.min(1, clamp01(cfg.scratches) * boost)
   const dust = Math.min(1, clamp01(cfg.dust) * boost)
   const flicker = Math.min(1, clamp01(cfg.flicker) * boost)
+  // Reel speed — the CADENCE dial, fully independent of the amount dials:
+  // it decides how often the dust re-seeds and how often the scratches
+  // wander, never how many there are. Default 0.5 = the shipped look (dust
+  // re-seeding at the classic silent-film 16 fps, scratches re-wandering
+  // every 2.5 s) so old saved projects render identically.
+  const speed = clamp01(cfg.speed ?? 0.5)
+  const dustFps = 2 + 28 * speed // 2..30 fps, 16 at the default
+  // Scratch layout epoch: geometric in speed so it never stalls — 6 s per
+  // layout at speed 0, 2.5 s at the default, ~1 s at speed 1.
+  const segDur = 6 * Math.pow(2.5 / 6, speed * 2)
 
   ctx.save()
   ctx.globalAlpha = 1
   ctx.shadowBlur = 0
 
-  const segment = Math.floor(frame.time / 2.5) // scratch layout epoch
-  const filmFrame = frameSeed(frame.time, 16)
+  const segment = Math.floor(frame.time / segDur) // scratch layout epoch
+  const filmFrame = frameSeed(frame.time, dustFps)
 
   /* -------------------------------- scratches -------------------------------- */
   if (scratches > 0.001) {

@@ -32,9 +32,10 @@ export function FilmFilterSection() {
         />
       </div>
       <p className="text-[11px] leading-snug text-zinc-600">
-        Old school film reel — vertical scratches that wander every few
-        seconds, dust and hairs, and a gentle exposure flicker, over
-        everything including the watermark. Baked into every export.
+        Old school film reel — vertical scratches that wander, dust and
+        hairs that pop at a dialable reel speed, and a gentle exposure
+        flicker, over everything including the watermark. Baked into every
+        export.
       </p>
 
       {filter.enabled ? (
@@ -62,6 +63,15 @@ export function FilmFilterSection() {
             max={1}
             step={0.05}
             onChange={set('dust')}
+            format={(v) => `${Math.round(v * 100)}%`}
+          />
+          <SliderRow
+            label="Reel speed"
+            value={filter.speed ?? 0.5}
+            min={0}
+            max={1}
+            step={0.05}
+            onChange={set('speed')}
             format={(v) => `${Math.round(v * 100)}%`}
           />
           <SliderRow

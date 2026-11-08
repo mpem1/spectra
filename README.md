@@ -70,8 +70,9 @@ or cassette, everything. Here are some of them, wearing real album art:
   the band rolls through — lower it and the tape behaves between passes,
   without weakening the band) and dust.
 - **Film reel filter** — old school film: vertical emulsion scratches that
-  wander every few seconds, dust and hairs, and a gentle exposure flicker,
-  with sliders for scratches, dust and flicker.
+  wander, dust and hairs that pop, and a gentle exposure flicker, with
+  sliders for scratches, dust, reel speed (how fast the artifacts churn —
+  the amount dials never touch it) and flicker.
 - **Halftone print filter** — newspaper dots on a 45° grid, applied only to
   the darker tones (the Shadow range slider decides how dark a color must be
   before it gets dotted) while lighter areas stay intact, with dot size,
