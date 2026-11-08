@@ -1569,3 +1569,16 @@ Work Log:
 
 Stage Summary:
 - Sixth signature preset shipped: the user's "Minimal Grid" (monochrome dot-matrix waveform mirrored around the center line on a near-black stage) joins Vinyl & Cover, Radial Fade, Side EQ Cover, Cassette Blob and Large Vinyl in the SIGNATURE PRESETS section.
+
+Task ID: 64
+Agent: Z.ai Code (main)
+Task: Add the user's "record phone" look as a signature preset
+User: pasted the full .spectra JSON (seventh preset, after "minimal grid")
+
+Work Log:
+- Saved the user's pasted file byte-for-byte as public/presets/record-phone.spectra (3207 bytes, name "record phone"); validated envelope + required sections + key values: bars visualizer, 48 bars, smoothing 0.8, sensitivity 0.6, mirror none, horizontal centered at 50/50, scale 1.1, gap 0.2, layer FRONT (bars ride over the artwork), blue linear palette with stop order exactly as exported (#99c0ea@66 → #53a3d5@72 → #021240@96, angle 180), radial background dark-teal #0e242f@19 → steel #6f90a5@46 → white #ffffff@93 (angle 160 — dark core fading to bright edges), vignette 0.35, grain 0.08, disc layer showing BOTH the record and the sleeve: vinyl label mode record at 47% parked HIGH (discX 50 / discY 25) and cover square at 51% BELOW it (coverY 60) — together reading like a phone silhouette; lyrics/title/watermark/pulse-image all off.
+- Manifest entry: id record-phone, name "Record Phone", caption "Teal-to-white fade · record stacked above its sleeve", swatch mirrors the three-stop teal→steel→white background palette at 160°.
+- Browser E2E (desktop 1280px): Presets tab lists all seven signature presets in order (…Minimal Grid, Record Phone); applying shows the success toast. Pixel checks — record zone dark (360/380 samples) with the standard no-art paper label placeholder, cover square dark (477/483: the sleeve awaiting album art), blue-family bars abundant (2380 samples), steel-blue mid field (2173) and white outer zone present; inverted radial confirmed by probes (bottom-center steel [109,140,160], corner near-white [205,206,207]); screenshot confirms the full composition (navy grooved record peeking from the top, dark sleeve below, blue bars along the bottom over the teal-to-white fade). Mobile 390px: all seven presets listed, zero horizontal overflow, Record Phone applies with toast. 0 page errors; lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- Seventh signature preset shipped: the user's "Record Phone" (record stacked above its sleeve like a phone silhouette over a dark-core-to-white radial fade, with front-layer blue bars) joins the six earlier looks in the SIGNATURE PRESETS section.

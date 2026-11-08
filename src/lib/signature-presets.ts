@@ -107,6 +107,20 @@ export const SIGNATURE_PRESETS: SignaturePreset[] = [
       angle: 180,
     },
   },
+  {
+    id: 'record-phone',
+    name: 'Record Phone',
+    file: 'presets/record-phone.spectra',
+    caption: 'Teal-to-white fade · record stacked above its sleeve',
+    swatch: {
+      stops: [
+        { color: '#0e242f', position: 19 },
+        { color: '#6f90a5', position: 46 },
+        { color: '#ffffff', position: 93 },
+      ],
+      angle: 160,
+    },
+  },
   // Future entries arrive with the user's own looks (screenshots / .spectra
   // files) — the recipe stays: drop <id>.spectra into public/presets/, add
   // a manifest line here. The three designs explored in Task 57 (Neon Bars,
