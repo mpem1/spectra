@@ -1611,3 +1611,17 @@ Work Log:
 
 Stage Summary:
 - Shipped "Auto-detect lyrics from song": a fully client-side Whisper transcription pipeline (Web Worker + transformers.js, ~80 MB first-use model cached by the browser, overlap-window slicing with absolute timestamps) that listens to the loaded song and writes time-stamped lines into the Lyrics tab — no server needed, audio never leaves the device, works on the static GitHub Pages deployment.
+
+Task ID: 67
+Agent: Z.ai Code (main)
+Task: Put the user's preset screenshots into the GitHub README as a gallery
+User: sent 7 sample screenshots "for github — make sure to rename the images and remove any meta data before using them"
+
+Work Log:
+- Matched every screenshot to its signature preset against the manifest captions + the pixel descriptions recorded in worklog Tasks 56–65: 205728 → Vinyl & Cover (helmet-art sleeve with the record sliding out over the indigo wave), 205758 → Radial Fade (plum sunburst), 205847 → Side EQ Cover (green/yellow mirrored grid EQs), 205914 → Cassette Blob (purple cassette over the cyan-yellow blob), 210543 → Large Vinyl (giant record + gold/white bars; the skull is the user's own album art on the label), 205602 → Record Phone (portrait: record stacked above its sleeve, blue bars), 210622 → Cassette Phone (portrait: dark cassette over the lavender grid). Minimal Grid has no screenshot yet — gallery shows the other seven.
+- Renamed each file to its preset id and stripped metadata with a lossless PIL re-encode (info dict cleared before save, dropping the sRGB/gAMA/DPI chunks every screenshot carried): docs/images/{vinyl-and-cover,radial-fade,side-eq-cover,cassette-blob,large-vinyl,record-phone,cassette-phone}.png. Verified per file: sha256 of raw pixels identical before/after, dimensions/mode unchanged, reopened file carries zero metadata chunks.
+- README: new "Gallery — signature presets" section right after the intro (before Features) — HTML table in manifest order, descriptive alt text per image, manifest captions as sub-captions; the two portrait shots (Record Phone, Cassette Phone) share the last row at reduced width so rows stay tidy.
+- docs/ sits outside the static export (only public/ is copied to out/), so the Pages build and the deployed app are untouched by this change; no code changed. lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- The GitHub README now opens with a screenshot gallery: 7 of the 8 signature presets shown with real album art, images renamed to their preset ids and re-encoded metadata-free (verified pixel-identical).

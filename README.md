@@ -8,6 +8,30 @@ time, and export frame-exact MP4 videos — fully offline, no server rendering.
 Built with Next.js 16 (App Router) · TypeScript · Zustand · Canvas 2D ·
 Tailwind CSS 4 · shadcn/ui · WebCodecs · IndexedDB (browser-local projects).
 
+## Gallery — signature presets
+
+The **Presets** tab ships with built-in **signature looks** — one click
+applies a complete setup: visualizer, palette, background, spinning record
+or cassette, everything. Here are some of them, wearing real album art:
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/vinyl-and-cover.png" width="270" alt="Vinyl &amp; Cover preset: a square album sleeve with the record sliding out over an indigo dusk wave"><br><b>Vinyl &amp; Cover</b><br><sub>Indigo dusk wave · big sleeve with the record sliding out</sub></td>
+    <td align="center"><img src="docs/images/radial-fade.png" width="270" alt="Radial Fade preset: a plum-to-white radial sunburst over a violet bloom"><br><b>Radial Fade</b><br><sub>Plum-to-white sunburst over a violet bloom</sub></td>
+    <td align="center"><img src="docs/images/side-eq-cover.png" width="270" alt="Side EQ Cover preset: green and yellow grid equalizers down both sides with the album cover centered"><br><b>Side EQ Cover</b><br><sub>Green grid EQ down the side · centered cover</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/cassette-blob.png" width="270" alt="Cassette Blob preset: a purple cassette over a cyan-to-yellow blob on a sunset backdrop"><br><b>Cassette Blob</b><br><sub>Sunset blob backdrop · realistic purple cassette</sub></td>
+    <td align="center"><img src="docs/images/large-vinyl.png" width="270" alt="Large Vinyl preset: a giant grooved record left of center over a red-gold bloom with cream bars"><br><b>Large Vinyl</b><br><sub>Giant off-center vinyl over a red-gold bloom</sub></td>
+    <td></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/record-phone.png" width="220" alt="Record Phone preset: a record stacked above its sleeve like a phone silhouette over a teal-to-white fade with blue bars"><br><b>Record Phone</b><br><sub>Teal-to-white fade · record stacked above its sleeve</sub></td>
+    <td align="center"><img src="docs/images/cassette-phone.png" width="220" alt="Cassette Phone preset: a dark cassette over a lavender dot grid on a white-to-teal fade"><br><b>Cassette Phone</b><br><sub>Dark cassette over a lavender grid · white-to-teal fade</sub></td>
+    <td></td>
+  </tr>
+</table>
+
 ## Features
 
 - **Visualizer styles** — Bars, Wave, Radial, Particles, Blob, Grid; each with
