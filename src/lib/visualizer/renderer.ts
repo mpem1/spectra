@@ -24,6 +24,9 @@ import { drawDisc } from './disc'
 import { drawWatermark } from './watermark'
 import { drawPulseImage } from './pulse-image'
 import { drawScreenFilter } from './screen-filter'
+import { drawVhsFilter } from './vhs-filter'
+import { drawFilmFilter } from './film-filter'
+import { drawHalftoneFilter } from './halftone-filter'
 
 /* --------------------------------- Utilities -------------------------------- */
 
@@ -126,11 +129,17 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   if (config.watermark?.enabled) {
     drawWatermark(rc, config.watermark, S)
   }
-  // Screen filter — the outermost pass, ON TOP of everything above (the
-  // watermark included): the whole picture plays on a virtual display.
+  // Full-frame filter chain — the outermost passes, ON TOP of everything
+  // above (the watermark included). Fixed order, each filter processes the
+  // previous one's output: VHS distorts the picture → CRT displays it →
+  // film damage scratches the display → halftone prints the result.
   // Optional chaining keeps very old saves renderable before the merge;
-  // transparent backgrounds skip it so alpha recordings stay clean.
-  drawScreenFilter(rc, config.screenFilter, config.background?.mode === 'transparent')
+  // transparent backgrounds skip them all so alpha recordings stay clean.
+  const transparent = config.background?.mode === 'transparent'
+  drawScreenFilter(rc, config.screenFilter, transparent)
+  drawVhsFilter(rc, config.vhsFilter, frame, transparent)
+  drawFilmFilter(rc, config.filmFilter, frame, transparent)
+  drawHalftoneFilter(rc, config.halftoneFilter, transparent)
   rc.ctx.restore()
 }
 

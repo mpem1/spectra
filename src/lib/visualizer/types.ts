@@ -393,6 +393,54 @@ export interface ScreenFilterConfig {
   glow: number
 }
 
+/**
+ * VHS filter — plays the picture off a worn-out tape: per-line horizontal
+ * wobble, a rolling tracking-noise band and white dropout specks. Motion is
+ * derived from song time via integer hashing (no Math.random / Date.now), so
+ * exports stay frame-exact. Skipped on transparent backgrounds like the CRT.
+ */
+export interface VhsFilterConfig {
+  enabled: boolean
+  /** Horizontal line wobble 0..1 (slow wave + per-band tape jitter) */
+  wobble: number
+  /** Rolling tracking-noise band 0..1 (position + noise scale with it) */
+  tracking: number
+  /** White dropout streaks 0..1 (density) */
+  dust: number
+}
+
+/**
+ * Film filter — old school film reel damage: persistent vertical emulsion
+ * scratches (re-drawn every few seconds), dust specks & hairs, and
+ * frame-by-frame exposure flicker. Deterministic via song time + hashing.
+ */
+export interface FilmFilterConfig {
+  enabled: boolean
+  /** Vertical scratch count/opacity 0..1 */
+  scratches: number
+  /** Dust specks & hairs 0..1 (density) */
+  dust: number
+  /** Exposure flicker 0..1 (per-film-frame brightness wobble) */
+  flicker: number
+}
+
+/**
+ * Halftone filter — newspaper print: the picture is sampled on a rotated
+ * (45°) dot grid and darker tones turn into black halftone dots while
+ * lighter areas stay untouched. `dotRange` is the user-facing "only darker
+ * colors" control: it sets how dark a tone must be before it gets dotted.
+ */
+export interface HalftoneFilterConfig {
+  enabled: boolean
+  /** Dot cell size in px on the 720p reference canvas (3..14) */
+  dotSize: number
+  /** Shadow range 0..1 — luminance threshold below which tones become
+   *  dots (0 = only pure black, 1 = the whole picture) */
+  dotRange: number
+  /** Dot ink strength 0..1 */
+  strength: number
+}
+
 /* -------------------------------- Custom fonts ------------------------------- */
 
 /**
@@ -422,6 +470,12 @@ export interface StudioConfig {
   watermark: WatermarkConfig
   /** Full-frame display post-pass (CRT scanlines + phosphor mask + …) */
   screenFilter: ScreenFilterConfig
+  /** Full-frame tape post-pass (VHS wobble + tracking + dropouts) */
+  vhsFilter: VhsFilterConfig
+  /** Full-frame film-damage post-pass (scratches + dust + flicker) */
+  filmFilter: FilmFilterConfig
+  /** Full-frame print post-pass (45° halftone dots on darker tones) */
+  halftoneFilter: HalftoneFilterConfig
   /** Imported font library — shared by the lyrics and the title card */
   fonts: CustomFontConfig[]
 }
@@ -736,6 +790,24 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     grille: 0.5,
     aberration: 0.3,
     glow: 0.3,
+  },
+  vhsFilter: {
+    enabled: false,
+    wobble: 0.5,
+    tracking: 0.5,
+    dust: 0.4,
+  },
+  filmFilter: {
+    enabled: false,
+    scratches: 0.5,
+    dust: 0.5,
+    flicker: 0.35,
+  },
+  halftoneFilter: {
+    enabled: false,
+    dotSize: 6,
+    dotRange: 0.55,
+    strength: 0.9,
   },
   pulseImage: {
     enabled: false,

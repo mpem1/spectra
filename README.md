@@ -64,6 +64,16 @@ or cassette, everything. Here are some of them, wearing real album art:
   own **Filters** tab, with sliders for mask size, scanline strength, mask
   strength, color split and glow.
   Skipped on transparent backgrounds so alpha recordings stay clean.
+- **VHS tape filter** — worn-out tape look: wavy line wobble, a rolling
+  tracking-noise band and white dropout specks over the whole picture, with
+  sliders for wobble, tracking and dust.
+- **Film reel filter** — old school film: vertical emulsion scratches that
+  wander every few seconds, dust and hairs, and a gentle exposure flicker,
+  with sliders for scratches, dust and flicker.
+- **Halftone print filter** — newspaper dots on a 45° grid, applied only to
+  the darker tones (the Shadow range slider decides how dark a color must be
+  before it gets dotted) while lighter areas stay intact, with dot size,
+  shadow range and ink strength sliders.
 - **Project files** — download the entire setup (every uploaded image
   included, no size cap) as a `.spectra` file and reopen it anywhere; share
   links still work for quick look-sharing without the media.

@@ -1,6 +1,9 @@
 'use client'
 
 import { ScreenFilterSection } from '@/components/studio/screen-filter-section'
+import { VhsFilterSection } from '@/components/studio/vhs-filter-section'
+import { FilmFilterSection } from '@/components/studio/film-filter-section'
+import { HalftoneFilterSection } from '@/components/studio/halftone-filter-section'
 
 /**
  * Filters tab — finishing looks laid over the ENTIRE composed picture
@@ -20,6 +23,15 @@ export function FiltersTab() {
 
       {/* CRT — scanlines + RGB phosphor mask + color split + glow */}
       <ScreenFilterSection />
+
+      {/* VHS tape — wobble + tracking noise + dropouts */}
+      <VhsFilterSection />
+
+      {/* Film reel — scratches + dust & hair + flicker */}
+      <FilmFilterSection />
+
+      {/* Halftone print — 45° dots on darker tones only */}
+      <HalftoneFilterSection />
     </div>
   )
 }
