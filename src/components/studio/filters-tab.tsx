@@ -5,6 +5,7 @@ import { VhsFilterSection } from '@/components/studio/vhs-filter-section'
 import { FilmFilterSection } from '@/components/studio/film-filter-section'
 import { HalftoneFilterSection } from '@/components/studio/halftone-filter-section'
 import { GlitchFilterSection } from '@/components/studio/glitch-filter-section'
+import { AnaglyphFilterSection } from '@/components/studio/anaglyph-filter-section'
 
 /**
  * Filters tab — finishing looks laid over the ENTIRE composed picture
@@ -36,6 +37,9 @@ export function FiltersTab() {
 
       {/* Glitch — blocky corruption bursts + shifted slices + color bars */}
       <GlitchFilterSection />
+
+      {/* 3D glasses — red/cyan anaglyph re-projection with beat pop */}
+      <AnaglyphFilterSection />
     </div>
   )
 }

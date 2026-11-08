@@ -23,6 +23,7 @@ import {
   type FilmFilterConfig,
   type HalftoneFilterConfig,
   type GlitchFilterConfig,
+  type AnaglyphFilterConfig,
 } from '@/lib/visualizer/types'
 import { exportMP4 } from '@/lib/export/exporter'
 import { getEngine, getPreviewControls } from '@/components/studio/engine-registry'
@@ -99,6 +100,7 @@ type StudioState = {
   patchFilmFilter: (partial: Partial<FilmFilterConfig>) => void
   patchHalftoneFilter: (partial: Partial<HalftoneFilterConfig>) => void
   patchGlitchFilter: (partial: Partial<GlitchFilterConfig>) => void
+  patchAnaglyphFilter: (partial: Partial<AnaglyphFilterConfig>) => void
   /** Adds an imported font file to the shared lyrics/title library */
   addCustomFont: (font: CustomFontConfig) => void
   /** Removes a font; any text layer using it falls back to Sans */
@@ -230,6 +232,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, glitchFilter: { ...s.config.glitchFilter, ...partial } },
     })),
 
+  patchAnaglyphFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, anaglyphFilter: { ...s.config.anaglyphFilter, ...partial } },
+    })),
+
   addCustomFont: (font) =>
     set((s) => ({ config: { ...s.config, fonts: [...s.config.fonts, font] } })),
 
@@ -304,6 +311,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         filmFilter: { ...DEFAULT_STUDIO_CONFIG.filmFilter, ...config.filmFilter },
         halftoneFilter: { ...DEFAULT_STUDIO_CONFIG.halftoneFilter, ...config.halftoneFilter },
         glitchFilter: { ...DEFAULT_STUDIO_CONFIG.glitchFilter, ...config.glitchFilter },
+        anaglyphFilter: { ...DEFAULT_STUDIO_CONFIG.anaglyphFilter, ...config.anaglyphFilter },
         // Imported font library — keep only well-formed entries.
         fonts: Array.isArray(config.fonts)
           ? config.fonts.filter(

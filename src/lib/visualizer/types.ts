@@ -466,6 +466,25 @@ export interface GlitchFilterConfig {
   rate: number
 }
 
+/**
+ * Anaglyph filter — the old-school paper 3D-glasses look: the finished
+ * picture is re-projected twice, once through the red channel and once
+ * through cyan, the two copies shifted horizontally so the whole frame
+ * wears classic red/blue fringes. `reactivity` lets the song's low end
+ * push the copies apart on beats (frame.bass is part of the deterministic
+ * AudioFrame both pipelines produce, so exports pop identically).
+ * Skipped on transparent backgrounds like the other full-frame filters.
+ */
+export interface AnaglyphFilterConfig {
+  enabled: boolean
+  /** Parallax separation 0..1 — how far the red/cyan copies drift apart */
+  depth: number
+  /** Beat reactivity 0..1 — how much the low end pushes the copies wider */
+  reactivity: number
+  /** Blend 0..1 — full anaglyph (1) vs mixed back toward the original (0) */
+  strength: number
+}
+
 /* -------------------------------- Custom fonts ------------------------------- */
 
 /**
@@ -503,6 +522,8 @@ export interface StudioConfig {
   halftoneFilter: HalftoneFilterConfig
   /** Full-frame digital-corruption post-pass (bursty glitch artifacts) */
   glitchFilter: GlitchFilterConfig
+  /** Full-frame anaglyph post-pass (red/cyan 3D-glasses re-projection) */
+  anaglyphFilter: AnaglyphFilterConfig
   /** Imported font library — shared by the lyrics and the title card */
   fonts: CustomFontConfig[]
 }
@@ -842,6 +863,12 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     blocks: 0.5,
     slices: 0.5,
     rate: 0.5,
+  },
+  anaglyphFilter: {
+    enabled: false,
+    depth: 0.5,
+    reactivity: 0.5,
+    strength: 1,
   },
   pulseImage: {
     enabled: false,

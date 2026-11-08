@@ -82,6 +82,11 @@ or cassette, everything. Here are some of them, wearing real album art:
   rate is its own dial — rare stutters at low settings, continuous
   corruption at 100% — while Blocks and Slices keep each burst just as
   strong.
+- **3D glasses filter** — the old-school red/blue paper anaglyph look: the
+  whole picture is re-projected twice, once through red and once through
+  cyan, shifted apart so every edge wears classic 3D fringes. Depth sets the
+  separation, Beat pop pushes the layers wider on the song's low end and Mix
+  blends the look back toward the original picture.
 - **Project files** — download the entire setup (every uploaded image
   included, no size cap) as a `.spectra` file and reopen it anywhere; share
   links still work for quick look-sharing without the media.
