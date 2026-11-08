@@ -79,6 +79,20 @@ export const SIGNATURE_PRESETS: SignaturePreset[] = [
       angle: 160,
     },
   },
+  {
+    id: 'large-vinyl',
+    name: 'Large Vinyl',
+    file: 'presets/large-vinyl.spectra',
+    caption: 'Giant off-center vinyl over a red-gold bloom',
+    swatch: {
+      stops: [
+        { color: '#350d0d', position: 12 },
+        { color: '#bb1122', position: 43 },
+        { color: '#fbbf24', position: 93 },
+      ],
+      angle: 160,
+    },
+  },
   // Future entries arrive with the user's own looks (screenshots / .spectra
   // files) — the recipe stays: drop <id>.spectra into public/presets/, add
   // a manifest line here. The three designs explored in Task 57 (Neon Bars,

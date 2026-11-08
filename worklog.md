@@ -1543,3 +1543,16 @@ Work Log:
 
 Stage Summary:
 - Fourth signature preset shipped: the user's "Cassette Blob" (realistic purple cassette front and center over a cyan-to-yellow blob glow, all inside a sunset orange→pink→purple radial bloom) joins Vinyl & Cover, Radial Fade and Side EQ Cover in the SIGNATURE PRESETS section.
+
+Task ID: 62
+Agent: Z.ai Code (main)
+Task: Add the user's "large vinyl" look as a signature preset
+User: pasted the full .spectra JSON (fifth preset, after "cassette blob")
+
+Work Log:
+- Saved the user's pasted file byte-for-byte as public/presets/large-vinyl.spectra (3305 bytes, name "large vinyl"); validated envelope + required sections + key values: bars visualizer, 40 bars, sensitivity 1.2, horizontal orientation at x73 with center mirror, scale 0.55, layer back, gold/dark-red/white linear palette with stop order exactly as exported (#ca9a1d@26 → #6e0e16@50 → #ffffff@95 → #ca9a1d@71 → #ffffff@5, angle 180), radial background maroon #350d0d@12 → red #bb1122@43 → amber #fbbf24@93 (angle 160), vignette 0.35, grain 0.08, disc in vinyl label mode (showDisc on, showCover off) as a GIANT record — discSize 100 at discX 28 / discY 50 — with grooves, sheen 0.6, rpm 33.33; lyrics/title/watermark/pulse-image all off.
+- Manifest entry: id large-vinyl, name "Large Vinyl", caption "Giant off-center vinyl over a red-gold bloom", swatch mirrors the three-stop maroon→red→amber background palette at 160°.
+- Browser E2E (desktop 1280px): Presets tab lists all five signature presets in order (Vinyl & Cover, Radial Fade, Side EQ Cover, Cassette Blob, Large Vinyl); applying shows the success toast. Pixel checks — left half dominated by vinyl darkness (1033/1176 samples dark: the giant record), mid-row scan shows the black disc from x≈0 to x≈0.55 then the red field (mid-row reds [108,16,21]→[190,47,32]) with an amber-gold bar zone at x≈0.95 [207,125,32]; right half carries the bars palette (gold 331, dark-red 160, white 17 samples); screenshot confirms the full composition (giant grooved vinyl with sheen left-of-center, red-gold radial bloom, gold-to-white horizontal bars mirrored around center). Note: the disc center renders as the app's standard no-art paper label placeholder #202021 [32,32,33] — expected for an empty imageSrc, and identical to what the user saw when exporting; album art paints the label once a song with a cover is loaded. Mobile 390px: all five presets listed, zero horizontal overflow, Large Vinyl applies with toast. 0 page errors; lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- Fifth signature preset shipped: the user's "Large Vinyl" (full-height grooved record parked left-of-center over a maroon→red→amber radial bloom, with gold/white horizontal bars mirrored on the right) joins Vinyl & Cover, Radial Fade, Side EQ Cover and Cassette Blob in the SIGNATURE PRESETS section.
