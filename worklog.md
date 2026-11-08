@@ -1841,3 +1841,21 @@ Work Log:
 
 Stage Summary:
 - The film reel gets its own speed dial: Reel speed sets how fast the dust pops and the scratches wander, fully independent of the Scratches and Dust & hair amount dials (which still own how many/faint). The default sits exactly at the old hardcoded churn, so existing projects look identical until you touch it.
+
+---
+
+Task ID: 79
+Agent: main orchestrator (Z.ai Code)
+Task: Halftone react-to-beat inverted — the beat now lifts the print to reveal the clean picture
+User: "halftone react to beat seems too dark i think it may need to be inverted from the way it reacts . needs to be basic image to the halftone overlay when the beat hits"
+
+Work Log:
+- The old reaction pushed every dial DARKER on a kick (shadow range widened +0.28·kick, dots swelled ×(1+0.45·kick), grid tightened, ink strength multiplied up) — on beats the whole frame dove deeper into print, which read as "too dark".
+- Inverted all four pushes around the same lift = punch·bass envelope (0 with the switch off → pixel-identical rest state): dots shrink ×(1−0.45·lift), the grid LOOSENS ×(1+0.22·lift), the shadow range NARROWS −0.28·lift (fewer tones dotted), and the ink layer fades ×(1−0.75·lift) — on a kick the halftone overlay backs off and the clean picture pops through for a moment, then the print settles back between beats. beatBoost import dropped (now unused here).
+- Docs updated: types.ts field comment, README react-to-beat bullet ("halftone print lifts to flash the clean picture through the dots").
+- Gates: tsc (halftone clean, only the pre-existing types.ts videoSrc quirk left), lint 0 errors (27 known warnings).
+- Headless harness on the REAL filter source with a luminance-ramp fake (deleted after use): beat OFF → 31,896 dots / ink alpha 0.900 / mean r 1.48; beat ON + silence → IDENTICAL (rests exactly as dialed); beat ON + full kick at full Beat pop → 9,095 dots (−71%, range narrowed), ink alpha 0.259 (−71%, clean picture pops), mean r 1.15 (dots shrink). ALL CHECKS PASS.
+- Browser E2E (kick WAV looped, halftone at defaults): dark-pixel probe on the bars strip, beat OFF → mean 18,871 dark px / span 14,916; beat ON at default pop 50% → mean 15,917 (−16% time-average ink coverage) / span 18,637 (+25% pulse amplitude — kicks flash the reveal). Zero page errors. Mobile 390px: no overflow.
+
+Stage Summary:
+- Halftone's React to beat now works the way the user described: the print rests exactly where the sliders set it and every kick LIFTS the overlay — dots shrink, ink fades, fewer tones get dotted — so the basic image flashes through before the print settles back. Switch off is pixel-identical to the plain filter.

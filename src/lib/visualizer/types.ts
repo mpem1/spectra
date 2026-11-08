@@ -468,9 +468,10 @@ export interface HalftoneFilterConfig {
   dotRange: number
   /** Dot ink strength 0..1 */
   strength: number
-  /** React to beat — the print saturates on the song's low end (more of
-   *  the picture gets dotted, ink darkens, the grid tightens); between
-   *  beats the print stays exactly as dialed in */
+  /** React to beat — the print LIFTS on the song's low end (dots shrink
+   *  back, ink fades and the shadow range narrows so the clean picture
+   *  pops through for a moment); between beats the print stays exactly
+   *  as dialed in */
   beatReactive: boolean
   /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
   beatStrength: number

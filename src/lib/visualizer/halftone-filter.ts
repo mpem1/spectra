@@ -19,7 +19,7 @@
  * No randomness, no time — same frame in, same dots out, in every pipeline.
  */
 import type { AudioFrame, HalftoneFilterConfig, RenderContext } from './types'
-import { beatBoost, clamp01, getWork, resetWork } from './filter-utils'
+import { clamp01, getWork, resetWork } from './filter-utils'
 
 export function drawHalftoneFilter(
   rc: RenderContext,
@@ -30,20 +30,20 @@ export function drawHalftoneFilter(
   if (!cfg?.enabled || transparent) return
   const { ctx, width: W, height: H } = rc
   const S = H / 720
-  // Beat reactive: on a kick the print SATURATES — the shadow range widens
-  // (more of the picture gets dotted), the ink darkens and the dot grid
-  // tightens; between beats the print rests exactly as dialed in.
+  // Beat reactive: on a kick the print LIFTS — dots shrink back, the ink
+  // fades and the shadow range narrows, so the clean picture pops through
+  // for a moment; between beats the print rests exactly as dialed in.
   const beatOn = !!cfg.beatReactive
   const punch = clamp01(cfg.beatStrength ?? 0.5)
   const bass = clamp01(frame.bass)
-  const kick = beatOn ? punch * bass : 0 // 0..1 beat saturation amount
-  const press = 1 + 0.45 * kick // dots swell on the kick (ink stamps harder)
+  const lift = beatOn ? punch * bass : 0 // 0..1 print-reveal amount
+  const press = 1 - 0.45 * lift // dots back off on the kick (ink lifts off the page)
   const cell = Math.max(
     3,
-    Math.round(Math.max(3, Math.min(14, cfg.dotSize)) * S * (1 - 0.22 * kick)),
+    Math.round(Math.max(3, Math.min(14, cfg.dotSize)) * S * (1 + 0.22 * lift)),
   )
-  const range = Math.min(1, clamp01(cfg.dotRange) + 0.28 * kick)
-  const strength = Math.min(1, clamp01(cfg.strength) * beatBoost(cfg, bass, 0.5))
+  const range = Math.max(0.001, clamp01(cfg.dotRange) - 0.28 * lift)
+  const strength = Math.min(1, clamp01(cfg.strength) * (1 - 0.75 * lift))
   if (range <= 0.001 || strength <= 0.001) return
 
   const diag = Math.ceil(Math.hypot(W, H))

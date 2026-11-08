@@ -92,9 +92,10 @@ or cassette, everything. Here are some of them, wearing real album art:
   the filter twin of the background's beat bounce / shake / blur pulse: on
   beats the filter punches harder (CRT split widens + glow flares + the
   screen brightens, VHS wobble/tracking/dust kick with extra bands tearing
-  loose, film artifacts darken with a warm lamp flare, halftone print
-  saturates and the dots swell, glitch bursts fire on the kick, 3D fringes
-  pop wider), and between beats the look rests exactly where the sliders set
+  loose, film artifacts darken with a warm lamp flare, halftone print lifts
+  to flash the clean picture through the dots, glitch bursts fire on the
+  kick, 3D fringes pop wider), and between beats the look rests exactly
+  where the sliders set
   it. A Beat pop slider dials how hard each kick hits; exports bake the
   identical punches (the offline renderer reads the same deterministic bass
   envelope as the live preview).
