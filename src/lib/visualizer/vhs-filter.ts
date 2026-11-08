@@ -23,21 +23,26 @@
  * second. Transparent backgrounds skip the pass (alpha must stay clean).
  */
 import type { AudioFrame, RenderContext, VhsFilterConfig } from './types'
-import { clamp01, frameSeed, getWork, hash01, resetWork } from './filter-utils'
+import { beatBoost, clamp01, frameSeed, getWork, hash01, resetWork } from './filter-utils'
 
 export function drawVhsFilter(
   rc: RenderContext,
   cfg: VhsFilterConfig | undefined,
-  frame: Pick<AudioFrame, 'time'>,
+  frame: Pick<AudioFrame, 'time' | 'bass'>,
   transparent: boolean,
 ): void {
   if (!cfg?.enabled || transparent) return
   const { ctx, width: W, height: H } = rc
   const S = H / 720
-  const wobble = clamp01(cfg.wobble)
-  const tracking = clamp01(cfg.tracking)
+  // Beat reactive: wobble, tracking and dropouts punch harder on the low
+  // end and rest exactly at the dialed-in look between beats. The band's
+  // CADENCE (`trackingSpeed`) never moves — the beat only amplifies what
+  // is already on screen, it never reschedules the pass.
+  const boost = beatBoost(cfg, frame.bass, 1.3)
+  const wobble = Math.min(1, clamp01(cfg.wobble) * boost)
+  const tracking = Math.min(1, clamp01(cfg.tracking) * boost)
   const trackingSpeed = clamp01(cfg.trackingSpeed ?? 0.5)
-  const dust = clamp01(cfg.dust)
+  const dust = Math.min(1, clamp01(cfg.dust) * boost)
 
   ctx.save()
   ctx.globalAlpha = 1

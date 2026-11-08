@@ -31,14 +31,23 @@ const PALETTE = ['#ff00ff', '#00ffff', '#ffff00', '#ff0000', '#00ff00', '#0000ff
 export function drawGlitchFilter(
   rc: RenderContext,
   cfg: GlitchFilterConfig | undefined,
-  frame: Pick<AudioFrame, 'time'>,
+  frame: Pick<AudioFrame, 'time' | 'bass'>,
   transparent: boolean,
 ): void {
   if (!cfg?.enabled || transparent) return
   const { ctx, width: W, height: H } = rc
   const S = H / 720
-  const blocks = clamp01(cfg.blocks)
-  const slices = clamp01(cfg.slices)
+  // Beat reactive: every kick FORCES a burst (even mid clean-stretch) and
+  // punches the corruption harder; between beats the schedule and the
+  // intensity rest exactly at the dialed-in values. `rate` still owns the
+  // ambient cadence underneath the beat hits — they stack, not replace.
+  const beatOn = !!cfg.beatReactive
+  const punch = clamp01(cfg.beatStrength ?? 0.5)
+  const bass = clamp01(frame.bass)
+  const boost = beatBoost(cfg, bass, 1.3)
+  const beatHit = beatOn && bass * punch > 0.28
+  const blocks = Math.min(1, clamp01(cfg.blocks) * boost)
+  const slices = Math.min(1, clamp01(cfg.slices) * boost)
   const rate = clamp01(cfg.rate ?? 0.5)
   if (blocks <= 0.001 && slices <= 0.001) return
 
@@ -50,7 +59,7 @@ export function drawGlitchFilter(
   const burstDur = 0.25 + 0.45 * rate // 0.25..0.7 s
   const period = burstDur / duty
   const local = frame.time % period
-  if (local >= burstDur) return // clean stretch — nothing to draw
+  if (local >= burstDur && !beatHit) return // clean stretch, no kick — nothing to draw
 
   // One snapshot; every artifact samples the finished frame from it.
   const snap = getWork('glitch:snap', W, H)

@@ -22,7 +22,8 @@
  * Transparent backgrounds skip the filter entirely: a CRT is a physical
  * surface, and alpha recordings must stay clean.
  */
-import type { RenderContext, ScreenFilterConfig } from './types'
+import type { AudioFrame, RenderContext, ScreenFilterConfig } from './types'
+import { beatBoost } from './filter-utils'
 
 function clamp(v: number, min: number, max: number): number {
   return v < min ? min : v > max ? max : v
@@ -148,15 +149,20 @@ function channelize(
  * Draw the screen filter over the finished frame. `transparent` mirrors
  * background.mode === 'transparent' — the filter is skipped there so alpha
  * exports keep their clean channels.
+ *
+ * Beat reactive: when enabled, the color split and the bloom punch harder on
+ * the song's low end and rest exactly at the dialed-in look between beats.
  */
 export function drawScreenFilter(
   rc: RenderContext,
   cfg: ScreenFilterConfig | undefined,
+  frame: Pick<AudioFrame, 'bass'>,
   transparent: boolean,
 ): void {
   if (!cfg?.enabled || transparent) return
   const { ctx, width: W, height: H } = rc
   const S = H / 720
+  const boost = beatBoost(cfg, frame.bass, 1.25)
 
   ctx.save()
   ctx.globalAlpha = 1
@@ -165,7 +171,7 @@ export function drawScreenFilter(
   // 1) Chromatic aberration — snapshot the frame, isolate R/G/B, re-add them
   //    with the red and blue channels nudged apart. addColor('lighter')
   //    sums the channels back into the full picture.
-  const dx = Math.round(clamp01(cfg.aberration) * 3.5 * S)
+  const dx = Math.round(clamp01(clamp01(cfg.aberration) * boost) * 3.5 * S)
   if (dx >= 1) {
     const snap = getWork(0, W, H)
     const sc = resetWork(snap.getContext('2d')!)
@@ -190,7 +196,7 @@ export function drawScreenFilter(
   }
 
   // 2) Bloom — a blurred additive copy of the (already aberrated) frame.
-  const glow = clamp01(cfg.glow)
+  const glow = Math.min(1, clamp01(cfg.glow) * boost)
   if (glow > 0.001 && 'filter' in ctx) {
     const bloom = getWork(4, W, H)
     const bc = resetWork(bloom.getContext('2d')!)

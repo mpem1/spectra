@@ -4,7 +4,7 @@ import { Zap } from 'lucide-react'
 import type { GlitchFilterConfig } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
-import { MicroLabel, SliderRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/studio/controls'
 
 /**
  * Glitch filter card — digital corruption bursts: chunky pixel blocks,
@@ -42,6 +42,12 @@ export function GlitchFilterSection() {
 
       {filter.enabled ? (
         <>
+          <BeatPunchRow
+            on={filter.beatReactive}
+            strength={filter.beatStrength}
+            onToggle={(beatReactive) => patchGlitchFilter({ beatReactive })}
+            onStrength={(beatStrength) => patchGlitchFilter({ beatStrength })}
+          />
           <SliderRow
             label="Blocks"
             value={filter.blocks}

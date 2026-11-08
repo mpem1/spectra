@@ -140,10 +140,10 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // Optional chaining keeps very old saves renderable before the merge;
   // transparent backgrounds skip them all so alpha recordings stay clean.
   const transparent = config.background?.mode === 'transparent'
-  drawScreenFilter(rc, config.screenFilter, transparent)
+  drawScreenFilter(rc, config.screenFilter, frame, transparent)
   drawVhsFilter(rc, config.vhsFilter, frame, transparent)
   drawFilmFilter(rc, config.filmFilter, frame, transparent)
-  drawHalftoneFilter(rc, config.halftoneFilter, transparent)
+  drawHalftoneFilter(rc, config.halftoneFilter, frame, transparent)
   drawGlitchFilter(rc, config.glitchFilter, frame, transparent)
   drawAnaglyphFilter(rc, config.anaglyphFilter, frame, transparent)
   rc.ctx.restore()

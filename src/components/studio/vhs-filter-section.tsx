@@ -4,7 +4,7 @@ import { Videotape } from 'lucide-react'
 import type { VhsFilterConfig } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
-import { MicroLabel, SliderRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/studio/controls'
 
 /**
  * VHS filter card — plays the picture off a worn-out tape: wavy line
@@ -40,6 +40,12 @@ export function VhsFilterSection() {
 
       {filter.enabled ? (
         <>
+          <BeatPunchRow
+            on={filter.beatReactive}
+            strength={filter.beatStrength}
+            onToggle={(beatReactive) => patchVhsFilter({ beatReactive })}
+            onStrength={(beatStrength) => patchVhsFilter({ beatStrength })}
+          />
           <SliderRow
             label="Wobble"
             value={filter.wobble}

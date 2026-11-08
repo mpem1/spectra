@@ -14,20 +14,28 @@
  * are frame-exact. Transparent backgrounds skip the pass.
  */
 import type { AudioFrame, FilmFilterConfig, RenderContext } from './types'
-import { clamp01, frameSeed, getWork, hash01, resetWork } from './filter-utils'
+import { beatBoost, clamp01, frameSeed, getWork, hash01, resetWork } from './filter-utils'
 
 export function drawFilmFilter(
   rc: RenderContext,
   cfg: FilmFilterConfig | undefined,
-  frame: Pick<AudioFrame, 'time'>,
+  frame: Pick<AudioFrame, 'time' | 'bass'>,
   transparent: boolean,
 ): void {
   if (!cfg?.enabled || transparent) return
   const { ctx, width: W, height: H } = rc
   const S = H / 720
-  const scratches = clamp01(cfg.scratches)
-  const dust = clamp01(cfg.dust)
-  const flicker = clamp01(cfg.flicker)
+  // Beat reactive: artifacts darken and the projection lamp flares on the
+  // low end; between beats (boost exactly 1, no flare) the reel plays
+  // exactly as dialed in.
+  const beatOn = !!cfg.beatReactive
+  const punch = clamp01(cfg.beatStrength ?? 0.5)
+  const bass = clamp01(frame.bass)
+  const boost = beatBoost(cfg, bass, 1.2)
+  const flash = beatOn ? 0.16 * punch * bass : 0 // warm lamp lift on the kick
+  const scratches = Math.min(1, clamp01(cfg.scratches) * boost)
+  const dust = Math.min(1, clamp01(cfg.dust) * boost)
+  const flicker = Math.min(1, clamp01(cfg.flicker) * boost)
 
   ctx.save()
   ctx.globalAlpha = 1
@@ -96,9 +104,9 @@ export function drawFilmFilter(
   }
 
   /* --------------------------------- flicker --------------------------------- */
-  if (flicker > 0.001) {
+  if (flicker > 0.001 || flash > 0.001) {
     const n = hash01(filmFrame, 101) // 0..1 per film frame
-    const offset = (n - 0.5) * 0.09 * flicker
+    const offset = (n - 0.5) * 0.09 * flicker + flash
     if (offset > 0) {
       ctx.globalCompositeOperation = 'lighter'
       ctx.globalAlpha = offset

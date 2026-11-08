@@ -4,7 +4,7 @@ import { Tv } from 'lucide-react'
 import type { ScreenFilterConfig } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
-import { MicroLabel, SliderRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/studio/controls'
 
 /**
  * Screen filter — draws an old-display look over the ENTIRE frame
@@ -40,6 +40,12 @@ export function ScreenFilterSection() {
 
       {filter.enabled ? (
         <>
+          <BeatPunchRow
+            on={filter.beatReactive}
+            strength={filter.beatStrength}
+            onToggle={(beatReactive) => patchScreenFilter({ beatReactive })}
+            onStrength={(beatStrength) => patchScreenFilter({ beatStrength })}
+          />
           <SliderRow
             label="Mask size"
             value={filter.size}

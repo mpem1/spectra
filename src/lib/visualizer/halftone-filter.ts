@@ -18,20 +18,31 @@
  *      rotated drawImage back onto the frame.
  * No randomness, no time — same frame in, same dots out, in every pipeline.
  */
-import type { HalftoneFilterConfig, RenderContext } from './types'
-import { clamp01, getWork, resetWork } from './filter-utils'
+import type { AudioFrame, HalftoneFilterConfig, RenderContext } from './types'
+import { beatBoost, clamp01, getWork, resetWork } from './filter-utils'
 
 export function drawHalftoneFilter(
   rc: RenderContext,
   cfg: HalftoneFilterConfig | undefined,
+  frame: Pick<AudioFrame, 'bass'>,
   transparent: boolean,
 ): void {
   if (!cfg?.enabled || transparent) return
   const { ctx, width: W, height: H } = rc
   const S = H / 720
-  const cell = Math.max(3, Math.round(Math.max(3, Math.min(14, cfg.dotSize)) * S))
-  const range = clamp01(cfg.dotRange)
-  const strength = clamp01(cfg.strength)
+  // Beat reactive: on a kick the print SATURATES — the shadow range widens
+  // (more of the picture gets dotted), the ink darkens and the dot grid
+  // tightens; between beats the print rests exactly as dialed in.
+  const beatOn = !!cfg.beatReactive
+  const punch = clamp01(cfg.beatStrength ?? 0.5)
+  const bass = clamp01(frame.bass)
+  const kick = beatOn ? punch * bass : 0 // 0..1 beat saturation amount
+  const cell = Math.max(
+    3,
+    Math.round(Math.max(3, Math.min(14, cfg.dotSize)) * S * (1 - 0.22 * kick)),
+  )
+  const range = Math.min(1, clamp01(cfg.dotRange) + 0.28 * kick)
+  const strength = Math.min(1, clamp01(cfg.strength) * beatBoost(cfg, bass, 0.5))
   if (range <= 0.001 || strength <= 0.001) return
 
   const diag = Math.ceil(Math.hypot(W, H))

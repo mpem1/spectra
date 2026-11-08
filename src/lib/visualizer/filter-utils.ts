@@ -30,6 +30,29 @@ export function frameSeed(time: number, fps: number): number {
   return Math.floor(time * fps)
 }
 
+/* ------------------------------ beat reactivity ------------------------------ */
+
+/**
+ * Beat-reactive boost shared by every full-frame filter ("React to beat" —
+ * the filter twin of the background's beat bounce / beat shake / blur pulse).
+ *
+ * Opt-in via `beatReactive`: OFF returns exactly 1, so the filter renders
+ * pixel-identical to before. ON, the multiplier rests at 1 while the song is
+ * quiet ("normal till the beat") and punches up to `1 + strength * maxKick`
+ * on a full low-end hit, driven by `frame.bass` — the same deterministic
+ * AudioFrame field the background beat features use, so the live preview and
+ * the offline export kick on the exact same frames.
+ */
+export function beatBoost(
+  cfg: { beatReactive?: boolean; beatStrength?: number } | undefined,
+  bass: number,
+  maxKick: number,
+): number {
+  if (!cfg?.beatReactive) return 1
+  const strength = clamp01(cfg.beatStrength ?? 0.5)
+  return 1 + strength * clamp01(bass) * maxKick
+}
+
 /* ------------------------------- work canvases ------------------------------- */
 
 /** Offscreen canvases shared by the new filters, addressed by name. */

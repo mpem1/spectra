@@ -2,6 +2,7 @@
 
 import type { LucideIcon } from 'lucide-react'
 import { Slider } from '@/components/ui/slider'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
 /** 11px uppercase micro-label used across all studio panels. */
@@ -175,6 +176,53 @@ export function SliderRow({
         disabled={disabled}
         className="py-1"
       />
+    </div>
+  )
+}
+
+/**
+ * "React to beat" switch + punch slider shared by every filter card — the
+ * filter twin of the background's beat bounce / beat shake / blur pulse.
+ * On = the filter rests at exactly the dialed-in look between kicks and
+ * punches harder while the song's low end hits; off = the plain, steady
+ * look (pixel-identical to the filter without the feature).
+ */
+export function BeatPunchRow({
+  on,
+  strength,
+  onToggle,
+  onStrength,
+  strengthLabel = 'Beat punch',
+}: {
+  on: boolean
+  strength: number
+  onToggle: (on: boolean) => void
+  onStrength: (v: number) => void
+  strengthLabel?: string
+}) {
+  return (
+    <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5">
+      <div className="flex h-5 items-center justify-between">
+        <MicroLabel className="text-zinc-400">React to beat</MicroLabel>
+        <Switch aria-label="React to beat" checked={on} onCheckedChange={onToggle} />
+      </div>
+      {on ? (
+        <>
+          <SliderRow
+            label={strengthLabel}
+            value={strength}
+            min={0}
+            max={1}
+            step={0.05}
+            onChange={onStrength}
+            format={(v) => `${Math.round(v * 100)}%`}
+          />
+          <p className="text-[10px] leading-snug text-zinc-600">
+            Stays exactly where you set it between kicks, punches harder on
+            every beat.
+          </p>
+        </>
+      ) : null}
     </div>
   )
 }

@@ -391,6 +391,11 @@ export interface ScreenFilterConfig {
   aberration: number
   /** Soft bloom/glow 0..1 (the picture's light bleeding like on a tube) */
   glow: number
+  /** React to beat — the color split and glow punch harder on the song's
+   *  low end; between beats the look stays exactly as dialed in */
+  beatReactive: boolean
+  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
 }
 
 /**
@@ -412,6 +417,13 @@ export interface VhsFilterConfig {
   trackingSpeed: number
   /** White dropout streaks 0..1 (density) */
   dust: number
+  /** React to beat — wobble, tracking and dropouts all punch harder on the
+   *  song's low end; between beats the tape plays exactly as dialed in.
+   *  Cadence (`trackingSpeed`) stays decoupled — the beat never changes
+   *  WHEN the band rolls, only how violent it looks while it does. */
+  beatReactive: boolean
+  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
 }
 
 /**
@@ -427,6 +439,11 @@ export interface FilmFilterConfig {
   dust: number
   /** Exposure flicker 0..1 (per-film-frame brightness wobble) */
   flicker: number
+  /** React to beat — scratches/dust darken and the lamp flares on the
+   *  song's low end; between beats the reel plays exactly as dialed in */
+  beatReactive: boolean
+  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
 }
 
 /**
@@ -444,6 +461,12 @@ export interface HalftoneFilterConfig {
   dotRange: number
   /** Dot ink strength 0..1 */
   strength: number
+  /** React to beat — the print saturates on the song's low end (more of
+   *  the picture gets dotted, ink darkens, the grid tightens); between
+   *  beats the print stays exactly as dialed in */
+  beatReactive: boolean
+  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
 }
 
 /**
@@ -464,6 +487,12 @@ export interface GlitchFilterConfig {
   /** Burst cadence 0..1 — how often corruption fires and how long bursts
    *  last; independent of the blocks/slices intensity */
   rate: number
+  /** React to beat — every kick forces a burst and punches the corruption
+   *  harder; between beats the picture plays exactly as dialed in. The
+   *  ambient schedule (`rate`) still runs underneath the beat hits. */
+  beatReactive: boolean
+  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
 }
 
 /**
@@ -479,8 +508,12 @@ export interface AnaglyphFilterConfig {
   enabled: boolean
   /** Parallax separation 0..1 — how far the red/cyan copies drift apart */
   depth: number
-  /** Beat reactivity 0..1 — how much the low end pushes the copies wider */
+  /** Beat reactivity 0..1 — how much the low end pushes the copies wider
+   *  (only active when beatReactive is on) */
   reactivity: number
+  /** React to beat — gates the low-end push: off = a fixed, steady
+   *  separation; on = the 3D pops on every kick and rests in between */
+  beatReactive: boolean
   /** Blend 0..1 — full anaglyph (1) vs mixed back toward the original (0) */
   strength: number
 }
@@ -838,6 +871,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     grille: 0.5,
     aberration: 0.3,
     glow: 0.3,
+    beatReactive: false,
+    beatStrength: 0.5,
   },
   vhsFilter: {
     enabled: false,
@@ -845,29 +880,38 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     tracking: 0.5,
     trackingSpeed: 0.5,
     dust: 0.4,
+    beatReactive: false,
+    beatStrength: 0.5,
   },
   filmFilter: {
     enabled: false,
     scratches: 0.5,
     dust: 0.5,
     flicker: 0.35,
+    beatReactive: false,
+    beatStrength: 0.5,
   },
   halftoneFilter: {
     enabled: false,
     dotSize: 6,
     dotRange: 0.55,
     strength: 0.9,
+    beatReactive: false,
+    beatStrength: 0.5,
   },
   glitchFilter: {
     enabled: false,
     blocks: 0.5,
     slices: 0.5,
     rate: 0.5,
+    beatReactive: false,
+    beatStrength: 0.5,
   },
   anaglyphFilter: {
     enabled: false,
     depth: 0.5,
     reactivity: 0.5,
+    beatReactive: false,
     strength: 1,
   },
   pulseImage: {

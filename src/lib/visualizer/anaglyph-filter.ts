@@ -10,8 +10,9 @@
  *
  *   depth      — base separation, the amount of 3D-ness
  *   reactivity — how much the song's low end pushes the copies apart, so
- *                the 3D pops on beats (frame.bass ships in AudioFrame, so
- *                the live preview and the offline exporter pop identically)
+ *                the 3D pops on beats (gated by beatReactive — off gives a
+ *                fixed, steady separation; frame.bass ships in AudioFrame,
+ *                so the live preview and the offline exporter pop identically)
  *   strength   — blend of the anaglyph back over the untouched picture
  *
  * The un-overlapped strips at the frame edges keep tinted content (red-only
@@ -56,10 +57,12 @@ export function drawAnaglyphFilter(
   if (depth <= 0.001 && reactivity <= 0.001) return
   if (strength <= 0.001) return
 
-  // Beat pop — the low end pushes the copies wider so the 3D breathes with
-  // the music. pop ranges 1× (silent) to ~2.2× (reactivity 1 + full bass).
+  // Beat pop — gated by the React-to-beat switch: off = the copies sit at a
+  // fixed separation (a steady glasses look); on = the low end pushes them
+  // wider so the 3D breathes with the music, popping ~2.2× at reactivity 1
+  // on a full hit and resting at the dialed-in depth between beats.
   const bass = clamp01(frame.bass)
-  const pop = 1 + reactivity * 1.2 * bass
+  const pop = cfg.beatReactive ? 1 + reactivity * 1.2 * bass : 1
   const sep = depth * 20 * S * pop // total red↔cyan separation in px
   const dx = Math.round(sep / 2) // each copy moves half the separation
   if (dx < 1) return

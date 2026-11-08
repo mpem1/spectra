@@ -4,13 +4,14 @@ import { Glasses } from 'lucide-react'
 import type { AnaglyphFilterConfig } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
-import { MicroLabel, SliderRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/studio/controls'
 
 /**
  * 3D glasses filter card — the old-school paper anaglyph look: the whole
  * picture is re-projected twice, once through red and once through cyan,
- * shifted apart so every edge wears classic red/blue fringes that pop with
- * the beat. Baked into every export; skipped on transparent backgrounds.
+ * shifted apart so every edge wears classic red/blue fringes. React to
+ * beat makes the fringes pop wider on every kick. Baked into every export;
+ * skipped on transparent backgrounds.
  */
 export function AnaglyphFilterSection() {
   const filter = useStudioStore((s) => s.config.anaglyphFilter)
@@ -40,6 +41,13 @@ export function AnaglyphFilterSection() {
 
       {filter.enabled ? (
         <>
+          <BeatPunchRow
+            on={filter.beatReactive}
+            strength={filter.reactivity}
+            onToggle={(beatReactive) => patchAnaglyphFilter({ beatReactive })}
+            onStrength={(reactivity) => patchAnaglyphFilter({ reactivity })}
+            strengthLabel="Beat pop"
+          />
           <SliderRow
             label="Depth"
             value={filter.depth}
@@ -47,15 +55,6 @@ export function AnaglyphFilterSection() {
             max={1}
             step={0.05}
             onChange={set('depth')}
-            format={(v) => `${Math.round(v * 100)}%`}
-          />
-          <SliderRow
-            label="Beat pop"
-            value={filter.reactivity}
-            min={0}
-            max={1}
-            step={0.05}
-            onChange={set('reactivity')}
             format={(v) => `${Math.round(v * 100)}%`}
           />
           <SliderRow
@@ -69,9 +68,9 @@ export function AnaglyphFilterSection() {
           />
           <p className="text-[10px] leading-snug text-zinc-600">
             Depth sets how far apart the red/cyan layers sit, Beat pop pushes
-            them wider on the song&apos;s low end, and Mix blends the glasses
-            look back toward the untouched picture. Skipped on transparent
-            backgrounds so alpha recordings stay clean.
+            them wider on the song&apos;s low end when React to beat is on,
+            and Mix blends the glasses look back toward the untouched picture.
+            Skipped on transparent backgrounds so alpha recordings stay clean.
           </p>
         </>
       ) : null}

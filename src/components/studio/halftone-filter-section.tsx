@@ -4,7 +4,7 @@ import { Newspaper } from 'lucide-react'
 import type { HalftoneFilterConfig } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
-import { MicroLabel, SliderRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/studio/controls'
 
 /**
  * Halftone filter card — newspaper print: darker tones turn into black
@@ -40,6 +40,12 @@ export function HalftoneFilterSection() {
 
       {filter.enabled ? (
         <>
+          <BeatPunchRow
+            on={filter.beatReactive}
+            strength={filter.beatStrength}
+            onToggle={(beatReactive) => patchHalftoneFilter({ beatReactive })}
+            onStrength={(beatStrength) => patchHalftoneFilter({ beatStrength })}
+          />
           <SliderRow
             label="Dot size"
             value={filter.dotSize}

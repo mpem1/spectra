@@ -4,7 +4,7 @@ import { Film } from 'lucide-react'
 import type { FilmFilterConfig } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
-import { MicroLabel, SliderRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/studio/controls'
 
 /**
  * Film filter card — old school film reel: vertical emulsion scratches,
@@ -39,6 +39,12 @@ export function FilmFilterSection() {
 
       {filter.enabled ? (
         <>
+          <BeatPunchRow
+            on={filter.beatReactive}
+            strength={filter.beatStrength}
+            onToggle={(beatReactive) => patchFilmFilter({ beatReactive })}
+            onStrength={(beatStrength) => patchFilmFilter({ beatStrength })}
+          />
           <SliderRow
             label="Scratches"
             value={filter.scratches}
