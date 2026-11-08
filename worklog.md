@@ -1763,3 +1763,18 @@ Work Log:
 
 Stage Summary:
 - The Glitch filter corrupts again — and 3D glasses survives stacking with it. The whole regression was one missing `beatBoost` import from the beat-react commit: enabled glitch threw every frame before drawing a pixel (beat switch irrelevant), which also silently cut the render chain short of the anaglyph pass. One-line fix, verified headlessly and in the browser, 0 page errors.
+
+Task ID: 75
+Agent: Z.ai Code (main)
+Task: Glitch bursts were right-side heavy — mirror the color bars so corruption sits balanced
+User: "glitch effect seems to be right side heavy with effect"
+
+Work Log:
+- Root cause found in the color-bar branch of glitch-filter.ts: every raw bar anchored at a hashed start in the LEFT half and ran off the RIGHT edge (fillRect(bx, y, W - bx, h), bx ∈ [0, W/2]). A point on the right half was therefore covered by EVERY bar while left-half coverage tapered to zero at x=0 — bursts leaned right by construction. Displaced slices (dx symmetric ±70px·S) and blocks (uniform destinations) were already balanced; the bars were the whole bias.
+- Fix: mirror the bar geometry 50/50 with a deterministic direction hash — right-runners unchanged ([off, W), off ∈ [0, W/2]); left-runners run off the LEFT edge ending at W - off (fillRect(0, y, W - off, h)). Both variants have identical length distributions, always reach the center, and each edge is covered by exactly half the bars. Still fully deterministic (hash01(i, seed+73) direction bit, offset untouched at seed+71; no collisions with any other hash offset) so preview/export stay frame-exact. The broken-signal look is unchanged — bars still streak off an edge, now off either edge.
+- Verified three ways: (1) headless harness on the REAL filter source — 16,747 bars over 6,000 seeds at rate 1, per-decile coverage [10060, 11719, 13413, 15163, 16743 | 16742, 15081, 13400, 11702, 10043]: L:R = 1.002, mirrored decile pairs within 0.2% (the old geometry measured ~3:1 at the edges); (2) live preview pixel scan with the Mono visualizer preset + solid near-black background (chromatic-only detector after discovering the default gradient's orange stop reads as "yellow" and bass-heavy test tracks pile tall bars on the left — a measurement trap, not a real bias): artifact distribution now arches symmetrically around the center instead of stacking right; (3) visual: magenta blocks hard left, cyan bar off the left edge, green bars off the right, tears across the full width.
+- Measurement notes for later: strict-hue glitch detectors must exclude the visualizer palette (orange fails a naive yellow test; glow cores read white); paused-frame scans are statistically useless for L/R balance (one frozen 15fps seed; all-3-bars-one-direction has ~12% chance) — sweep playing time or go headless.
+- lint 0 errors (27 known vendored warnings); tsc filtered to src/lib/visualizer shows only the pre-existing types.ts:735 BackgroundConfig/videoSrc quirk (present on HEAD, unrelated).
+
+Stage Summary:
+- Glitch bursts no longer pile onto the right side of the picture: the raw color bars now streak off either edge 50/50 (deterministically hashed, exports frame-exact), so the corruption sits balanced across the frame while the broken-video-signal look stays exactly as it was.

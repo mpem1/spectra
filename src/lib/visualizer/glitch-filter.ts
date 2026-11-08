@@ -83,13 +83,21 @@ export function drawGlitchFilter(
         const dx = Math.round((hash01(i, seed + 59) - 0.5) * 2 * 70 * S * slices)
         if (dx !== 0) ctx.drawImage(snap, 0, y, W, h, dx, y, W, h)
       } else {
-        // Raw color bar — a strip of pure signal corruption, shifted to a
-        // hashed start and running off the right edge.
+        // Raw color bar — a strip of pure signal corruption streaking off
+        // one edge: half run off the RIGHT (hashed start in the left half),
+        // half MIRROR off the LEFT (hashed end in the right half), so bursts
+        // sit balanced instead of piling every bar onto the right side.
         const alpha = (0.35 + hash01(i, seed + 61) * 0.5) * (0.3 + 0.7 * slices)
         ctx.globalAlpha = alpha
         ctx.fillStyle = PALETTE[Math.floor(hash01(i, seed + 67) * PALETTE.length)]
-        const bx = Math.round(hash01(i, seed + 71) * W * 0.5)
-        ctx.fillRect(bx, y, W - bx, h)
+        const off = Math.round(hash01(i, seed + 71) * W * 0.5)
+        if (hash01(i, seed + 73) < 0.5) {
+          // Anchored at `off`, running off the RIGHT edge.
+          ctx.fillRect(off, y, W - off, h)
+        } else {
+          // Mirrored: runs off the LEFT edge, ending at W - off.
+          ctx.fillRect(0, y, W - off, h)
+        }
         ctx.globalAlpha = 1
       }
     }
