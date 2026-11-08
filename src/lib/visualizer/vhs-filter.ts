@@ -7,9 +7,13 @@
  *      horizontal offset: a slow sine wave drifts the whole picture while a
  *      per-band hash jitter shimmers at 24 "tape fps". Rare hash-chosen bands
  *      jump far (flagging), the big tear you see on damaged tapes.
- *   2. Tracking — a noisy horizontal band rolls up the frame; inside it rows
- *      are displaced hard and mixed with light/dark noise streaks, like the
- *      bottom-of-tape head clog line on a VCR.
+ *   2. Tracking — a noisy horizontal band rolls through the frame; inside it
+ *      rows are displaced hard and mixed with light/dark noise streaks, like
+ *      the bottom-of-tape head clog line on a VCR. Intensity (`tracking`) and
+ *      cadence (`trackingSpeed`) are separate dials: intensity sets band
+ *      thickness/noise, speed sets how often a pass happens and how fast it
+ *      sweeps. At speed 1 the band rolls continuously; below that the tape
+ *      "behaves" between passes and the band is parked off-screen.
  *   3. Dust — white dropout streaks (thin horizontal dashes) that pop in and
  *      out on a ~9 fps seed, exactly how tape dropouts flicker.
  *
@@ -32,6 +36,7 @@ export function drawVhsFilter(
   const S = H / 720
   const wobble = clamp01(cfg.wobble)
   const tracking = clamp01(cfg.tracking)
+  const trackingSpeed = clamp01(cfg.trackingSpeed ?? 0.5)
   const dust = clamp01(cfg.dust)
 
   ctx.save()
@@ -68,10 +73,22 @@ export function drawVhsFilter(
 
   /* -------------------------------- tracking -------------------------------- */
   if (tracking > 0.001) {
+    // Cadence comes from trackingSpeed alone: `rate` is the sweep speed while
+    // a pass is happening, `duty` is the fraction of time a pass occupies.
+    // speed 1 → duty 1 → continuous roll (old max feel); lower speeds park
+    // the band off-screen between passes so it shows up rarely but just as
+    // strong — lowering speed never weakens the look.
+    const rate = 0.3 + 0.5 * trackingSpeed // cycles/s mid-pass (0.3..0.8)
+    const duty = 0.05 + 0.95 * trackingSpeed ** 1.5 // time share of a pass
     const bandPx = Math.round((16 + 26 * tracking) * S)
-    const cycle = H + bandPx * 2
-    const t = ((frame.time * (0.22 + 0.45 * tracking)) % 1) * cycle
-    const by = Math.round(t - bandPx) // top edge of the rolling band
+    const range = H + bandPx * 2
+    const passDur = 1 / rate
+    const period = passDur / duty
+    const local = frame.time % period
+    const by =
+      local < passDur
+        ? Math.round((local / passDur) * range - bandPx) // top edge mid-pass
+        : H + bandPx // resting — parked just below the frame
     const seed = frameSeed(frame.time, 30)
     const rowH = Math.max(2, Math.round(2.5 * S))
     const rows = Math.ceil(bandPx / rowH)

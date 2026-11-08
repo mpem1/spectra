@@ -403,8 +403,13 @@ export interface VhsFilterConfig {
   enabled: boolean
   /** Horizontal line wobble 0..1 (slow wave + per-band tape jitter) */
   wobble: number
-  /** Rolling tracking-noise band 0..1 (position + noise scale with it) */
+  /** Tracking-noise band intensity 0..1 (band thickness + noise strength) */
   tracking: number
+  /** Tracking band cadence 0..1 — how often a pass rolls through and how
+   *  fast it sweeps; independent of `tracking` so the band can stay strong
+   *  while appearing rarely. 1 = rolls continuously, lower = the tape
+   *  behaves for a while between passes. */
+  trackingSpeed: number
   /** White dropout streaks 0..1 (density) */
   dust: number
 }
@@ -795,6 +800,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     enabled: false,
     wobble: 0.5,
     tracking: 0.5,
+    trackingSpeed: 0.5,
     dust: 0.4,
   },
   filmFilter: {

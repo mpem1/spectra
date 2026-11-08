@@ -1676,3 +1676,18 @@ Work Log:
 
 Stage Summary:
 - The Filters tab now holds four full-frame looks: CRT, VHS tape (wobble + rolling tracking band + dropout dust), film reel (wandering scratches + dust & hairs + exposure flicker) and halftone print with the requested shadow-only mode (Shadow range slider decides how dark a tone must be before it becomes a newspaper dot; lighter areas stay intact). Everything is hashed from song time — fully deterministic, baked identically into every export, and transparent backgrounds skip the chain.
+
+Task ID: 71
+Agent: Z.ai Code (main)
+Task: Decouple VHS tracking speed from tracking intensity
+User: "vhs tracking tab speed should be separate from the intensity cause i feel its on screen too frequent but lowering it i cant see it"
+
+Work Log:
+- Root cause confirmed in vhs-filter.ts: the single `tracking` slider drove band thickness (16+26·tracking px·S), noise strength (displacement ±22px·S·tracking, 70·tracking streaks) AND the roll rate (0.22+0.45·tracking cycles/s) — lowering it to make the band rarer also shrank/weakened it into invisibility. Exactly the reported behavior.
+- Fix: new independent `trackingSpeed` (0..1, default 0.5) in VhsFilterConfig + DEFAULT_STUDIO_CONFIG; setConfig's merge-over-defaults means old saves/share links pick it up automatically at the default. Renderer cadence: rate = 0.3+0.5·speed cycles/s mid-pass, duty = 0.05+0.95·speed^1.5 (fraction of time a pass occupies), band position = (time mod period)/passDur across the frame while local < passDur, parked just below the frame between passes. Speed 1 → duty 1 → continuous roll (old max feel); the Tracking slider now controls only thickness/noise. `?? 0.5` guard for raw configs. Deterministic: only frame.time + config, no Math.random/Date.now — exports stay frame-exact.
+- UI: "Tracking speed" slider added between Tracking and Dust in the VHS card; README VHS bullet updated (speed = how often the band rolls through, without weakening it).
+- lint 0 errors (27 known vendored warnings). Browser E2E (desktop 1280, preview 838×471, Tracking=1/Wobble=0/Dust=0 driven through the real sliders, temporal row-diff with 25-row sliding window): speed 100% — band present 10/10 samples, window peaks 11–22.6 (continuous); speed 50% — pass visible as a downward-moving stripe y=95→242→391 at ~290px/s (matches predicted range/passDur), peaks 9.3–17.1; speed 20% — ~11s of clean tape (peaks at grain level 2.1–4.8) then a full sweep y=30→353, peaks 8.5–16.7 — same strength as high speeds, proving intensity is untouched by speed. Cadence at 20% ≈ 13s period matches the mapping. 0 page errors. Mobile 390px: 4 sliders, no tab-bar/document overflow. Screenshots: /tmp/t71-desktop-card.png (band mid-sweep over the bars), /tmp/t71-mobile-card.png.
+- Note: the idle preview with no track loaded is a frozen frame (transport clock at t=0 → the band starts parked above the frame); pressed Play (silent clock) to exercise the time-driven path during E2E.
+
+Stage Summary:
+- The VHS tracking band's strength and its cadence are now separate dials: Tracking keeps the band exactly as strong as you like it while Tracking speed decides how often it rolls through (100% = continuous like before, lower = the tape behaves between passes but every pass is just as visible). Old saved projects pick the new dial up at its 50% default.

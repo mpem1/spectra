@@ -59,6 +59,15 @@ export function VhsFilterSection() {
             format={(v) => `${Math.round(v * 100)}%`}
           />
           <SliderRow
+            label="Tracking speed"
+            value={filter.trackingSpeed}
+            min={0}
+            max={1}
+            step={0.05}
+            onChange={set('trackingSpeed')}
+            format={(v) => `${Math.round(v * 100)}%`}
+          />
+          <SliderRow
             label="Dust"
             value={filter.dust}
             min={0}

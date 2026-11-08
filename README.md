@@ -66,7 +66,9 @@ or cassette, everything. Here are some of them, wearing real album art:
   Skipped on transparent backgrounds so alpha recordings stay clean.
 - **VHS tape filter** — worn-out tape look: wavy line wobble, a rolling
   tracking-noise band and white dropout specks over the whole picture, with
-  sliders for wobble, tracking and dust.
+  sliders for wobble, tracking (band strength), tracking speed (how often
+  the band rolls through — lower it and the tape behaves between passes,
+  without weakening the band) and dust.
 - **Film reel filter** — old school film: vertical emulsion scratches that
   wander every few seconds, dust and hairs, and a gentle exposure flicker,
   with sliders for scratches, dust and flicker.
