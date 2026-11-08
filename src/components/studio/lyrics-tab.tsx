@@ -1,11 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlignLeft, Captions, Copy, Heading1, Loader2, Palette, Plus, Timer, Trash2, Type, Upload, X } from 'lucide-react'
+import { AlignLeft, AudioLines, Captions, Copy, Heading1, Loader2, Palette, Plus, Square, Timer, Trash2, Type, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CustomFontConfig, LyricLine } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
-import { getPreviewControls } from '@/components/studio/engine-registry'
+import { getEngine, getPreviewControls } from '@/components/studio/engine-registry'
+import { DetectCancelled, detectLyricsFromBuffer, estimateWindowCount } from '@/lib/transcribe/detect'
+import type { DetectHandle } from '@/lib/transcribe/detect'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -280,6 +282,12 @@ export function LyricsTab() {
   const [justAdded, setJustAdded] = useState<number | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
 
+  // Auto-detect: 'idle' → 'model' (downloading) → 'listening' (transcribing) → 'idle'.
+  const [detectPhase, setDetectPhase] = useState<'idle' | 'model' | 'listening'>('idle')
+  const [detectModel, setDetectModel] = useState({ file: '', progress: 0 })
+  const [detectListen, setDetectListen] = useState({ window: 0, totalWindows: 1, lines: 0 })
+  const detectHandleRef = useRef<DetectHandle | null>(null)
+
   // Title start-time text: editable mirror of config.title.startTime with the
   // same render-phase re-seed pattern as LyricRow's time field.
   const [titleStartText, setTitleStartText] = useState(() => formatTimeInput(title.startTime))
@@ -344,6 +352,74 @@ export function LyricsTab() {
 
   const setLine = (index: number, partial: Partial<LyricLine>) => {
     patchLyrics({ lines: lyrics.lines.map((l, i) => (i === index ? { ...l, ...partial } : l)) })
+  }
+
+  /** Runs the on-device Whisper transcription and writes the result into Lines. */
+  const handleDetectLyrics = () => {
+    if (detectPhase !== 'idle') return
+    const engineBuffer = getEngine()?.audioBuffer
+    if (!engineBuffer) {
+      toast.error('No song loaded', {
+        description: 'Drop an audio file on the canvas (or use the player bar) first.',
+      })
+      return
+    }
+    const hadLines = lyrics.lines.length > 0
+    setDetectPhase('model')
+    setDetectModel({ file: '', progress: 0 })
+    setDetectListen({
+      window: 0,
+      totalWindows: estimateWindowCount(engineBuffer.duration),
+      lines: 0,
+    })
+    const handle = detectLyricsFromBuffer(engineBuffer, (progress) => {
+      if (progress.phase === 'model') {
+        setDetectModel({ file: progress.file ?? '', progress: progress.modelProgress ?? 0 })
+      } else {
+        setDetectPhase('listening')
+        setDetectListen({
+          window: progress.window ?? 0,
+          totalWindows: progress.totalWindows ?? 1,
+          lines: progress.partialLines?.length ?? 0,
+        })
+      }
+    })
+    detectHandleRef.current = handle
+    handle.promise
+      .then((lines) => {
+        if (lines.length === 0) {
+          toast.warning('No words detected', {
+            description: 'The song may be instrumental — nothing was added.',
+          })
+          return
+        }
+        patchLyrics({ lines, enabled: true })
+        lastImportedRef.current = ''
+        setSelected(null)
+        toast.success('Lyrics detected', {
+          description: `${lines.length} ${lines.length === 1 ? 'line' : 'lines'} written${
+            hadLines ? ' (replaced the previous set)' : ''
+          } — play the song to check the sync.`,
+        })
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DetectCancelled) {
+          toast.info('Lyrics detection stopped')
+          return
+        }
+        toast.error('Lyrics detection failed', {
+          description: err instanceof Error ? err.message : 'Something went wrong while listening.',
+        })
+      })
+      .finally(() => {
+        detectHandleRef.current = null
+        setDetectPhase('idle')
+      })
+  }
+
+  const stopDetectLyrics = () => {
+    detectHandleRef.current?.cancel()
+    detectHandleRef.current = null
   }
 
   /** Appends an empty row after the last line (or at the playhead for the first). */
@@ -486,6 +562,81 @@ export function LyricsTab() {
             Distribute evenly
           </Button>
         </div>
+      </section>
+
+      {/* Auto-detect from song */}
+      <section className={sectionShell('cyan', 'space-y-2')}>
+        <SectionTitle icon={AudioLines} accent="cyan">
+          Auto-detect from song
+        </SectionTitle>
+        <p className="text-[11px] leading-snug text-zinc-600">
+          Lets an on-device voice model listen to the loaded song and write the words it hears
+          into Lines — each with its own timestamp. Runs entirely in your browser, so the audio
+          never leaves your device. First use downloads the model (~80 MB); after that it is
+          cached. Heavy backing tracks can blur the words, so give the result a listen.
+        </p>
+        {!audioMeta ? (
+          <p className="rounded-lg border border-dashed border-zinc-800 p-3 text-center text-[11px] text-zinc-600">
+            Load a song first — drop any audio file on the canvas or use the player bar.
+          </p>
+        ) : detectPhase === 'idle' ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 w-full border-zinc-800 hover:border-cyan-500/60 hover:text-cyan-300"
+            onClick={handleDetectLyrics}
+          >
+            <AudioLines className="size-4" />
+            {lyrics.lines.length > 0
+              ? `Re-detect lyrics (replaces ${lyrics.lines.length} ${lyrics.lines.length === 1 ? 'line' : 'lines'})`
+              : 'Detect lyrics from song'}
+          </Button>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-400">
+              <span className="min-w-0 flex-1 truncate">
+                {detectPhase === 'model'
+                  ? `Getting the voice model ready${detectModel.file ? ` — ${detectModel.file}` : ''}…`
+                  : `Listening… window ${detectListen.window} of ${detectListen.totalWindows} — ${detectListen.lines} ${detectListen.lines === 1 ? 'line' : 'lines'} so far`}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 shrink-0 gap-1 rounded-md border-zinc-800 px-2 text-[11px] hover:border-rose-500/60 hover:text-rose-400"
+                onClick={stopDetectLyrics}
+              >
+                <Square className="size-3" /> Stop
+              </Button>
+            </div>
+            {(() => {
+              const pct =
+                detectPhase === 'model'
+                  ? Math.max(2, Math.min(100, Math.round(detectModel.progress)))
+                  : Math.max(
+                      4,
+                      Math.min(
+                        100,
+                        Math.round((detectListen.window / Math.max(1, detectListen.totalWindows)) * 100),
+                      ),
+                    )
+              return (
+                <div
+                  className="h-1.5 overflow-hidden rounded-full bg-zinc-800"
+                  role="progressbar"
+                  aria-label="Lyrics detection progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={pct}
+                >
+                  <div
+                    className="h-full rounded-full bg-cyan-500 transition-[width] duration-300"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              )
+            })()}
+          </div>
+        )}
       </section>
 
       {/* Parsed lines */}
