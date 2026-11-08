@@ -1,19 +1,23 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { Bookmark, Captions, Download, SlidersHorizontal } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useStudioStore, type StudioTab } from '@/store/studio'
 import { StyleTab } from '@/components/studio/style-tab'
+import { FiltersTab } from '@/components/studio/filters-tab'
 import { LyricsTab } from '@/components/studio/lyrics-tab'
 import { ExportTab } from '@/components/studio/export-tab'
 import { PresetsTab } from '@/components/studio/presets-tab'
 
-const TABS: { id: StudioTab; label: string; icon: typeof SlidersHorizontal }[] = [
-  { id: 'style', label: 'Style', icon: SlidersHorizontal },
-  { id: 'lyrics', label: 'Lyrics', icon: Captions },
-  { id: 'export', label: 'Export', icon: Download },
-  { id: 'presets', label: 'Presets', icon: Bookmark },
+// Text-only triggers: five labels still fit the 360px panel, while icon+label
+// pairs would overflow the grid at this density (worst case "Filters" ≈ 59px
+// text-only vs ~73px with an icon).
+const TABS: { id: StudioTab; label: string }[] = [
+  { id: 'style', label: 'Style' },
+  { id: 'filters', label: 'Filters' },
+  { id: 'lyrics', label: 'Lyrics' },
+  { id: 'export', label: 'Export' },
+  { id: 'presets', label: 'Presets' },
 ]
 
 export function ControlPanel() {
@@ -34,14 +38,13 @@ export function ControlPanel() {
           onValueChange={(value) => setActiveTab(value as StudioTab)}
           className="flex min-h-0 flex-1 flex-col gap-3"
         >
-          <TabsList className="grid w-full shrink-0 grid-cols-4 bg-zinc-950/70 p-1">
+          <TabsList className="grid w-full shrink-0 grid-cols-5 bg-zinc-950/70 p-1">
             {TABS.map((tab) => (
               <TabsTrigger
                 key={tab.id}
                 value={tab.id}
-                className="gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 data-[state=active]:bg-emerald-500 data-[state=active]:text-zinc-950 data-[state=active]:font-semibold data-[state=active]:hover:text-zinc-950 dark:data-[state=active]:bg-emerald-500 dark:data-[state=active]:text-zinc-950"
+                className="text-xs text-zinc-400 hover:text-zinc-200 data-[state=active]:bg-emerald-500 data-[state=active]:text-zinc-950 data-[state=active]:font-semibold data-[state=active]:hover:text-zinc-950 dark:data-[state=active]:bg-emerald-500 dark:data-[state=active]:text-zinc-950"
               >
-                <tab.icon className="size-3.5" aria-hidden />
                 {tab.label}
               </TabsTrigger>
             ))}
@@ -52,6 +55,9 @@ export function ControlPanel() {
           >
             <TabsContent value="style">
               <StyleTab />
+            </TabsContent>
+            <TabsContent value="filters">
+              <FiltersTab />
             </TabsContent>
             <TabsContent value="lyrics">
               <LyricsTab />

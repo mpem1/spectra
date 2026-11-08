@@ -25,7 +25,7 @@ import { getEngine, getPreviewControls } from '@/components/studio/engine-regist
 import { getPreviewCanvas } from '@/components/studio/canvas-registry'
 import { toast } from 'sonner'
 
-export type StudioTab = 'style' | 'lyrics' | 'export' | 'presets'
+export type StudioTab = 'style' | 'filters' | 'lyrics' | 'export' | 'presets'
 
 export interface AudioMeta {
   name: string

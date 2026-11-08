@@ -1642,3 +1642,18 @@ Work Log:
 
 Stage Summary:
 - Shipped the Screen filter framework + the CRT look: scanlines, RGB phosphor mask, chromatic aberration and bloom drawn over the ENTIRE composed frame (watermark included), fully deterministic so every export bakes it identically, with a five-slider control section in the Style tab; transparent backgrounds skip the filter to keep alpha recordings clean. More filter looks (VHS, dust/scratches, …) can now slot into the same pass.
+
+Task ID: 69
+Agent: Z.ai Code (main)
+Task: Give the screen filters their own home — new "Filters" tab next to Style
+User: "so im thinking of multiple filters so we either need a different tab near style and lyrics or keep scrolling far down for these different filters?"
+
+Work Log:
+- Recommendation: dedicated tab over a longer Style scroll. Style was already the longest tab (visualizer, gradient, shape & motion, layout, background, vinyl, pulse image, watermark); every future filter would have pushed the CRT card further down. A Filters tab makes each filter a one-click, self-contained card and scales horizontally as more looks are added — especially on phones where long scrolls hurt most.
+- Store: StudioTab union extended with 'filters' (only other programmatic jump is activeTab:'export', unaffected). New src/components/studio/filters-tab.tsx — one-sentence plain-language intro ("finishing looks drawn over the whole picture… baked into every export") + the existing ScreenFilterSection card; future filters slot in as additional cards.
+- Control panel: TABS gained { id:'filters', label:'Filters' } between Style and Lyrics, TabsList grid-cols-4 → grid-cols-5, added the Filters TabsContent. Tab bar switched from icon+label to text-only triggers: at 360px panel width, five icon+label tabs measure ~73px each against ~65px cells (overflow), while text-only tops out at ~59px — labels are the part users actually read. Checked all setActiveTab call sites before the change.
+- Style tab: ScreenFilterSection import + render removed; the tab now ends at the watermark. Rendering pipeline untouched (config, screen-filter.ts, renderFrame all unchanged — this is a pure UI move).
+- lint 0 errors (27 known vendored warnings). Browser E2E desktop 1280px: 5 triggers all 63px with scrollWidth==clientWidth (no internal or bar overflow); Filters tab activates, hosts the Screen filter card; Style tab no longer contains it (last section = watermark). Golden path re-verified from the new home: toggling the filter moves adjacent-row brightness diff 0.68 → 16.21 (scanline signature) and back to 0.68 on toggle-off, matching Task 68's numbers. Mobile 390px: same 63px tabs, barOverflow/docOverflow both false, card fully visible. Screenshots: /tmp/filters-tab-desktop.png, /tmp/filters-tab-mobile.png. 0 page errors.
+
+Stage Summary:
+- The panel now has five tabs — Style, Filters, Lyrics, Export, Presets — and the CRT screen filter lives in its own Filters tab as the first filter card, one click away instead of a long scroll. New filter looks slot in as additional cards with zero extra plumbing.

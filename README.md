@@ -60,8 +60,9 @@ or cassette, everything. Here are some of them, wearing real album art:
   above lyrics/titles and baked into every MP4/PNG export.
 - **Screen filter** — plays the whole picture on a virtual CRT: scanlines, an
   RGB phosphor mask, chromatic aberration and a soft glow drawn over
-  everything (watermark included) and baked into every export, with sliders
-  for mask size, scanline strength, mask strength, color split and glow.
+  everything (watermark included) and baked into every export. Lives in its
+  own **Filters** tab, with sliders for mask size, scanline strength, mask
+  strength, color split and glow.
   Skipped on transparent backgrounds so alpha recordings stay clean.
 - **Project files** — download the entire setup (every uploaded image
   included, no size cap) as a `.spectra` file and reopen it anywhere; share
