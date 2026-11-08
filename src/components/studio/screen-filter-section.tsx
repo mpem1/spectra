@@ -45,6 +45,7 @@ export function ScreenFilterSection() {
             strength={filter.beatStrength}
             onToggle={(beatReactive) => patchScreenFilter({ beatReactive })}
             onStrength={(beatStrength) => patchScreenFilter({ beatStrength })}
+            strengthLabel="Beat pop"
           />
           <SliderRow
             label="Mask size"

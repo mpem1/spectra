@@ -45,6 +45,7 @@ export function VhsFilterSection() {
             strength={filter.beatStrength}
             onToggle={(beatReactive) => patchVhsFilter({ beatReactive })}
             onStrength={(beatStrength) => patchVhsFilter({ beatStrength })}
+            strengthLabel="Beat pop"
           />
           <SliderRow
             label="Wobble"

@@ -45,6 +45,7 @@ export function HalftoneFilterSection() {
             strength={filter.beatStrength}
             onToggle={(beatReactive) => patchHalftoneFilter({ beatReactive })}
             onStrength={(beatStrength) => patchHalftoneFilter({ beatStrength })}
+            strengthLabel="Beat pop"
           />
           <SliderRow
             label="Dot size"

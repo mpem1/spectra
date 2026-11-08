@@ -32,7 +32,7 @@ export function drawFilmFilter(
   const punch = clamp01(cfg.beatStrength ?? 0.5)
   const bass = clamp01(frame.bass)
   const boost = beatBoost(cfg, bass, 1.2)
-  const flash = beatOn ? 0.16 * punch * bass : 0 // warm lamp lift on the kick
+  const flash = beatOn ? 0.22 * punch * bass : 0 // warm lamp lift on the kick
   const scratches = Math.min(1, clamp01(cfg.scratches) * boost)
   const dust = Math.min(1, clamp01(cfg.dust) * boost)
   const flicker = Math.min(1, clamp01(cfg.flicker) * boost)

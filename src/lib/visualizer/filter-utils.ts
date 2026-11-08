@@ -53,6 +53,22 @@ export function beatBoost(
   return 1 + strength * clamp01(bass) * maxKick
 }
 
+/**
+ * Gated additive beat amount — the companion to `beatBoost`. Where boost
+ * MULTIPLIES a dial, `beatAmount` lets an effect ADD on top of the dialed-in
+ * look: 0 when "React to beat" is off (or the low end is silent), up to
+ * `strength` on a full kick. Additive reactions stay visible even when the
+ * base dial sits near zero (a CRT with no color split still splits on the
+ * beat), which a pure multiplier can never do.
+ */
+export function beatAmount(
+  cfg: { beatReactive?: boolean; beatStrength?: number } | undefined,
+  bass: number,
+): number {
+  if (!cfg?.beatReactive) return 0
+  return clamp01(cfg.beatStrength ?? 0.5) * clamp01(bass)
+}
+
 /* ------------------------------- work canvases ------------------------------- */
 
 /** Offscreen canvases shared by the new filters, addressed by name. */

@@ -37,6 +37,7 @@ export function drawHalftoneFilter(
   const punch = clamp01(cfg.beatStrength ?? 0.5)
   const bass = clamp01(frame.bass)
   const kick = beatOn ? punch * bass : 0 // 0..1 beat saturation amount
+  const press = 1 + 0.45 * kick // dots swell on the kick (ink stamps harder)
   const cell = Math.max(
     3,
     Math.round(Math.max(3, Math.min(14, cfg.dotSize)) * S * (1 - 0.22 * kick)),
@@ -88,7 +89,7 @@ export function drawHalftoneFilter(
       const lum = (0.2126 * data[k] + 0.7152 * data[k + 1] + 0.0722 * data[k + 2]) / 255
       if (lum >= range) continue // lighter than the threshold → untouched
       const depth = (range - lum) / range // 0 at threshold → 1 at pure black
-      const r = Math.sqrt(depth) * cellS * 0.72 // ink area grows with darkness
+      const r = Math.sqrt(depth) * cellS * 0.72 * press // ink area grows with darkness
       if (r < 0.4) continue
       const x = (i + 0.5 - n / 2) * cellS
       path.moveTo(x + r, y)

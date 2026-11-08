@@ -89,11 +89,12 @@ or cassette, everything. Here are some of them, wearing real album art:
   blends the look back toward the original picture.
 - **React to beat (every filter)** — a beat-sync switch on every filter card,
   the filter twin of the background's beat bounce / shake / blur pulse: on
-  beats the filter punches harder (CRT split+glow flare, VHS
-  wobble/tracking/dust kick, film artifacts darken with a lamp flare,
-  halftone print saturates, glitch bursts fire on the kick, 3D fringes pop
-  wider), and between beats the look rests exactly where the sliders set it.
-  A Beat punch slider dials how hard each kick hits; exports bake the
+  beats the filter punches harder (CRT split widens + glow flares + the
+  screen brightens, VHS wobble/tracking/dust kick with extra bands tearing
+  loose, film artifacts darken with a warm lamp flare, halftone print
+  saturates and the dots swell, glitch bursts fire on the kick, 3D fringes
+  pop wider), and between beats the look rests exactly where the sliders set
+  it. A Beat pop slider dials how hard each kick hits; exports bake the
   identical punches (the offline renderer reads the same deterministic bass
   envelope as the live preview).
 - **Project files** — download the entire setup (every uploaded image

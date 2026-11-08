@@ -1778,3 +1778,28 @@ Work Log:
 
 Stage Summary:
 - Glitch bursts no longer pile onto the right side of the picture: the raw color bars now streak off either edge 50/50 (deterministically hashed, exports frame-exact), so the corruption sits balanced across the frame while the broken-video-signal look stays exactly as it was.
+
+---
+
+Task ID: 76
+Agent: main orchestrator (Z.ai Code)
+Task: Make the filters' React-to-beat actually VISIBLE — CRT jolt rebuilt additive, glitch burst gate re-curved
+User: "lets work our way down and adjust the react to beats cause screen filter one doesnt seem to react to the beat"
+
+Work Log:
+- Diagnosis on the live design (Task 74/75 state): every filter multiplied its EXISTING dials by beatBoost (1 + strength·bass·maxKick). At defaults that is ~1.35× — the CRT's Color Split 0.3 → 0.41 equals ~1.4px more R/B split at 720p, imperceptible in motion, which is exactly the report ("screen filter one doesn't seem to react"). The math was on, the visibility wasn't.
+- Merged on top of origin/main (local beat-pop branch rebuilt as beatpop-backup-8f6ef29, then re-applied surgically so the deployed config shape — beatReactive toggle + beatStrength dial + shared BeatPunchRow control — and both glitch fixes stay intact).
+- filter-utils.ts: new `beatAmount(cfg, bass)` — the gated ADDITIVE companion to beatBoost: 0 with the switch off (pixel-identical look), up to `beatStrength` on a full kick. Additive reactions stay visible even when the base dial sits near zero, which a pure multiplier can never do.
+- screen-filter.ts (the reported one, rebuilt): dx = (aberration·3.5 + beat·2.2)·S — the split WIDENS PAST the dial up to +2.2px per full hit, so even Color Split 0 jolts on the beat; glow = glow + beat·0.4 (phosphor flare); NEW phosphor lift — a 'lighter' white fill at beat·0.09 drawn BEFORE the mask so the flash keeps its scanline structure (reads as the tube getting hit, not a strobe).
+- vhs-filter.ts: keeps the dial punch + adds the tape-jolt signature — flagging threshold 0.996 → 0.996−beat·0.045 (up to ~5% of bands tear loose on a full kick vs 0.4% at rest) with tear reach ·(wobble+beat·0.6), and a +beat·1.5px·S jitter floor so kicks stay visible even with Wobble parked at 0.
+- glitch-filter.ts: burst gate re-curved from the linear cliff `bass·punch > 0.28` to `punch·bass² > 0.08` — the engine's smoothed bass rarely tops ~0.65 even on hard kicks (measured in Task 74's E2E), so the linear gate only opened near full Beat punch; bass² fires reliably at the default 50%.
+- film-filter.ts: lamp flash coefficient 0.16 → 0.22 (0.11 alpha at default strength on a full kick — a clear warm pulse; the standalone-at-flicker-0 path from Task 74 is untouched).
+- halftone-filter.ts: added dot press swell — radius ×(1+0.45·kick) on top of the existing saturation (grid tighten + range widen).
+- UI: all five filter cards now label the dial "Beat pop" (matching the 3D glasses card the user already knows); README bullet updated to describe the per-filter reactions.
+- lint 0 errors (27 known vendored warnings). Browser E2E with the synthesized 48Hz kick track (120ms full-volume pulse every 0.5s, looped):
+  * Screen A/B pixel probe (background patch, 20ms sampling): React-to-beat OFF → span 0.01 (flat 7.0); ON at DEFAULT Beat pop 50% → span 3.63 (10.5↔14.1 pulsing with kicks). Visible at default, pixel-identical when off. CONCLUSIVE.
+  * Glitch at DEFAULT Beat pop 50% + Burst rate 0% (only beat hits can fire): ON → constant kick-synced corruption (magenta/green/yellow/white bars, displaced pixelated slices, gray blocks in every shot); OFF → clean picture in every shot. The old linear gate would have needed ~full strength to fire at all. CONCLUSIVE.
+  * Mobile 390px still clean (no overflow). 0 page errors.
+
+Stage Summary:
+- The React-to-beat switch now produces a reaction you can actually see at its default settings: the CRT jolts (split widens past the dial, glow flares, screen brightens through the scanlines), the VHS tears extra bands loose, the film lamp pulses warmer, halftone dots swell, and glitch bursts reliably fire with the kicks even at 50% Beat pop. Switch off still means pixel-for-pixel the plain filter.

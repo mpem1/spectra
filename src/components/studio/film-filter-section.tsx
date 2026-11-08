@@ -44,6 +44,7 @@ export function FilmFilterSection() {
             strength={filter.beatStrength}
             onToggle={(beatReactive) => patchFilmFilter({ beatReactive })}
             onStrength={(beatStrength) => patchFilmFilter({ beatStrength })}
+            strengthLabel="Beat pop"
           />
           <SliderRow
             label="Scratches"

@@ -47,6 +47,7 @@ export function GlitchFilterSection() {
             strength={filter.beatStrength}
             onToggle={(beatReactive) => patchGlitchFilter({ beatReactive })}
             onStrength={(beatStrength) => patchGlitchFilter({ beatStrength })}
+            strengthLabel="Beat pop"
           />
           <SliderRow
             label="Blocks"

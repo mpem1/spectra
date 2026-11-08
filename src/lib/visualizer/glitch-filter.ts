@@ -41,11 +41,15 @@ export function drawGlitchFilter(
   // punches the corruption harder; between beats the schedule and the
   // intensity rest exactly at the dialed-in values. `rate` still owns the
   // ambient cadence underneath the beat hits — they stack, not replace.
+  // The hit gate is punch · bass² (not a linear cliff): the engine's
+  // smoothed bass rarely tops ~0.65 even on hard kicks, and a linear gate
+  // at 0.28 only opens at full strength — bass² keeps the response on the
+  // kicks while still firing at lower Beat punch settings.
   const beatOn = !!cfg.beatReactive
   const punch = clamp01(cfg.beatStrength ?? 0.5)
   const bass = clamp01(frame.bass)
   const boost = beatBoost(cfg, bass, 1.3)
-  const beatHit = beatOn && bass * punch > 0.28
+  const beatHit = beatOn && punch * bass * bass > 0.08
   const blocks = Math.min(1, clamp01(cfg.blocks) * boost)
   const slices = Math.min(1, clamp01(cfg.slices) * boost)
   const rate = clamp01(cfg.rate ?? 0.5)

@@ -37,8 +37,12 @@ export function drawVhsFilter(
   // Beat reactive: wobble, tracking and dropouts punch harder on the low
   // end and rest exactly at the dialed-in look between beats. The band's
   // CADENCE (`trackingSpeed`) never moves — the beat only amplifies what
-  // is already on screen, it never reschedules the pass.
+  // is already on screen, it never reschedules the pass. On top of the
+  // dial punch, kicks add the tape-jolt signature: extra scan bands tear
+  // loose (flagging) and a jitter floor keeps the kick visible even with
+  // Wobble parked at 0.
   const boost = beatBoost(cfg, frame.bass, 1.3)
+  const beat = beatAmount(cfg, frame.bass)
   const wobble = Math.min(1, clamp01(cfg.wobble) * boost)
   const tracking = Math.min(1, clamp01(cfg.tracking) * boost)
   const trackingSpeed = clamp01(cfg.trackingSpeed ?? 0.5)
@@ -58,7 +62,8 @@ export function drawVhsFilter(
   const tapeFrame = frameSeed(frame.time, 24)
   const bandH = Math.max(2, Math.round(3 * S))
   const waveAmp = wobble * 7 * S
-  const jitAmp = wobble * 2.5 * S
+  // The + beat × 1.5px floor makes kicks visible even at Wobble 0.
+  const jitAmp = wobble * 2.5 * S + beat * 1.5 * S
   const bands = Math.ceil(H / bandH)
 
   // Base copy fills the strips that displaced bands vacate (sub-pixel ghost
@@ -68,9 +73,10 @@ export function drawVhsFilter(
     const y = b * bandH
     const wave = Math.sin(y * (2.2 / H) * Math.PI + frame.time * 1.7) * waveAmp
     let dx = wave + (hash01(b, tapeFrame) - 0.5) * 2 * jitAmp
-    // Rare flagging tear: ~0.4% of bands jump far for one tape frame.
-    if (hash01(b * 7 + 13, tapeFrame) > 0.996) {
-      dx += (hash01(b, tapeFrame + 5) - 0.5) * 26 * S * wobble
+    // Flagging tear: ~0.4% of bands jump far for one tape frame at rest —
+    // on a kick up to ~5% do, and the tear reaches further (tape jolt).
+    if (hash01(b * 7 + 13, tapeFrame) > 0.996 - beat * 0.045) {
+      dx += (hash01(b, tapeFrame + 5) - 0.5) * 26 * S * (wobble + beat * 0.6)
     }
     const rdx = Math.round(dx)
     if (rdx !== 0) ctx.drawImage(snap, 0, y, W, bandH, rdx, y, W, bandH)

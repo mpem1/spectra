@@ -23,7 +23,7 @@
  * surface, and alpha recordings must stay clean.
  */
 import type { AudioFrame, RenderContext, ScreenFilterConfig } from './types'
-import { beatBoost } from './filter-utils'
+import { beatAmount } from './filter-utils'
 
 function clamp(v: number, min: number, max: number): number {
   return v < min ? min : v > max ? max : v
@@ -150,8 +150,11 @@ function channelize(
  * background.mode === 'transparent' — the filter is skipped there so alpha
  * exports keep their clean channels.
  *
- * Beat reactive: when enabled, the color split and the bloom punch harder on
- * the song's low end and rest exactly at the dialed-in look between beats.
+ * Beat reactive: when enabled, every kick JOLTS the tube — the color split
+ * widens past the dial (additive, so a low Color Split setting still splits
+ * on the beat), the bloom flares and a phosphor lift brightens the screen
+ * before the mask, so the flash keeps its scanline structure. Between beats
+ * the look rests exactly at the dialed-in values.
  */
 export function drawScreenFilter(
   rc: RenderContext,
@@ -162,7 +165,9 @@ export function drawScreenFilter(
   if (!cfg?.enabled || transparent) return
   const { ctx, width: W, height: H } = rc
   const S = H / 720
-  const boost = beatBoost(cfg, frame.bass, 1.25)
+  // Additive beat amount — 0 with the switch off (pixel-identical look),
+  // up to `beatStrength` on a full kick.
+  const beat = beatAmount(cfg, frame.bass)
 
   ctx.save()
   ctx.globalAlpha = 1
@@ -170,8 +175,10 @@ export function drawScreenFilter(
 
   // 1) Chromatic aberration — snapshot the frame, isolate R/G/B, re-add them
   //    with the red and blue channels nudged apart. addColor('lighter')
-  //    sums the channels back into the full picture.
-  const dx = Math.round(clamp01(clamp01(cfg.aberration) * boost) * 3.5 * S)
+  //    sums the channels back into the full picture. On a kick the split
+  //    WIDENS past the dial (up to +2.2px more per full hit), so the tube
+  //    visibly jolts even at a low Color Split setting.
+  const dx = Math.round((clamp01(cfg.aberration) * 3.5 + beat * 2.2) * S)
   if (dx >= 1) {
     const snap = getWork(0, W, H)
     const sc = resetWork(snap.getContext('2d')!)
@@ -196,7 +203,8 @@ export function drawScreenFilter(
   }
 
   // 2) Bloom — a blurred additive copy of the (already aberrated) frame.
-  const glow = Math.min(1, clamp01(cfg.glow) * boost)
+  //    On a kick the phosphor glow flares: up to +0.4 extra bloom.
+  const glow = Math.min(1, clamp01(cfg.glow) + beat * 0.4)
   if (glow > 0.001 && 'filter' in ctx) {
     const bloom = getWork(4, W, H)
     const bc = resetWork(bloom.getContext('2d')!)
@@ -209,6 +217,18 @@ export function drawScreenFilter(
     ctx.drawImage(bloom, 0, 0)
     ctx.globalAlpha = 1
     ctx.globalCompositeOperation = 'source-over'
+  }
+
+  // 2b) Phosphor lift — drawn BEFORE the mask so the flare keeps the
+  //    scanline structure: the screen brightens like a tube hit with a hot
+  //    signal (up to +9% white on a full kick).
+  if (beat > 0.004) {
+    ctx.globalCompositeOperation = 'lighter'
+    ctx.globalAlpha = beat * 0.09
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, W, H)
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.globalAlpha = 1
   }
 
   // 3) Phosphor mask — scanlines + RGB grille in a single multiply fill.

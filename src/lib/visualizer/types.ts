@@ -391,8 +391,10 @@ export interface ScreenFilterConfig {
   aberration: number
   /** Soft bloom/glow 0..1 (the picture's light bleeding like on a tube) */
   glow: number
-  /** React to beat — the color split and glow punch harder on the song's
-   *  low end; between beats the look stays exactly as dialed in */
+  /** React to beat — every kick jolts the tube: the color split widens past
+   *  the dial (additive, visible even at low Color Split), the glow flares
+   *  and the screen brightens; between beats the look stays exactly as
+   *  dialed in */
   beatReactive: boolean
   /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
   beatStrength: number
