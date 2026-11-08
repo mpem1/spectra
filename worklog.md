@@ -1803,3 +1803,22 @@ Work Log:
 
 Stage Summary:
 - The React-to-beat switch now produces a reaction you can actually see at its default settings: the CRT jolts (split widens past the dial, glow flares, screen brightens through the scanlines), the VHS tears extra bands loose, the film lamp pulses warmer, halftone dots swell, and glitch bursts reliably fire with the kicks even at 50% Beat pop. Switch off still means pixel-for-pixel the plain filter.
+
+---
+
+Task ID: 77
+Agent: main orchestrator (Z.ai Code)
+Task: Fix — VHS filter completely dead (and every filter after it) after the Task 76 beat-react rebuild
+User: "vhs no longer works"
+
+Work Log:
+- Root cause (same one-import bug class as Task 74-hotfix, next file over): Task 76 taught vhs-filter.ts to call beatAmount(cfg, frame.bass) for the tape-jolt signature but never added beatAmount to its import from './filter-utils' (the import line still read beatBoost, clamp01, frameSeed, getWork, hash01, resetWork). With VHS ENABLED the pass threw ReferenceError: beatAmount is not defined on every frame before drawing anything — no wobble, no tracking band, no dust, with React-to-beat on or off (exactly the report). And because the chain order is screen → VHS → film → halftone → glitch → 3D glasses, the throw also silently killed the FOUR filters downstream of VHS whenever VHS was enabled. Screen filter was the only one unaffected (it runs before VHS).
+- Why the Task 74 gate didn't catch it: the tsc gate was run for the Task 74 fix window, but Task 76's commit (which introduced the new call) shipped with "lint 0 errors" only — and typescript.ignoreBuildErrors: true means neither lint nor next build can see TS2304. The undefined identifier produced a fresh exception wall in the preview that the Task 76 E2E didn't visit (it pixel-probed screen + glitch only, never VHS).
+- Found by the now-standard headless harness: the REAL filter sources under bun with a recording fake canvas (proxy ctx, document.createElement + Path2D + getImageData shims), which threw instantly at the beatAmount call — then PASSED after the one-line import fix: VHS beat OFF 228 draw calls, beat ON + hard kick 305 calls (flagging tears + jitter floor fire), and the full six-filter chain screen→VHS→film→halftone→glitch→3D completes (410 calls).
+- Fix: one line — add beatAmount to vhs-filter.ts's import. No behavior change anywhere else; beat-off math untouched.
+- Gates: bunx tsc --noEmit filtered to src/lib/visualizer now shows ONLY the pre-existing types.ts:735 BackgroundConfig/videoSrc quirk; lint 0 errors (27 known vendored warnings). Harness deleted after use, not committed.
+- Browser E2E (48Hz-kick WAV, 120ms full-volume pulse every 0.5s, looped, real UI): VHS enabled at defaults renders the full artifact suite with ZERO page errors (broken build = exception wall every frame); React-to-beat A/B pixel probe on a quiet background patch, per-frame pixel diffs: OFF worst-frame mean 3.06 / worst pixel 345 / 532 big-diff pixels vs ON 5.64 / 462 / 700 — kicks roughly double the artifact energy (tears + jitter + dial punch), beat off still shows the tracking band sweeping + dust (VHS alive with the switch off). All six filters stacked: zero page errors, full pile renders (3D fringes over halftone dots over VHS tears under CRT scanlines) — the downstream-kill regression is gone. Mobile 390px: no overflow. Screenshots: /home/z/vhs-on-defaults.png (VHS defaults), /home/z/all-filters.png (all six stacked).
+- Process note: the tsc gate is only worth something if it runs on EVERY push — it must join lint for every commit from here on, not just the commits that fix missing imports.
+
+Stage Summary:
+- The VHS tape plays again — the whole regression was Task 76 adding a beatAmount call to vhs-filter.ts without adding the import, so enabled VHS threw on every frame before drawing a pixel (beat switch irrelevant) and the throw also cut off film, halftone, glitch and 3D glasses stacked after it. One-line fix, verified headlessly on the real filter sources and in the browser, 0 page errors, beat reactions punch, full six-filter stack renders.

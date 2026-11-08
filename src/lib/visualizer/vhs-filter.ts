@@ -23,7 +23,7 @@
  * second. Transparent backgrounds skip the pass (alpha must stay clean).
  */
 import type { AudioFrame, RenderContext, VhsFilterConfig } from './types'
-import { beatBoost, clamp01, frameSeed, getWork, hash01, resetWork } from './filter-utils'
+import { beatAmount, beatBoost, clamp01, frameSeed, getWork, hash01, resetWork } from './filter-utils'
 
 export function drawVhsFilter(
   rc: RenderContext,
