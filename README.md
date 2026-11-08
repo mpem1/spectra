@@ -76,6 +76,12 @@ or cassette, everything. Here are some of them, wearing real album art:
   the darker tones (the Shadow range slider decides how dark a color must be
   before it gets dotted) while lighter areas stay intact, with dot size,
   shadow range and ink strength sliders.
+- **Glitch filter** — digital corruption bursts: chunky pixel blocks (some
+  pixelated in place, some copied from the wrong spot, some tinted), picture
+  slices shoved sideways and raw color bars stamped over the frame. Burst
+  rate is its own dial — rare stutters at low settings, continuous
+  corruption at 100% — while Blocks and Slices keep each burst just as
+  strong.
 - **Project files** — download the entire setup (every uploaded image
   included, no size cap) as a `.spectra` file and reopen it anywhere; share
   links still work for quick look-sharing without the media.

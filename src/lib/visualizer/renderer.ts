@@ -27,6 +27,7 @@ import { drawScreenFilter } from './screen-filter'
 import { drawVhsFilter } from './vhs-filter'
 import { drawFilmFilter } from './film-filter'
 import { drawHalftoneFilter } from './halftone-filter'
+import { drawGlitchFilter } from './glitch-filter'
 
 /* --------------------------------- Utilities -------------------------------- */
 
@@ -132,7 +133,8 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // Full-frame filter chain — the outermost passes, ON TOP of everything
   // above (the watermark included). Fixed order, each filter processes the
   // previous one's output: VHS distorts the picture → CRT displays it →
-  // film damage scratches the display → halftone prints the result.
+  // film damage scratches the display → halftone prints the result → glitch
+  // corrupts the digital copy of it all.
   // Optional chaining keeps very old saves renderable before the merge;
   // transparent backgrounds skip them all so alpha recordings stay clean.
   const transparent = config.background?.mode === 'transparent'
@@ -140,6 +142,7 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   drawVhsFilter(rc, config.vhsFilter, frame, transparent)
   drawFilmFilter(rc, config.filmFilter, frame, transparent)
   drawHalftoneFilter(rc, config.halftoneFilter, transparent)
+  drawGlitchFilter(rc, config.glitchFilter, frame, transparent)
   rc.ctx.restore()
 }
 

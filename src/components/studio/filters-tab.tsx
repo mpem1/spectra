@@ -4,6 +4,7 @@ import { ScreenFilterSection } from '@/components/studio/screen-filter-section'
 import { VhsFilterSection } from '@/components/studio/vhs-filter-section'
 import { FilmFilterSection } from '@/components/studio/film-filter-section'
 import { HalftoneFilterSection } from '@/components/studio/halftone-filter-section'
+import { GlitchFilterSection } from '@/components/studio/glitch-filter-section'
 
 /**
  * Filters tab — finishing looks laid over the ENTIRE composed picture
@@ -32,6 +33,9 @@ export function FiltersTab() {
 
       {/* Halftone print — 45° dots on darker tones only */}
       <HalftoneFilterSection />
+
+      {/* Glitch — blocky corruption bursts + shifted slices + color bars */}
+      <GlitchFilterSection />
     </div>
   )
 }

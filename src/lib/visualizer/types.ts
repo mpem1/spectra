@@ -446,6 +446,26 @@ export interface HalftoneFilterConfig {
   strength: number
 }
 
+/**
+ * Glitch filter — digital corruption: short bursts of chunky pixel blocks
+ * (some pixelated in place, some copied from the wrong spot, some tinted
+ * with raw palette colors), picture slices shoved sideways and raw saturated
+ * color bars stamped over the frame. `rate` is the burst cadence — its own
+ * dial, so intensity (blocks/slices) never has to be traded for frequency.
+ * Everything is hashed from song time (no Math.random / Date.now), so
+ * exports stay frame-exact. Skipped on transparent backgrounds.
+ */
+export interface GlitchFilterConfig {
+  enabled: boolean
+  /** Corrupted macroblocks 0..1 (count + size + tint strength) */
+  blocks: number
+  /** Broken-signal stripes 0..1 (displaced slices + raw color bars) */
+  slices: number
+  /** Burst cadence 0..1 — how often corruption fires and how long bursts
+   *  last; independent of the blocks/slices intensity */
+  rate: number
+}
+
 /* -------------------------------- Custom fonts ------------------------------- */
 
 /**
@@ -481,6 +501,8 @@ export interface StudioConfig {
   filmFilter: FilmFilterConfig
   /** Full-frame print post-pass (45° halftone dots on darker tones) */
   halftoneFilter: HalftoneFilterConfig
+  /** Full-frame digital-corruption post-pass (bursty glitch artifacts) */
+  glitchFilter: GlitchFilterConfig
   /** Imported font library — shared by the lyrics and the title card */
   fonts: CustomFontConfig[]
 }
@@ -814,6 +836,12 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     dotSize: 6,
     dotRange: 0.55,
     strength: 0.9,
+  },
+  glitchFilter: {
+    enabled: false,
+    blocks: 0.5,
+    slices: 0.5,
+    rate: 0.5,
   },
   pulseImage: {
     enabled: false,
