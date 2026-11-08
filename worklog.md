@@ -1582,3 +1582,16 @@ Work Log:
 
 Stage Summary:
 - Seventh signature preset shipped: the user's "Record Phone" (record stacked above its sleeve like a phone silhouette over a dark-core-to-white radial fade, with front-layer blue bars) joins the six earlier looks in the SIGNATURE PRESETS section.
+
+Task ID: 65
+Agent: Z.ai Code (main)
+Task: Add the user's "cassette phone" look as a signature preset
+User: pasted the full .spectra JSON (eighth preset, after "record phone")
+
+Work Log:
+- Saved the user's pasted file byte-for-byte as public/presets/cassette-phone.spectra (3162 bytes, name "cassette phone"); validated envelope + required sections + key values: grid visualizer, 64 cells, gap 0.35, mirror none, positioned below center (51/60) anchored right, scale 1.15, layer back, lavender→white linear palette (#c3b1c4@36 → #ffffff@96), LINEAR background at angle 180 with descending stop order exactly as exported (#0e242f@87 → #6f90a5@47 → #ffffff@23 — reads top-white → steel → dark-teal), vignette 0.35, grain 0.08, disc in cassette mode: realistic-style DARK TEAL shell #0e242f at (50,45) size 50, "art" label (gray placeholder strip until a cover loads), rpm 8, pulse 0.1, grooves + sheen; lyrics/title/watermark/pulse-image all off.
+- Manifest entry: id cassette-phone, name "Cassette Phone", caption "Dark cassette over a lavender grid · white-to-teal fade"; swatch lists the background stops in ascending order (white@23 → steel@47 → dark@87, angle 180) so the preview reads top-to-bottom like the canvas — the .spectra file itself keeps the exported descending order untouched.
+- Browser E2E (desktop 1280px): Presets tab lists all eight signature presets in order (…Record Phone, Cassette Phone); applying shows the success toast. Pixel checks — vertical fade probes: top [248,248,248] white, mid-left steel [93,122,140], bottom [14,35,46] ≈ #0e242f dark teal, corner white dimmed by vignette [205,205,205]; dark-teal shell pixels concentrated in the cassette zone (182 samples); lavender/white grid dots present in the lower band; screenshot confirms the full composition (dark realistic cassette with visible reels and sheen over lavender dot clusters along the bottom, white-to-teal fade behind). Mobile 390px: all eight presets listed, zero horizontal overflow, Cassette Phone applies with toast. 0 page errors; lint 0 errors (27 known vendored warnings).
+
+Stage Summary:
+- Eighth signature preset shipped: the user's "Cassette Phone" (dark-teal realistic cassette riding a lavender dot-grid over a white-to-dark-teal vertical fade) joins the seven earlier looks in the SIGNATURE PRESETS section.

@@ -121,6 +121,20 @@ export const SIGNATURE_PRESETS: SignaturePreset[] = [
       angle: 160,
     },
   },
+  {
+    id: 'cassette-phone',
+    name: 'Cassette Phone',
+    file: 'presets/cassette-phone.spectra',
+    caption: 'Dark cassette over a lavender grid · white-to-teal fade',
+    swatch: {
+      stops: [
+        { color: '#ffffff', position: 23 },
+        { color: '#6f90a5', position: 47 },
+        { color: '#0e242f', position: 87 },
+      ],
+      angle: 180,
+    },
+  },
   // Future entries arrive with the user's own looks (screenshots / .spectra
   // files) — the recipe stays: drop <id>.spectra into public/presets/, add
   // a manifest line here. The three designs explored in Task 57 (Neon Bars,
