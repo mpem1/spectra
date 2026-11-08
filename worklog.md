@@ -1746,3 +1746,20 @@ Work Log:
 
 Stage Summary:
 - Every filter now has the same music reflex the background always had: flip React to beat on any filter card and the look rests exactly where the sliders set it, then punches on every kick — CRT split+glow flare, VHS tape gets more violent, film artifacts darken with a lamp flare, halftone print saturates, glitch bursts fire on the beat, 3D fringes pop wider — with a Beat punch dial for how hard. Off is pixel-identical to before, and exports bake the identical punches.
+
+Task ID: 74-hotfix
+Agent: Z.ai Code (main)
+Task: Fix — Glitch filter completely dead (and 3D glasses with it) after the beat-react commit
+User: "i think you completely changed some of how they react like glitch for example no longer works at all whether reat to be is on or off"
+
+Work Log:
+- Root cause (one missing import): commit 20efaee taught glitch-filter.ts to call beatBoost(cfg, bass, 1.3) but never added beatBoost to its import from './filter-utils'. Every other filter's import was updated (vhs/film/halftone/screen); glitch was missed. With glitch ENABLED the pass threw ReferenceError: beatBoost is not defined on every frame — before drawing anything — so glitch rendered nothing at all, with React-to-beat on or off (exactly the report). The throw also aborted the rest of renderFrame, silently killing the 3D glasses pass that runs after glitch in the chain.
+- Why it shipped: the rAF loop re-arms requestAnimationFrame before renderFrame runs, so the bars/watermark kept drawing and nothing crashed visibly; the dev deploy pipeline has typescript.ignoreBuildErrors: true in next.config.ts, so `next build` never flagged the undefined identifier; and Task 74's E2E "glitch churn A/B" unknowingly measured the visualizer bars' own kick response (which survives the throw), not glitch output — false positive.
+- Found by refusing the browser ghosts and running the ACTUAL filter source headlessly under bun with a recording fake canvas: instant ReferenceError at the beatBoost call. Re-audit then confirmed every filter's imports; a full `bunx tsc --noEmit` shows zero errors in src/lib/visualizer + studio + store (the repo's other tsc errors are pre-existing legacy-editor/examples noise, the reason ignoreBuildErrors exists).
+- Fix: one line — add beatBoost to glitch-filter.ts's import. No behavior change anywhere else; beat-off math is untouched.
+- lint 0 errors (27 known vendored warnings). Headless harness re-run (deleted after use, not committed): rate=1 emits 15–19 draw calls per frame continuously; rate=0.5 duty measured 28.0% vs 28.75% predicted; transparent/disabled gates clean.
+- Browser E2E (24s 55Hz-kick WAV looped + gradient image background through the real UI): glitch at 50/50/50 paints full bursts — magenta/red color bars, torn displaced slices, palette-tinted corrupted blocks; palette scan caught bursts up to 229 sample-hits where the broken build scanned flat 0 for 6 seconds; page errors went from an every-frame exception wall to ZERO. Beat A/B at rate 0 (the "normal till the beat" contract): beat OFF = 1/96 burst samples (rests clean), beat ON = 80/97 (bursts force on every kick). Glitch + 3D glasses stacked renders both passes (corruption under red/cyan fringes) — previously anaglyph was silently swallowed whenever glitch was on. Mobile 390px: no overflow. Screenshots: /tmp/fixed-burst.png (mid-burst, defaults), /tmp/stack-glitch-3d.png (stacked), /tmp/fixed-mobile.png.
+- Process note going forward: with ignoreBuildErrors on, `bunx tsc --noEmit` (filtered to touched paths) joins lint as a mandatory pre-push gate — this bug class is invisible to lint and to next build.
+
+Stage Summary:
+- The Glitch filter corrupts again — and 3D glasses survives stacking with it. The whole regression was one missing `beatBoost` import from the beat-react commit: enabled glitch threw every frame before drawing a pixel (beat switch irrelevant), which also silently cut the render chain short of the anaglyph pass. One-line fix, verified headlessly and in the browser, 0 page errors.

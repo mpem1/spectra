@@ -23,7 +23,7 @@
  * second. Transparent backgrounds skip the pass (alpha must stay clean).
  */
 import type { AudioFrame, RenderContext, GlitchFilterConfig } from './types'
-import { clamp01, frameSeed, getWork, hash01, resetWork } from './filter-utils'
+import { beatBoost, clamp01, frameSeed, getWork, hash01, resetWork } from './filter-utils'
 
 /** Raw "broken signal" palette for color bars and tinted blocks. */
 const PALETTE = ['#ff00ff', '#00ffff', '#ffff00', '#ff0000', '#00ff00', '#0000ff', '#ffffff']
