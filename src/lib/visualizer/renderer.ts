@@ -23,6 +23,7 @@ import { drawTitle } from './title'
 import { drawDisc } from './disc'
 import { drawWatermark } from './watermark'
 import { drawPulseImage } from './pulse-image'
+import { drawScreenFilter } from './screen-filter'
 
 /* --------------------------------- Utilities -------------------------------- */
 
@@ -125,6 +126,11 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   if (config.watermark?.enabled) {
     drawWatermark(rc, config.watermark, S)
   }
+  // Screen filter — the outermost pass, ON TOP of everything above (the
+  // watermark included): the whole picture plays on a virtual display.
+  // Optional chaining keeps very old saves renderable before the merge;
+  // transparent backgrounds skip it so alpha recordings stay clean.
+  drawScreenFilter(rc, config.screenFilter, config.background?.mode === 'transparent')
   rc.ctx.restore()
 }
 

@@ -365,6 +365,34 @@ export interface DiscConfig {
   sheen: number
 }
 
+/* ------------------------------- Screen filter ------------------------------- */
+
+/**
+ * Screen filter — a post-pass drawn over the ENTIRE composed frame
+ * (visualizer, disc, lyrics, title, watermark included), like the picture on
+ * a physical display. Deterministic: no time, no randomness — same config
+ * over the same frame always yields the same pixels, so exports stay
+ * frame-exact. Skipped entirely on transparent backgrounds so alpha
+ * recordings stay clean.
+ *
+ * v1 ships the CRT look: horizontal scanlines, an RGB phosphor aperture
+ * grille, chromatic aberration (R/B channel split) and a soft bloom.
+ */
+export interface ScreenFilterConfig {
+  enabled: boolean
+  /** Mask cell size in px on the 720p reference canvas (2..8) — scanline
+   *  pitch and the width of each R/G/B phosphor stripe scale with it */
+  size: number
+  /** Scanline darkness 0..1 (the horizontal dark rows) */
+  scanlines: number
+  /** RGB aperture-grille strength 0..1 (the vertical phosphor stripes) */
+  grille: number
+  /** Chromatic aberration 0..1 — up to ~3.5px R/B split at 720p */
+  aberration: number
+  /** Soft bloom/glow 0..1 (the picture's light bleeding like on a tube) */
+  glow: number
+}
+
 /* -------------------------------- Custom fonts ------------------------------- */
 
 /**
@@ -392,6 +420,8 @@ export interface StudioConfig {
   disc: DiscConfig
   pulseImage: PulseImageConfig
   watermark: WatermarkConfig
+  /** Full-frame display post-pass (CRT scanlines + phosphor mask + …) */
+  screenFilter: ScreenFilterConfig
   /** Imported font library — shared by the lyrics and the title card */
   fonts: CustomFontConfig[]
 }
@@ -698,6 +728,14 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     position: 'br',
     size: 56,
     opacity: 0.85,
+  },
+  screenFilter: {
+    enabled: false,
+    size: 3,
+    scanlines: 0.45,
+    grille: 0.5,
+    aberration: 0.3,
+    glow: 0.3,
   },
   pulseImage: {
     enabled: false,

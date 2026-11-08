@@ -14,6 +14,7 @@ import { BackgroundSection } from '@/components/studio/background-section'
 import { VinylSection } from '@/components/studio/vinyl-section'
 import { WatermarkSection } from '@/components/studio/watermark-section'
 import { PulseImageSection } from '@/components/studio/pulse-image-section'
+import { ScreenFilterSection } from '@/components/studio/screen-filter-section'
 import { MicroLabel, OptionCard, SECTION_ACCENT, SliderRow, sectionShell, type SectionAccent } from '@/components/studio/controls'
 
 const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] = [
@@ -315,6 +316,9 @@ export function StyleTab() {
 
       {/* Corner watermark — logo or @handle above everything */}
       <WatermarkSection />
+
+      {/* Screen filter — CRT scanlines + phosphor mask over the whole frame */}
+      <ScreenFilterSection />
     </div>
   )
 }

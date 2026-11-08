@@ -18,6 +18,7 @@ import {
   type WatermarkConfig,
   type PulseImageConfig,
   type CustomFontConfig,
+  type ScreenFilterConfig,
 } from '@/lib/visualizer/types'
 import { exportMP4 } from '@/lib/export/exporter'
 import { getEngine, getPreviewControls } from '@/components/studio/engine-registry'
@@ -89,6 +90,7 @@ type StudioState = {
   patchDisc: (partial: Partial<DiscConfig>) => void
   patchWatermark: (partial: Partial<WatermarkConfig>) => void
   patchPulseImage: (partial: Partial<PulseImageConfig>) => void
+  patchScreenFilter: (partial: Partial<ScreenFilterConfig>) => void
   /** Adds an imported font file to the shared lyrics/title library */
   addCustomFont: (font: CustomFontConfig) => void
   /** Removes a font; any text layer using it falls back to Sans */
@@ -195,6 +197,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, pulseImage: { ...s.config.pulseImage, ...partial } },
     })),
 
+  patchScreenFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, screenFilter: { ...s.config.screenFilter, ...partial } },
+    })),
+
   addCustomFont: (font) =>
     set((s) => ({ config: { ...s.config, fonts: [...s.config.fonts, font] } })),
 
@@ -264,6 +271,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         disc: { ...DEFAULT_STUDIO_CONFIG.disc, ...config.disc },
         watermark: { ...DEFAULT_STUDIO_CONFIG.watermark, ...config.watermark },
         pulseImage: { ...DEFAULT_STUDIO_CONFIG.pulseImage, ...config.pulseImage },
+        screenFilter: { ...DEFAULT_STUDIO_CONFIG.screenFilter, ...config.screenFilter },
         // Imported font library — keep only well-formed entries.
         fonts: Array.isArray(config.fonts)
           ? config.fonts.filter(
