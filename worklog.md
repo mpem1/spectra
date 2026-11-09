@@ -1859,3 +1859,22 @@ Work Log:
 
 Stage Summary:
 - Halftone's React to beat now works the way the user described: the print rests exactly where the sliders set it and every kick LIFTS the overlay — dots shrink, ink fades, fewer tones get dotted — so the basic image flashes through before the print settles back. Switch off is pixel-identical to the plain filter.
+
+---
+
+Task ID: 80
+Agent: main orchestrator (Z.ai Code)
+Task: Halftone print frame-rate collapse — root-cause the drag and make the pass cheap
+User: "does the frame rate seem to drop cause too much is going on with halftone print react to beat? also i thought you added an A/B test is it gone?"
+
+Work Log:
+- Measured (kick WAV looped, real UI, 1280×800, fresh sessions each build): halftone OFF 60 fps → halftone ON 18 fps → halftone ON + React to beat 11 fps. The user's suspicion was exactly right.
+- Op-level instrumentation in the page (monkey-patched fill/stroke/clearRect/drawImage/getImageData/Path2D.arc) initially pointed at nothing — patched ops summed to ~20 ms of an ~80 ms frame. Built a stage-by-stage in-page benchmark where every stage is force-synchronized with a 1×1 getImageData flush (makes async software-GL raster visible). Verdict: rasterizing ~23k anti-aliated circles per frame through Path2D = 7.6 ms path build + 31.9 ms fill ≈ 40 ms/frame; the old snapshot+diag²-layer plumbing was only part of the cost, and a first refactor (no snapshot copy, no diag×diag layer, direct rotated fill — harness-proven pixel-identical) measured 12 fps because the ~40 ms of circle rasterization still dominated. The "A/B test" the user remembered was also answered: it's the internal beat-ON-vs-OFF pixel-probe verification from Tasks 72/76/79, never a page feature — the per-filter on/off switch is the user-facing A/B.
+- Fix — the ink layer no longer draws circles at all: dot radii are quantized onto an ABSOLUTE ladder anchored at 0.4 px (24 rungs, step rounded to 1/16 px, independent of rMax so the cache never churns while beat-reactive press swings every frame) and each (radius × sub-pixel offset ∈ {−0.5, 0, 0.5}²) variant is rasterized exactly once into a tiny coverage sprite (1 px AA band, same softness canvas AA gave, now deterministic in JS). Per frame the dots are stamped alpha-max into a reused full-frame RGBA buffer (alpha-max = the same dot union a nonzero Path2D fill paints), lifted with one putImageData + one drawImage at the ink strength. Bonus structural wins kept from the refactor: the grid is resampled straight from the live frame (no full-res snapshot copy) and stays GPU-backed (no willReadFrequently hint — that hint on the grid canvas forced a full-frame GPU→CPU readback every frame); the diag×diag intermediate is gone.
+- Headless harness on the REAL filter source (deleted after use): stamped output vs an independent per-pixel reference rasterizer — max pixel diff 1/255 (rest) and 0 (kick), dot counts identical to the Task 79 numbers (32,535 rest / 25,305 full kick at defaults), ink alpha exact (0.9 rest / 0.680625 kick), deterministic across runs. ALL CHECKS PASS.
+- Gates: bunx tsc --noEmit (visualizer = only the pre-existing types.ts videoSrc quirk; no halftone diagnostics), lint 0 errors (27 known warnings).
+- Browser E2E after the fix (same protocol): halftone OFF 74 fps (headless headroom), halftone ON 57 fps, halftone ON + React to beat 59 fps — the beat-mode penalty is gone (was 11). Beat flash re-probed: dark-ink coverage swings 69.5% ↔ 98.4% over 2.5 s of kicks (print lifts and settles). 0 page errors. Mobile 390px: no overflow. Screenshots: /home/z/tmp-e2e/halftone-perf-rest.png (resting print, dots crisp), /home/z/tmp-e2e/halftone-mobile-390.png.
+- README halftone bullet notes the sprite-stamped ink.
+
+Stage Summary:
+- Halftone print no longer drags the frame rate: 60/18/11 fps (off/on/beat) became 74/57/59 by replacing per-frame Path2D circle rasterization (~40 ms/frame — the real culprit, found with a flush-forced stage benchmark after op instrumentation initially showed nothing) with pre-rasterized dot sprites stamped into a reusable ink buffer (~3 ms/frame). Same dots, same beat reaction — the harness proves the stamped ink matches an independent reference rasterizer to ≤1/255 and the beat math to the exact Task 79 dot counts and ink alphas. Also answered: the "A/B test" was my internal verification probes, not a page feature — each filter's on/off switch is the live A/B.
