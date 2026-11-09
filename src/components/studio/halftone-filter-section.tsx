@@ -126,7 +126,8 @@ export function HalftoneFilterSection() {
             />
             <p className="text-[10px] leading-snug text-zinc-600">
               Shapes the picture before printing. Contrast 50% is the untouched
-              picture; Invert flips it to a negative.
+              picture; Invert flips it to a negative while the print stays
+              exactly where it was.
             </p>
           </div>
 

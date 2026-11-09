@@ -485,7 +485,10 @@ export interface HalftoneFilterConfig {
   /** Picture contrast 0..1 — 0.5 is the untouched picture, 0 flattens
    *  toward mid-gray, 1 doubles the punch (maps to CSS contrast 0..2) */
   contrast: number
-  /** Invert the picture (negative) before printing */
+  /** Invert the picture to a negative — applied after the halftone screen
+   *  has read the tones, so the print stays exactly where it was (feeding
+   *  the negative to the screen instead would leave a dark scene with no
+   *  dark tones below the threshold and wipe the whole print off) */
   invert: boolean
   /** Halftone ink color as '#rrggbb' (default black = classic print) */
   inkColor: string

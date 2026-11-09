@@ -8,11 +8,16 @@
  * with darkness (dot radius ∝ √depth), so deep shadows merge into solid ink
  * exactly like real halftone print. Lighter areas never get a dot.
  *
- * Before printing, the picture itself can be conditioned — `grayscale`,
- * `contrast` and `invert` run as one GPU filter pass (CSS filter chain on a
- * work canvas, drawn straight back over the frame), so the print always
- * follows the picture the user actually sees. With everything at defaults
- * this pass is skipped entirely (zero cost, pixel-identical output).
+ * Before printing, the picture itself can be conditioned. `grayscale` and
+ * `contrast` run as one GPU filter pass (CSS filter chain on a work canvas,
+ * drawn straight back over the frame) BEFORE the screen reads the tones, so
+ * the print always follows the picture the user actually sees. `invert` is
+ * the deliberate exception: it runs as a second pass AFTER the screen has
+ * read the tones — it flips the picture to a negative while the print stays
+ * exactly where it was (feeding the negative to the screen instead would
+ * leave a dark scene with no dark tones below the threshold and wipe the
+ * whole print off the frame). With everything at defaults both passes are
+ * skipped entirely (zero cost, pixel-identical output).
  *
  * The ink is black by default but can be any color, or a two-color gradient
  * whose angle drifts slowly with song time and swings with the low end —
@@ -115,21 +120,22 @@ export function drawHalftoneFilter(
   const { ctx, width: W, height: H } = rc
   const S = H / 720
 
-  // 0) Picture conditioning — grayscale / contrast / invert, always applied
+  // 0) Picture conditioning, part 1 — grayscale + contrast, always applied
   //    while the filter is on (independent of the ink dials below). One GPU
   //    pass: draw the live frame onto a work canvas through the CSS filter
-  //    chain, draw it straight back. Defaults skip this entirely.
+  //    chain, draw it straight back. These two shape the picture AND the
+  //    print (the screen samples what they produce). Defaults skip this.
   const grayscale = !!cfg.grayscale
   const invert = !!cfg.invert
   const contrast = clamp01(cfg.contrast ?? 0.5)
-  if (grayscale || invert || Math.abs(contrast - 0.5) > 1e-3) {
-    const f: string[] = []
-    if (grayscale) f.push('grayscale(1)')
-    f.push(`contrast(${(contrast * 2).toFixed(4)})`) // 0.5 → 1.0 = untouched
-    if (invert) f.push('invert(1)')
+  const preF: string[] = []
+  if (grayscale) preF.push('grayscale(1)')
+  if (Math.abs(contrast - 0.5) > 1e-3)
+    preF.push(`contrast(${(contrast * 2).toFixed(4)})`) // 0.5 → 1.0 = untouched
+  if (preF.length) {
     const cond = getWork('ht:cond', W, H)
     const cctx = resetWork(cond.getContext('2d')!)
-    cctx.filter = f.join(' ')
+    cctx.filter = preF.join(' ')
     cctx.drawImage(ctx.canvas, 0, 0, W, H)
     cctx.filter = 'none'
     ctx.drawImage(cond, 0, 0, W, H)
@@ -149,7 +155,6 @@ export function drawHalftoneFilter(
   )
   const range = Math.max(0.001, clamp01(cfg.dotRange) - 0.28 * lift)
   const strength = Math.min(1, clamp01(cfg.strength) * (1 - 0.75 * lift))
-  if (range <= 0.001 || strength <= 0.001) return
 
   const diag = Math.ceil(Math.hypot(W, H))
   const n = Math.ceil(diag / cell)
@@ -174,6 +179,22 @@ export function drawHalftoneFilter(
   smCtx.rotate(-Math.PI / 4)
   smCtx.translate(-W / 2, -H / 2)
   smCtx.drawImage(ctx.canvas, 0, 0, W, H)
+
+  // 1b) Picture conditioning, part 2 — invert, AFTER the screen has read the
+  //    tones (see the header: the negative must not feed the dot grid or a
+  //    dark scene loses every dark tone and the print vanishes). Still runs
+  //    independent of the ink dials, so a 0-ink strength project shows the
+  //    plain negative. Reuses the same work canvas as part 1.
+  if (invert) {
+    const cond = getWork('ht:cond', W, H)
+    const cctx = resetWork(cond.getContext('2d')!)
+    cctx.filter = 'invert(1)'
+    cctx.drawImage(ctx.canvas, 0, 0, W, H)
+    cctx.filter = 'none'
+    ctx.drawImage(cond, 0, 0, W, H)
+  }
+
+  if (range <= 0.001 || strength <= 0.001) return // 0 ink → the negative stays, no print
 
   // 2) One read of the tiny grid; stamp every dark cell's dot into the ink
   //    buffer. Grid coords g live in ROTATED space (origin = frame center) —
