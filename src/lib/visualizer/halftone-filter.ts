@@ -147,14 +147,25 @@ export function drawHalftoneFilter(
   const beatOn = !!cfg.beatReactive
   const punch = clamp01(cfg.beatStrength ?? 0.5)
   const bass = clamp01(frame.bass)
-  const lift = beatOn ? punch * bass : 0 // 0..1 print-reveal amount
-  const press = 1 - 0.45 * lift // dots back off on the kick (ink lifts off the page)
+  // Beat pop dial — wide variance: the response runs PAST the old ceiling so
+  // the dial spans from a gentle breath to the print lifting clean off the
+  // page. lift ≤ 1 caps the ink fade at ~25% (the old max); beyond that the
+  // fade continues to ZERO at lift 1.35, so a full-dial kick on a hard low
+  // end wipes the print entirely and it snaps back between kicks. The power
+  // curve (1.3) keeps the low half gentle while 1.9·bass pushes the top end
+  // over the cap on real kicks. Deterministic AudioFrame fields only, so
+  // exports match the preview frame-exactly.
+  const lift = beatOn ? Math.min(1.35, Math.pow(punch, 1.3) * 1.9 * bass) : 0
+  const press = 1 - 0.5 * lift // dots back off on the kick (ink lifts off the page)
   const cell = Math.max(
     3,
     Math.round(Math.max(3, Math.min(14, cfg.dotSize)) * S * (1 + 0.22 * lift)),
   )
-  const range = Math.max(0.001, clamp01(cfg.dotRange) - 0.28 * lift)
-  const strength = Math.min(1, clamp01(cfg.strength) * (1 - 0.75 * lift))
+  const range = Math.max(0.001, clamp01(cfg.dotRange) - 0.32 * lift)
+  // The bottom clamp lets a full-dial kick on a hard low end (lift → 1.35)
+  // take the ink to exactly zero — the print lifts clean off, the picture
+  // alone flashes through, then the print snaps back between kicks.
+  const strength = clamp01(cfg.strength) * Math.max(0, 1 - 0.75 * lift)
 
   const diag = Math.ceil(Math.hypot(W, H))
   const n = Math.ceil(diag / cell)

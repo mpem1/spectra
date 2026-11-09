@@ -61,7 +61,9 @@ export function HalftoneFilterSection() {
         Newspaper print — darker tones turn into halftone dots while lighter
         areas stay intact. The Shadow range slider decides how dark a color
         must be before it gets dotted: low = only the deepest shadows, high =
-        most of the picture.
+        most of the picture. Beat pop spans a wide range: low = a gentle
+        breath on the kick, max = the print lifts clean off the page and
+        snaps back between kicks.
       </p>
 
       {filter.enabled ? (

@@ -1914,3 +1914,22 @@ Work Log:
 
 Stage Summary:
 - Halftone Invert no longer erases the print: the negative is applied AFTER the halftone screen reads the tones, so the picture flips while the print stays exactly where it was (the same toggle, now doing what it looks like it should). Grayscale/contrast keep shaping picture + print as shipped; defaults remain pixel-identical and zero-cost; Task 80's sprite-stamped ink and Task 79's beat lift untouched (harness + browser proven).
+
+---
+
+Task ID: 82
+Agent: main orchestrator (Z.ai Code)
+Task: Halftone Beat pop too subtle — widen the slider's variance
+User: "under the half tone print filter i think the beat pop is too subtle the slider needs a wider variance"
+
+Work Log:
+- Diagnosis: the old response `lift = punch · bass` with fixed coefficients (press −0.45, cell +0.22, range −0.28, strength ×(1−0.75·lift)) capped the whole dial at "ink ×0.51" on a real kick (smoothed bass ~0.65) — max dial only halved the ink, and mid dials moved barely at all. First attempt (power 1.4 × 1.55 cap at lift 1) widened the top to ink ×0.25 but browser probing then showed the deeper problem: the design CEILING itself saturates — on hard kicks (this test track's smoothed bass peaks ~0.95) even the old build's range-narrowing wipes mid-gray tones, so dial differences collapse at the top. A real "wider variance" needs the response to run PAST the old ceiling.
+- Fix (halftone-filter.ts): `lift = min(1.35, punch^1.3 · 1.9 · bass)` with recalibrated coefficients — press = 1−0.5·lift, range −0.32·lift, strength = strength·max(0, 1−0.75·lift). The bottom clamp lets lift → 1.35 take the ink to EXACTLY zero: at full dial a hard kick lifts the print clean off the page (picture alone flashes through — the strength early-return fires, picture/negative still render) and it snaps back between kicks. lift ≤ 1 keeps the old-style ×0.25 floor at the equivalent of the old max; the power curve (1.3) keeps the low half gentle; punch 0 is still byte-identical to beat OFF. Sprite ladder already rMax-swing-proof (absolute rungs, Task 80); deterministic AudioFrame fields only, so exports match the preview.
+- UI: halftone card description now says "Beat pop spans a wide range: low = a gentle breath on the kick, max = the print lifts clean off the page and snaps back between kicks."
+- Gates: bunx tsc --noEmit (24 baseline === HEAD), lint 0 errors (27 known warnings).
+- Harness (real filter source under bun, recording fake canvas; deleted after use): T1 punch 0 + beat ON === beat OFF (65,118,684.6 ink units both); T2 quiet frame at full dial === rest; T3 monotonic sweep @bass 0.65 — ink/rest 0.25→0.568, 0.5→0.194, 0.75→0.033, 1→0.001 (old build measured 0.68/0.46/0.30/0.17 on the same rig); T4 full-dial kick ≤ 5% of rest (0.0008 — old cap 0.17); T5 default-dial kick 0.194 (solid pop, not extreme); T6 punch 1 + bass 1 → ink EXACTLY 0 with no putImageData (full lift-off, no exception) and T6b below-cap kick (bass 0.5) keeps real ink (1,084,485 units); T7 deterministic. ALL CHECKS PASS. (Harness note: T6b initially asserted a whisper at bass 0.9 — wrong, lift already clamps there by design; recalibrated to bass 0.5.)
+- Browser E2E (gray #525252 background so a static bar-free zone carries the signal — the default black bg hides ink fading behind black-on-black, and bar-motion contaminates bars-zone metrics; kick test tone looped, Beat pop via Radix keyboard): rest state 29.0/255 on BOTH builds (dial- and build-independent control); kick peaks — OLD @0.5 → 65.0 (swing 35.9), NEW @0.5 → 76.8 (swing 47.8, +33% at the same dial), NEW @1.0 → 77.1 = the clean background (full lift-off flash). Measurement dead-ends documented: dark-coverage % saturates at the bg floor and mid-band counts track bar motion, not ink — the quiet-zone mean-luminance on a mid-gray bg is the metric that isolates the print.
+- Test assets: public/test-tone.wav regenerated via scripts/make-test-tone.ts for the E2E, deleted after use (never committed).
+
+Stage Summary:
+- Halftone Beat pop now spans a genuinely wide range: 25% dial = gentle breath, 50% = the print roughly halves on a kick, 75% = a flash of clean picture, 100% = the print lifts clean off the page on hard kicks and snaps back. Old saved projects rest pixel-identical (dial 0 = beat OFF unchanged; rest state untouched); the default half-dial pop is ~2× stronger than before (ink 0.19 vs 0.46 at kick); Task 79/80/81b behavior (beat direction, sprite performance, invert print-preservation) all untouched.
