@@ -12,12 +12,17 @@
  * `contrast` run as one GPU filter pass (CSS filter chain on a work canvas,
  * drawn straight back over the frame) BEFORE the screen reads the tones, so
  * the print always follows the picture the user actually sees. `invert` is
- * the deliberate exception: it runs as a second pass AFTER the screen has
- * read the tones — it flips the picture to a negative while the print stays
- * exactly where it was (feeding the negative to the screen instead would
- * leave a dark scene with no dark tones below the threshold and wipe the
- * whole print off the frame). With everything at defaults both passes are
- * skipped entirely (zero cost, pixel-identical output).
+ * the deliberate exception: it runs as ONE pass at the very END of the
+ * filter — flipping the finished print (picture AND ink) into a photo
+ * negative. Feeding the negative to the screen instead would leave a dark
+ * scene with no dark tones below the threshold and wipe the whole print off
+ * the frame; and flipping ONLY the picture (the old behavior) breaks the
+ * ink: any ink whose lightness lands near the negative background's (a
+ * light ink over this dark scene) becomes invisible — white dots on white
+ * paper. Flipping the composite conserves contrast exactly — the print is
+ * precisely as visible as it was before the flip, whatever the ink and the
+ * scene. With everything at defaults both passes are skipped entirely
+ * (zero cost, pixel-identical output).
  *
  * The ink is black by default but can be any color, or a two-color gradient
  * whose angle drifts slowly with song time and swings with the low end —
@@ -141,6 +146,21 @@ export function drawHalftoneFilter(
     ctx.drawImage(cond, 0, 0, W, H)
   }
 
+  // The negative flip — one GPU pass that inverts whatever is currently on
+  // the frame. Runs at the very END (after the ink is laid down) so picture
+  // and print flip TOGETHER: a true photo negative whose contrast — and
+  // therefore print visibility — is conserved for any ink color. At 0 ink
+  // (or when nothing is dark enough to print) it still runs, so a bare
+  // negative shows instead of silently doing nothing.
+  const flipNegative = () => {
+    const cond = getWork('ht:cond', W, H)
+    const cctx = resetWork(cond.getContext('2d')!)
+    cctx.filter = 'invert(1)'
+    cctx.drawImage(ctx.canvas, 0, 0, W, H)
+    cctx.filter = 'none'
+    ctx.drawImage(cond, 0, 0, W, H)
+  }
+
   // Beat reactive: on a kick the print LIFTS — dots shrink back, the ink
   // fades and the shadow range narrows, so the clean picture pops through
   // for a moment; between beats the print rests exactly as dialed in.
@@ -167,6 +187,14 @@ export function drawHalftoneFilter(
   // alone flashes through, then the print snaps back between kicks.
   const strength = clamp01(cfg.strength) * Math.max(0, 1 - 0.75 * lift)
 
+  // 0 ink → just the (optionally negative) picture, no print — checked
+  // BEFORE the grid is resampled: there is nothing to print, so the tiny
+  // n×n draw is skipped too.
+  if (range <= 0.001 || strength <= 0.001) {
+    if (invert) flipNegative()
+    return
+  }
+
   const diag = Math.ceil(Math.hypot(W, H))
   const n = Math.ceil(diag / cell)
   const cellS = diag / n // exact pitch so sampling & dots never drift apart
@@ -190,22 +218,6 @@ export function drawHalftoneFilter(
   smCtx.rotate(-Math.PI / 4)
   smCtx.translate(-W / 2, -H / 2)
   smCtx.drawImage(ctx.canvas, 0, 0, W, H)
-
-  // 1b) Picture conditioning, part 2 — invert, AFTER the screen has read the
-  //    tones (see the header: the negative must not feed the dot grid or a
-  //    dark scene loses every dark tone and the print vanishes). Still runs
-  //    independent of the ink dials, so a 0-ink strength project shows the
-  //    plain negative. Reuses the same work canvas as part 1.
-  if (invert) {
-    const cond = getWork('ht:cond', W, H)
-    const cctx = resetWork(cond.getContext('2d')!)
-    cctx.filter = 'invert(1)'
-    cctx.drawImage(ctx.canvas, 0, 0, W, H)
-    cctx.filter = 'none'
-    ctx.drawImage(cond, 0, 0, W, H)
-  }
-
-  if (range <= 0.001 || strength <= 0.001) return // 0 ink → the negative stays, no print
 
   // 2) One read of the tiny grid; stamp every dark cell's dot into the ink
   //    buffer. Grid coords g live in ROTATED space (origin = frame center) —
@@ -266,7 +278,12 @@ export function drawHalftoneFilter(
       dots++
     }
   }
-  if (!dots) return // nothing dark enough → the frame stays untouched
+  if (!dots) {
+    // Nothing dark enough to print → the frame is just the (optionally
+    // negative) picture.
+    if (invert) flipNegative()
+    return
+  }
 
   // 3) Lift the ink onto the frame: one putImageData into the offscreen ink
   //    canvas, optional recolor, one drawImage at the dialed ink strength
@@ -308,4 +325,11 @@ export function drawHalftoneFilter(
   ctx.globalAlpha = strength
   ctx.drawImage(inkCanvas, 0, 0)
   ctx.restore()
+
+  // 4) The negative, LAST: flip the finished print — picture and ink
+  //    together — so the print's contrast (and visibility) is exactly what
+  //    it was before the flip, for any ink color and any scene. The screen
+  //    sampled the pre-flip picture back in step 1, so the dot placement is
+  //    untouched by the flip.
+  if (invert) flipNegative()
 }
