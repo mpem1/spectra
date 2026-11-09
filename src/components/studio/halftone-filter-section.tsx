@@ -63,7 +63,8 @@ export function HalftoneFilterSection() {
         must be before it gets dotted: low = only the deepest shadows, high =
         most of the picture. Beat pop spans a wide range: low = a gentle
         breath on the kick, max = the print lifts clean off the page and
-        snaps back between kicks.
+        snaps back between kicks. Flip on kick goes all the way: the whole
+        print swaps out for the regular picture on every kick.
       </p>
 
       {filter.enabled ? (
@@ -75,6 +76,16 @@ export function HalftoneFilterSection() {
             onStrength={(beatStrength) => patchHalftoneFilter({ beatStrength })}
             strengthLabel="Beat pop"
           />
+          <ToggleRow
+            label="Flip on kick"
+            checked={filter.beatFlip}
+            onCheckedChange={(beatFlip) => patchHalftoneFilter({ beatFlip })}
+          />
+          <p className="text-[10px] leading-snug text-zinc-600">
+            The print rests on the frame between kicks; on a kick it lifts
+            clean off so the untouched regular picture flashes through, then
+            settles back. Runs all the way whatever the Beat pop dial says.
+          </p>
           <SliderRow
             label="Dot size"
             value={filter.dotSize}

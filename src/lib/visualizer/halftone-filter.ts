@@ -24,6 +24,11 @@
  * scene. With everything at defaults both passes are skipped entirely
  * (zero cost, pixel-identical output).
  *
+ * `beatFlip` (Flip on kick) swaps the whole look on the beat: the print
+ * rests on the frame between kicks, and on a solid low-end hit the entire
+ * print — and the negative, if on — dissolves into the untouched regular
+ * picture, then settles back as the kick decays.
+ *
  * The ink is black by default but can be any color, or a two-color gradient
  * whose angle drifts slowly with song time and swings with the low end —
  * recoloring happens on the ink canvas with one 'source-in' fill (paints the
@@ -115,6 +120,13 @@ function getInkBuffer(W: number, H: number): { buf: Uint8ClampedArray; img: Imag
 
 /* ----------------------------------- filter ------------------------------------ */
 
+/** Smooth 0→1 ramp for the flip's kick gate: 0 below `e0`, 1 at `e1`,
+ *  eased at both ends. */
+function smoothstep(e0: number, e1: number, x: number): number {
+  const t = clamp01((x - e0) / (e1 - e0))
+  return t * t * (3 - 2 * t)
+}
+
 export function drawHalftoneFilter(
   rc: RenderContext,
   cfg: HalftoneFilterConfig | undefined,
@@ -124,6 +136,43 @@ export function drawHalftoneFilter(
   if (!cfg?.enabled || transparent) return
   const { ctx, width: W, height: H } = rc
   const S = H / 720
+
+  // Flip on kick — the print and the regular picture SWAP on the beat.
+  // Between kicks the frame rests as the dialed-in halftone print; on a
+  // solid low-end hit the whole look (print and, if on, the negative)
+  // dissolves into the untouched regular picture, then settles back as
+  // the kick decays. Driven by the same smoothed bass field as every
+  // other beat reaction — no state, no wall clock — so exports match the
+  // preview frame-exactly. At rest (and with the toggle off) everything
+  // below costs exactly what it cost before.
+  const bass = clamp01(frame.bass)
+  const flipOn = !!cfg.beatFlip
+  const flipT = flipOn ? smoothstep(0.5, 0.75, bass) : 0
+  if (flipT >= 0.999) {
+    // Kick peak: the regular picture alone — even the picture
+    // conditioning below is skipped, so the flash shows the frame exactly
+    // as the earlier filters left it.
+    return
+  }
+  let raw: HTMLCanvasElement | null = null
+  if (flipOn && flipT > 0.001) {
+    // Keep the untouched frame around so the swap can dissolve the print
+    // state back into the regular picture (one full-frame GPU copy, and
+    // only while a kick is landing or fading).
+    raw = getWork('ht:raw', W, H)
+    resetWork(raw.getContext('2d')!).drawImage(ctx.canvas, 0, 0, W, H)
+  }
+  // The swap itself: the regular picture dissolves in over the finished
+  // print state — the last step of every exit below while the flip is
+  // mid-swap. The negative dissolves with it, so the flash is always the
+  // true regular picture even when Invert is on.
+  const finishFlip = () => {
+    if (!raw) return
+    ctx.save()
+    ctx.globalAlpha = flipT
+    ctx.drawImage(raw, 0, 0)
+    ctx.restore()
+  }
 
   // 0) Picture conditioning, part 1 — grayscale + contrast, always applied
   //    while the filter is on (independent of the ink dials below). One GPU
@@ -166,7 +215,6 @@ export function drawHalftoneFilter(
   // for a moment; between beats the print rests exactly as dialed in.
   const beatOn = !!cfg.beatReactive
   const punch = clamp01(cfg.beatStrength ?? 0.5)
-  const bass = clamp01(frame.bass)
   // Beat pop dial — wide variance: the response runs PAST the old ceiling so
   // the dial spans from a gentle breath to the print lifting clean off the
   // page. lift ≤ 1 caps the ink fade at ~25% (the old max); beyond that the
@@ -176,22 +224,28 @@ export function drawHalftoneFilter(
   // over the cap on real kicks. Deterministic AudioFrame fields only, so
   // exports match the preview frame-exactly.
   const lift = beatOn ? Math.min(1.35, Math.pow(punch, 1.3) * 1.9 * bass) : 0
-  const press = 1 - 0.5 * lift // dots back off on the kick (ink lifts off the page)
+  // While Flip on kick is on, a kick drives the lift all the way to the
+  // clean-off ceiling (1.35) no matter where the Beat pop dial sits — the
+  // swap IS the full pop. Toggle off → this is exactly the old lift.
+  const effLift = Math.max(lift, flipT * 1.35)
+  const press = 1 - 0.5 * effLift // dots back off on the kick (ink lifts off the page)
   const cell = Math.max(
     3,
-    Math.round(Math.max(3, Math.min(14, cfg.dotSize)) * S * (1 + 0.22 * lift)),
+    Math.round(Math.max(3, Math.min(14, cfg.dotSize)) * S * (1 + 0.22 * effLift)),
   )
-  const range = Math.max(0.001, clamp01(cfg.dotRange) - 0.32 * lift)
-  // The bottom clamp lets a full-dial kick on a hard low end (lift → 1.35)
-  // take the ink to exactly zero — the print lifts clean off, the picture
-  // alone flashes through, then the print snaps back between kicks.
-  const strength = clamp01(cfg.strength) * Math.max(0, 1 - 0.75 * lift)
+  const range = Math.max(0.001, clamp01(cfg.dotRange) - 0.32 * effLift)
+  // The bottom clamp lets a full-dial kick on a hard low end — or any kick
+  // while Flip on kick is on (lift → 1.35) — take the ink to exactly zero:
+  // the print lifts clean off, the picture alone flashes through, then the
+  // print snaps back between kicks.
+  const strength = clamp01(cfg.strength) * Math.max(0, 1 - 0.75 * effLift)
 
   // 0 ink → just the (optionally negative) picture, no print — checked
   // BEFORE the grid is resampled: there is nothing to print, so the tiny
   // n×n draw is skipped too.
   if (range <= 0.001 || strength <= 0.001) {
     if (invert) flipNegative()
+    finishFlip()
     return
   }
 
@@ -282,6 +336,7 @@ export function drawHalftoneFilter(
     // Nothing dark enough to print → the frame is just the (optionally
     // negative) picture.
     if (invert) flipNegative()
+    finishFlip()
     return
   }
 
@@ -332,4 +387,5 @@ export function drawHalftoneFilter(
   //    sampled the pre-flip picture back in step 1, so the dot placement is
   //    untouched by the flip.
   if (invert) flipNegative()
+  finishFlip()
 }

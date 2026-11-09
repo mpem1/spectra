@@ -480,6 +480,11 @@ export interface HalftoneFilterConfig {
   beatReactive: boolean
   /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
   beatStrength: number
+  /** Flip on kick — between kicks the frame rests as the halftone print;
+   *  every kick lifts the whole look (print and, if on, the negative)
+   *  clean off so the untouched regular picture flashes through, then the
+   *  print settles back until the next kick */
+  beatFlip: boolean
   /** Black & white — desaturate the whole picture before printing */
   grayscale: boolean
   /** Picture contrast 0..1 — 0.5 is the untouched picture, 0 flattens
@@ -932,6 +937,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     strength: 0.9,
     beatReactive: false,
     beatStrength: 0.5,
+    beatFlip: false,
     grayscale: false,
     contrast: 0.5,
     invert: false,
