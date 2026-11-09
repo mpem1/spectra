@@ -64,3 +64,7 @@ upload/
 
 # sandbox-only dev database (never ship)
 /db/
+
+# sandbox runtime state + profiling artifacts
+.zscripts/dev.pid
+*.zip
