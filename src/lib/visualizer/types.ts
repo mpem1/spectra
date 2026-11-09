@@ -485,6 +485,14 @@ export interface HalftoneFilterConfig {
    *  clean off so the untouched regular picture flashes through, then the
    *  print settles back until the next kick */
   beatFlip: boolean
+  /** Which side of the Flip on kick swap the kick reveals:
+   *  'picture' (default) = the print rests on the frame between kicks and
+   *  every kick flashes the untouched regular picture (the original
+   *  behavior); 'print' = the mirror image — the regular picture rests on
+   *  the frame between kicks and every kick stamps the halftone print in,
+   *  then it fades back out as the kick decays. Only matters while
+   *  beatFlip is on. Old saves without this field load as 'picture'. */
+  beatFlipTo: 'picture' | 'print'
   /** Black & white — desaturate the whole picture before printing */
   grayscale: boolean
   /** Picture contrast 0..1 — 0.5 is the untouched picture, 0 flattens
@@ -938,6 +946,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     beatReactive: false,
     beatStrength: 0.5,
     beatFlip: false,
+    beatFlipTo: 'picture',
     grayscale: false,
     contrast: 0.5,
     invert: false,

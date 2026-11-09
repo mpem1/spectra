@@ -24,10 +24,12 @@
  * scene. With everything at defaults both passes are skipped entirely
  * (zero cost, pixel-identical output).
  *
- * `beatFlip` (Flip on kick) swaps the whole look on the beat: the print
- * rests on the frame between kicks, and on a solid low-end hit the entire
- * print — and the negative, if on — dissolves into the untouched regular
- * picture, then settles back as the kick decays.
+ * `beatFlip` (Flip on kick) swaps the whole look on the beat, in either
+ * direction: 'picture' (default) rests as the print between kicks and
+ * flashes the untouched regular picture on a solid low-end hit — print and
+ * negative, if on, dissolve together; 'print' is the mirror image — the
+ * regular picture rests between kicks and the print stamps in on the kick,
+ * then fades back out as the kick decays.
  *
  * The ink is black by default but can be any color, or a two-color gradient
  * whose angle drifts slowly with song time and swings with the low end —
@@ -138,38 +140,52 @@ export function drawHalftoneFilter(
   const S = H / 720
 
   // Flip on kick — the print and the regular picture SWAP on the beat.
-  // Between kicks the frame rests as the dialed-in halftone print; on a
-  // solid low-end hit the whole look (print and, if on, the negative)
-  // dissolves into the untouched regular picture, then settles back as
-  // the kick decays. Driven by the same smoothed bass field as every
-  // other beat reaction — no state, no wall clock — so exports match the
-  // preview frame-exactly. At rest (and with the toggle off) everything
-  // below costs exactly what it cost before.
+  // 'picture' (default): between kicks the frame rests as the dialed-in
+  // halftone print; on a solid low-end hit the whole look (print and, if
+  // on, the negative) dissolves into the untouched regular picture, then
+  // settles back as the kick decays. 'print': the mirror image — the
+  // regular picture rests between kicks and the print stamps in on the
+  // kick, then fades back out as the kick decays. Driven by the same
+  // smoothed bass field as every other beat reaction — no state, no wall
+  // clock — so exports match the preview frame-exactly. At rest (and with
+  // the toggle off) everything below costs exactly what it cost before.
   const bass = clamp01(frame.bass)
   const flipOn = !!cfg.beatFlip
+  const flipToPrint = flipOn && cfg.beatFlipTo === 'print'
   const flipT = flipOn ? smoothstep(0.5, 0.75, bass) : 0
-  if (flipT >= 0.999) {
-    // Kick peak: the regular picture alone — even the picture
-    // conditioning below is skipped, so the flash shows the frame exactly
-    // as the earlier filters left it.
+  if (!flipToPrint && flipT >= 0.999) {
+    // Kick peak, picture direction: the regular picture alone — even the
+    // picture conditioning below is skipped, so the flash shows the frame
+    // exactly as the earlier filters left it.
+    return
+  }
+  if (flipToPrint && flipT <= 0.001) {
+    // Rest, print direction: the regular picture alone — zero cost, the
+    // frame is exactly as the earlier filters left it.
     return
   }
   let raw: HTMLCanvasElement | null = null
-  if (flipOn && flipT > 0.001) {
-    // Keep the untouched frame around so the swap can dissolve the print
-    // state back into the regular picture (one full-frame GPU copy, and
-    // only while a kick is landing or fading).
+  // Which side of the swap shows the untouched frame: in the picture
+  // direction it dissolves IN over the finished print as the kick lands;
+  // in the print direction it dissolves OUT as the print stamps in.
+  const rawA = flipToPrint ? 1 - flipT : flipT
+  if (flipOn && rawA > 0.001) {
+    // Keep the untouched frame around so the swap can dissolve between
+    // the print state and the regular picture (one full-frame GPU copy,
+    // and only while a kick is landing or fading).
     raw = getWork('ht:raw', W, H)
     resetWork(raw.getContext('2d')!).drawImage(ctx.canvas, 0, 0, W, H)
   }
-  // The swap itself: the regular picture dissolves in over the finished
+  // The swap itself: the regular picture dissolves over the finished
   // print state — the last step of every exit below while the flip is
-  // mid-swap. The negative dissolves with it, so the flash is always the
-  // true regular picture even when Invert is on.
+  // mid-swap. In the picture direction the negative dissolves with the
+  // print, so the flash is always the true regular picture even when
+  // Invert is on; in the print direction the picture dissolves out as
+  // the (optionally negative) print stamps in.
   const finishFlip = () => {
     if (!raw) return
     ctx.save()
-    ctx.globalAlpha = flipT
+    ctx.globalAlpha = rawA
     ctx.drawImage(raw, 0, 0)
     ctx.restore()
   }
@@ -224,10 +240,13 @@ export function drawHalftoneFilter(
   // over the cap on real kicks. Deterministic AudioFrame fields only, so
   // exports match the preview frame-exactly.
   const lift = beatOn ? Math.min(1.35, Math.pow(punch, 1.3) * 1.9 * bass) : 0
-  // While Flip on kick is on, a kick drives the lift all the way to the
-  // clean-off ceiling (1.35) no matter where the Beat pop dial sits — the
-  // swap IS the full pop. Toggle off → this is exactly the old lift.
-  const effLift = Math.max(lift, flipT * 1.35)
+  // While Flip on kick is on (picture direction), a kick drives the lift
+  // all the way to the clean-off ceiling (1.35) no matter where the Beat
+  // pop dial sits — the swap IS the full pop. In the print direction the
+  // print is the thing ARRIVING on the kick, so it stamps in exactly as
+  // dialed — no extra clean-off boost (the crossfade does the swap).
+  // Toggle off → this is exactly the old lift.
+  const effLift = flipToPrint ? lift : Math.max(lift, flipT * 1.35)
   const press = 1 - 0.5 * effLift // dots back off on the kick (ink lifts off the page)
   const cell = Math.max(
     3,

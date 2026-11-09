@@ -6,6 +6,7 @@ import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
 import { ColorPickerButton } from '@/components/studio/color-picker'
 import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/studio/controls'
+import { cn } from '@/lib/utils'
 
 /** Label + control on one row, the standard dense studio toggle row. */
 function ToggleRow({
@@ -27,6 +28,37 @@ function ToggleRow({
         <Switch aria-label={label} checked={checked} onCheckedChange={onCheckedChange} />
       </div>
     </div>
+  )
+}
+
+/** One side of the Flip on kick chooser — which side of the swap the kick
+ * reveals. Compact two-up chip, active side picks up the section's yellow. */
+function FlipDirButton({
+  label,
+  sub,
+  active,
+  onClick,
+}: {
+  label: string
+  sub: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        'flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border px-1 py-1.5 transition-colors',
+        active
+          ? 'border-yellow-400/70 bg-yellow-500/15 text-yellow-200'
+          : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200',
+      )}
+    >
+      <span className="text-xs font-medium">{label}</span>
+      <span className="text-[9px] leading-none text-zinc-500">{sub}</span>
+    </button>
   )
 }
 
@@ -64,7 +96,7 @@ export function HalftoneFilterSection() {
         most of the picture. Beat pop spans a wide range: low = a gentle
         breath on the kick, max = the print lifts clean off the page and
         snaps back between kicks. Flip on kick goes all the way: the whole
-        print swaps out for the regular picture on every kick.
+        look swaps on every kick, and you choose which side the kick shows.
       </p>
 
       {filter.enabled ? (
@@ -81,11 +113,29 @@ export function HalftoneFilterSection() {
             checked={filter.beatFlip}
             onCheckedChange={(beatFlip) => patchHalftoneFilter({ beatFlip })}
           />
-          <p className="text-[10px] leading-snug text-zinc-600">
-            The print rests on the frame between kicks; on a kick it lifts
-            clean off so the untouched regular picture flashes through, then
-            settles back. Runs all the way whatever the Beat pop dial says.
-          </p>
+          {filter.beatFlip ? (
+            <>
+              <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="What the kick shows">
+                <FlipDirButton
+                  label="The picture"
+                  sub="print between kicks"
+                  active={filter.beatFlipTo !== 'print'}
+                  onClick={() => patchHalftoneFilter({ beatFlipTo: 'picture' })}
+                />
+                <FlipDirButton
+                  label="The print"
+                  sub="picture between kicks"
+                  active={filter.beatFlipTo === 'print'}
+                  onClick={() => patchHalftoneFilter({ beatFlipTo: 'print' })}
+                />
+              </div>
+              <p className="text-[10px] leading-snug text-zinc-600">
+                {filter.beatFlipTo === 'print'
+                  ? 'The regular picture rests on the frame between kicks; on a kick the halftone print stamps in, then fades back out as the kick decays. Runs all the way whatever the Beat pop dial says.'
+                  : 'The print rests on the frame between kicks; on a kick it lifts clean off so the untouched regular picture flashes through, then settles back. Runs all the way whatever the Beat pop dial says.'}
+              </p>
+            </>
+          ) : null}
           <SliderRow
             label="Dot size"
             value={filter.dotSize}
