@@ -2,12 +2,22 @@
  * Halftone filter — newspaper print over the whole frame.
  *
  * The picture is resampled onto a 45°-rotated dot grid (the classic newspaper
- * screen angle) and BLACK DOTS are laid over it — but only where the tone is
- * dark enough: `dotRange` sets the luminance threshold ("only halftone the
- * darker colors, leave the rest intact"). Inside the dotted range the dot
- * AREA grows with darkness (dot radius ∝ √depth), so deep shadows merge into
- * solid ink exactly like real halftone print. Lighter areas never get a dot.
+ * screen angle) and DOTS are laid over it — but only where the tone is dark
+ * enough: `dotRange` sets the luminance threshold ("only halftone the darker
+ * colors, leave the rest intact"). Inside the dotted range the dot AREA grows
+ * with darkness (dot radius ∝ √depth), so deep shadows merge into solid ink
+ * exactly like real halftone print. Lighter areas never get a dot.
  *
+ * Before printing, the picture itself can be conditioned — `grayscale`,
+ * `contrast` and `invert` run as one GPU filter pass (CSS filter chain on a
+ * work canvas, drawn straight back over the frame), so the print always
+ * follows the picture the user actually sees. With everything at defaults
+ * this pass is skipped entirely (zero cost, pixel-identical output).
+ *
+ * The ink is black by default but can be any color, or a two-color gradient
+ * whose angle drifts slowly with song time and swings with the low end —
+ * recoloring happens on the ink canvas with one 'source-in' fill (paints the
+ * new color into the dots' coverage silhouette), never per-pixel.
  * How it stays fast & deterministic (pure canvas ops, one tiny getImageData):
  *   1. The LIVE frame is drawn rotated -45° straight into a TINY n×n canvas
  *      (one pixel per grid cell) — the browser's downscale smoothing does the
@@ -98,12 +108,33 @@ function getInkBuffer(W: number, H: number): { buf: Uint8ClampedArray; img: Imag
 export function drawHalftoneFilter(
   rc: RenderContext,
   cfg: HalftoneFilterConfig | undefined,
-  frame: Pick<AudioFrame, 'bass'>,
+  frame: Pick<AudioFrame, 'bass' | 'time'>,
   transparent: boolean,
 ): void {
   if (!cfg?.enabled || transparent) return
   const { ctx, width: W, height: H } = rc
   const S = H / 720
+
+  // 0) Picture conditioning — grayscale / contrast / invert, always applied
+  //    while the filter is on (independent of the ink dials below). One GPU
+  //    pass: draw the live frame onto a work canvas through the CSS filter
+  //    chain, draw it straight back. Defaults skip this entirely.
+  const grayscale = !!cfg.grayscale
+  const invert = !!cfg.invert
+  const contrast = clamp01(cfg.contrast ?? 0.5)
+  if (grayscale || invert || Math.abs(contrast - 0.5) > 1e-3) {
+    const f: string[] = []
+    if (grayscale) f.push('grayscale(1)')
+    f.push(`contrast(${(contrast * 2).toFixed(4)})`) // 0.5 → 1.0 = untouched
+    if (invert) f.push('invert(1)')
+    const cond = getWork('ht:cond', W, H)
+    const cctx = resetWork(cond.getContext('2d')!)
+    cctx.filter = f.join(' ')
+    cctx.drawImage(ctx.canvas, 0, 0, W, H)
+    cctx.filter = 'none'
+    ctx.drawImage(cond, 0, 0, W, H)
+  }
+
   // Beat reactive: on a kick the print LIFTS — dots shrink back, the ink
   // fades and the shadow range narrows, so the clean picture pops through
   // for a moment; between beats the print rests exactly as dialed in.
@@ -206,11 +237,41 @@ export function drawHalftoneFilter(
   if (!dots) return // nothing dark enough → the frame stays untouched
 
   // 3) Lift the ink onto the frame: one putImageData into the offscreen ink
-  //    canvas, one drawImage at the dialed ink strength (same alpha math as
-  //    the old Path2D fill: black at coverage × strength, source-over).
+  //    canvas, optional recolor, one drawImage at the dialed ink strength
+  //    (same alpha math as the old Path2D fill: ink at coverage × strength,
+  //    source-over).
   const inkCanvas = getWork('ht:ink', W, H)
   const ictx = resetWork(inkCanvas.getContext('2d')!)
   ictx.putImageData(ink.img, 0, 0)
+  const inkColor = cfg.inkColor ?? '#000000'
+  if (cfg.gradient || inkColor !== '#000000') {
+    // Recolor the coverage silhouette with one 'source-in' fill. Black (the
+    // default) skips this — the buffer is already black, so the classic look
+    // pays zero extra GPU work.
+    ictx.globalCompositeOperation = 'source-in'
+    if (cfg.gradient) {
+      // Gradient angle = slow constant drift + a swing driven by the song's
+      // low end, both scaled by the motion dial (0 = static gradient). All
+      // inputs are song time / audio fields, so exports match the preview
+      // frame-exactly.
+      const motion = clamp01(cfg.gradientMotion ?? 0.5)
+      const ang = motion * 2 * Math.PI * (0.05 * (frame.time ?? 0) + 0.75 * bass)
+      const R = diag / 2
+      const grad = ictx.createLinearGradient(
+        W / 2 - Math.cos(ang) * R,
+        H / 2 - Math.sin(ang) * R,
+        W / 2 + Math.cos(ang) * R,
+        H / 2 + Math.sin(ang) * R,
+      )
+      grad.addColorStop(0, inkColor)
+      grad.addColorStop(1, cfg.inkColor2 ?? '#f59e0b')
+      ictx.fillStyle = grad
+    } else {
+      ictx.fillStyle = inkColor
+    }
+    ictx.fillRect(0, 0, W, H)
+    ictx.globalCompositeOperation = 'source-over'
+  }
   ctx.save()
   ctx.globalAlpha = strength
   ctx.drawImage(inkCanvas, 0, 0)

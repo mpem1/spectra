@@ -455,9 +455,14 @@ export interface FilmFilterConfig {
 
 /**
  * Halftone filter — newspaper print: the picture is sampled on a rotated
- * (45°) dot grid and darker tones turn into black halftone dots while
- * lighter areas stay untouched. `dotRange` is the user-facing "only darker
- * colors" control: it sets how dark a tone must be before it gets dotted.
+ * (45°) dot grid and darker tones turn into halftone dots while lighter
+ * areas stay untouched. `dotRange` is the user-facing "only darker colors"
+ * control: it sets how dark a tone must be before it gets dotted.
+ *
+ * The picture itself can be conditioned before printing (`grayscale`,
+ * `contrast`, `invert`) and the ink can be any color, optionally a
+ * two-color gradient whose angle drifts with song time and swings with the
+ * low end (`gradientMotion` scales both).
  */
 export interface HalftoneFilterConfig {
   enabled: boolean
@@ -475,6 +480,23 @@ export interface HalftoneFilterConfig {
   beatReactive: boolean
   /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
   beatStrength: number
+  /** Black & white — desaturate the whole picture before printing */
+  grayscale: boolean
+  /** Picture contrast 0..1 — 0.5 is the untouched picture, 0 flattens
+   *  toward mid-gray, 1 doubles the punch (maps to CSS contrast 0..2) */
+  contrast: number
+  /** Invert the picture (negative) before printing */
+  invert: boolean
+  /** Halftone ink color as '#rrggbb' (default black = classic print) */
+  inkColor: string
+  /** Two-color gradient ink instead of one flat color */
+  gradient: boolean
+  /** Gradient's second color as '#rrggbb' (only matters when gradient) */
+  inkColor2: string
+  /** How much the gradient moves with the sound 0..1 — scales both the
+   *  slow constant drift and the swing driven by the song's low end
+   *  (0 = static gradient) */
+  gradientMotion: number
 }
 
 /**
@@ -907,6 +929,13 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     strength: 0.9,
     beatReactive: false,
     beatStrength: 0.5,
+    grayscale: false,
+    contrast: 0.5,
+    invert: false,
+    inkColor: '#000000',
+    gradient: false,
+    inkColor2: '#f59e0b',
+    gradientMotion: 0.5,
   },
   glitchFilter: {
     enabled: false,

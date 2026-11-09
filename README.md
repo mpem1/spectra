@@ -76,9 +76,12 @@ or cassette, everything. Here are some of them, wearing real album art:
 - **Halftone print filter** — newspaper dots on a 45° grid, applied only to
   the darker tones (the Shadow range slider decides how dark a color must be
   before it gets dotted) while lighter areas stay intact, with dot size,
-  shadow range and ink strength sliders. The ink is stamped from
-  pre-rasterized dot sprites instead of drawing every circle, so it stays
-  smooth even with React to beat on.
+  shadow range and ink strength sliders. The picture can be printed from
+  black & white, contrast-punched or negative (inverted) source, and the ink
+  comes in any color — or a two-color gradient whose blend drifts with the
+  song and swings on every kick (Gradient motion dials how much). The ink is
+  stamped from pre-rasterized dot sprites instead of drawing every circle,
+  so it stays smooth even with React to beat on.
 - **Glitch filter** — digital corruption bursts: chunky pixel blocks (some
   pixelated in place, some copied from the wrong spot, some tinted), picture
   slices shoved sideways and raw color bars stamped over the frame. Burst
