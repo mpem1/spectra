@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button'
 import { GradientEditor } from '@/components/studio/gradient-editor'
 import { ColorPickerButton } from '@/components/studio/color-picker'
 import { parseColor, toHex6 } from '@/components/studio/color-utils'
-import { MicroLabel, OptionCard, SECTION_ACCENT, SliderRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, OptionCard, SECTION_ACCENT, SliderRow, ToggleRow, sectionShell } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 import {
   forgetAnimatedBackground,
@@ -119,6 +119,42 @@ function MediaBackgroundControls() {
           onChange={(blurPulse) => patchBackground({ blurPulse })}
           format={(v) => `${Math.round(v * 100)}%`}
         />
+        <ToggleRow
+          label="Flip on kick"
+          checked={!!background.beatFlip}
+          onCheckedChange={(beatFlip) => patchBackground({ beatFlip })}
+        />
+        {background.beatFlip ? (
+          <>
+            <SliderRow
+              label="Kick sensitivity"
+              value={background.flipSensitivity ?? 0.1}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={(flipSensitivity) => patchBackground({ flipSensitivity })}
+              format={(v) =>
+                v <= 0.025 ? 'Slams only' : v >= 0.975 ? 'Every hit' : `${Math.round(v * 100)}%`
+              }
+            />
+            <SliderRow
+              label="Flip hold"
+              value={background.flipHold ?? 0.2}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={(flipHold) => patchBackground({ flipHold })}
+              format={(v) => (v < 0.025 ? 'Quick flash' : `${(v * 2).toFixed(1)}s`)}
+            />
+            <p className="text-[10px] leading-snug text-zinc-600">
+              On every detected kick the picture mirrors — like Flip horizontal
+              for a moment — holds for Flip hold, then dissolves back to the
+              resting picture. Same kick detector as the halftone print and
+              3D glasses flips (each card keeps its own dials): lower
+              sensitivity = only the hardest slams, higher = every tap.
+            </p>
+          </>
+        ) : null}
       </section>
       {/* Mirror toggles — compose to none / H / V / both */}
       <section className="space-y-1.5">

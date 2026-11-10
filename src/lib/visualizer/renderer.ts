@@ -26,7 +26,7 @@ import { drawPulseImage } from './pulse-image'
 import { drawScreenFilter } from './screen-filter'
 import { drawVhsFilter } from './vhs-filter'
 import { drawFilmFilter } from './film-filter'
-import { drawHalftoneFilter } from './halftone-filter'
+import { drawHalftoneFilter, flipGate } from './halftone-filter'
 import { drawGlitchFilter } from './glitch-filter'
 import { drawAnaglyphFilter } from './anaglyph-filter'
 import { getWork, resetWork } from './filter-utils'
@@ -197,6 +197,9 @@ function drawMediaCover(
   bass = 0,
   /** Song time — keeps the beat shake's jitter direction deterministic. */
   time = 0,
+  /** Flip-on-kick envelope 0..1 — a second, horizontally mirrored pass
+   *  dissolves in over the resting picture as the envelope rises. */
+  mirror = 0,
 ): void {
   if (naturalW <= 0 || naturalH <= 0) return
   const fit = Math.max(W / naturalW, H / naturalH)
@@ -236,12 +239,32 @@ function drawMediaCover(
   const marginY = blurPx + Math.abs(sy)
   const grow =
     marginX > 0.01 || marginY > 0.01 ? 1 + 2 * Math.max(marginX / dw, marginY / dh) : 1
-  ctx.save()
-  if (blurPx > 0.01) ctx.filter = `blur(${blurPx.toFixed(1)}px)`
-  ctx.translate(cx, cy)
-  ctx.scale(bg.flipX ? -1 : 1, bg.flipY ? -1 : 1)
-  ctx.drawImage(media, (-dw * grow) / 2, (-dh * grow) / 2, dw * grow, dh * grow)
-  ctx.restore()
+  const paint = () => {
+    ctx.save()
+    if (blurPx > 0.01) ctx.filter = `blur(${blurPx.toFixed(1)}px)`
+    ctx.translate(cx, cy)
+    ctx.scale(bg.flipX ? -1 : 1, bg.flipY ? -1 : 1)
+    ctx.drawImage(media, (-dw * grow) / 2, (-dh * grow) / 2, dw * grow, dh * grow)
+    ctx.restore()
+  }
+  paint()
+  // Flip on kick: the mirrored pass dissolves in over the resting picture —
+  // the same crossfade family as the anaglyph flip's picture/print
+  // directions. At env 1 the media is exactly as mirrored as the Mirror
+  // toggle's Flip horizontal; at env 0 the pass is skipped entirely
+  // (byte-identical to flip off). Mirroring around the canvas center maps
+  // the cover-fit rect onto itself, so the canvas beneath is never revealed,
+  // and both passes share the same deterministic bounce/shake math so they
+  // land on the same rect (the mirrored jitter folds back onto itself).
+  if (mirror > 0.001) {
+    ctx.save()
+    ctx.globalAlpha = ctx.globalAlpha * Math.min(1, mirror)
+    ctx.translate(W / 2, 0)
+    ctx.scale(-1, 1)
+    ctx.translate(-W / 2, 0)
+    paint()
+    ctx.restore()
+  }
 }
 
 function drawBackground(
@@ -251,6 +274,25 @@ function drawBackground(
   S: number,
 ): void {
   const { ctx, width: W, height: H } = rc
+
+  // Flip on kick — the same clean sub-band onset detector the halftone
+  // print and the 3D glasses flips use, with its own 'bg' state so the
+  // background's dials stay independent of every other card. On each fired
+  // kick the media mirrors horizontally, holds for the hold dial, then
+  // dissolves back; OFF (or non-media backgrounds) never touches the gate.
+  // The detector listens to frame.sub — the clean 30–130 Hz RMS — falling
+  // back to the clipped bass meter for pre-sub frame sources.
+  const flipT =
+    (bg.mode === 'image' || bg.mode === 'video') && bg.beatFlip
+      ? flipGate(
+          ctx,
+          clamp01(frame.sub ?? frame.bass),
+          frame.time,
+          clamp01(bg.flipSensitivity ?? 0.1),
+          clamp01(bg.flipHold ?? 0.2) * 2,
+          'bg',
+        )
+      : 0
 
   if (bg.mode === 'image') {
     // Zoomed-out / panned images and transparent PNGs don't necessarily
@@ -264,7 +306,7 @@ function drawBackground(
     if (img) {
       // Cover-fit base scale, then user zoom/pan/flip/blur (shared with the
       // video/GIF background), then the shade fader on top.
-      drawMediaCover(ctx, img, img.naturalWidth, img.naturalHeight, bg, W, H, S, frame.bass, frame.time)
+      drawMediaCover(ctx, img, img.naturalWidth, img.naturalHeight, bg, W, H, S, frame.bass, frame.time, flipT)
       // Shade fader — darkens the photo so the visualizer pops.
       const shade = clamp01(bg.shade ?? 0)
       if (shade > 0) {
@@ -289,14 +331,14 @@ function drawBackground(
       if (anim) {
         const gifFrame = gifFrameAt(anim, frame.styleTime * 1000)
         if (gifFrame) {
-          drawMediaCover(ctx, gifFrame, anim.width, anim.height, bg, W, H, S, frame.bass, frame.time)
+          drawMediaCover(ctx, gifFrame, anim.width, anim.height, bg, W, H, S, frame.bass, frame.time, flipT)
           drawn = true
         }
       }
     } else if (src) {
       const video = getBackgroundVideo(src)
       if (video) {
-        drawMediaCover(ctx, video, video.videoWidth, video.videoHeight, bg, W, H, S, frame.bass, frame.time)
+        drawMediaCover(ctx, video, video.videoWidth, video.videoHeight, bg, W, H, S, frame.bass, frame.time, flipT)
         drawn = true
       }
     }
