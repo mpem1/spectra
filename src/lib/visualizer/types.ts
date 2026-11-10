@@ -587,6 +587,9 @@ export interface GlitchFilterConfig {
  * as Halftone's Flip on kick, listening to the clean sub channel): every
  * copy snaps to the opposite side, holds, then swings back home through
  * offset 0 — where the two lenses recompose the clean full-color picture.
+ * `depthPop` collapses the separation to 0% on the same kicks (every copy
+ * lands on the center line and the picture recomposes clean and flat),
+ * holds, then blooms back out to the dialed-in depth.
  * Skipped on transparent backgrounds like the other full-frame filters.
  */
 export interface AnaglyphFilterConfig {
@@ -614,6 +617,23 @@ export interface AnaglyphFilterConfig {
    *  after a fired kick (0 = one quick flash, 1 = 2 s) before the 0.25 s
    *  swing back. Old saves without this field load as 0. */
   flipHold: number
+  /** Depth pop on kick — on a solid low-end hit the separation snaps to
+   *  0% (every copy lands on the center line and the lenses recombine
+   *  into the clean full-color picture), holds flat for the pop-hold
+   *  time, then blooms back out to the dialed-in depth. Same kick
+   *  detector as the flip, with its own detector state. Old saves
+   *  without this field load as off. */
+  depthPop: boolean
+  /** Depth pop sensitivity 0..1 — how sharp a low-end hit must land
+   *  before the depth pop fires (same clean sub-band onset detector as
+   *  the flip and the halftone print). Old saves without this field
+   *  load as 0.5. */
+  popSensitivity: number
+  /** Depth pop hold 0..1 — how long the picture stays flat at 0% depth
+   *  after a fired kick (0 = one quick flatten-and-bloom, 1 = 2 s)
+   *  before blooming back out over the 0.25 s release. Old saves
+   *  without this field load as 0. */
+  popHold: number
   /** Blend 0..1 — full anaglyph (1) vs mixed back toward the original (0) */
   strength: number
   /** Left-lens tint colors (1–4), ordered base → outward: tint 1 is the
@@ -1042,6 +1062,9 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     beatFlip: false,
     flipSensitivity: 0.5,
     flipHold: 0,
+    depthPop: false,
+    popSensitivity: 0.5,
+    popHold: 0,
     strength: 1,
     leftColors: ['#ff0000'],
     rightColors: ['#00ffff'],

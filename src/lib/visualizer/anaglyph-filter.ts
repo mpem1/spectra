@@ -30,6 +30,12 @@
  *                flip (imported flipGate, clean sub-band drive, per-filter
  *                detector state — dialed the same, both flip on the same
  *                kicks).
+ *   depthPop   — Depth pop on kick: on the same low-end hits the
+ *                separation snaps to 0% (every copy lands on the center
+ *                line and the lenses recombine into the clean full-color
+ *                picture), holds flat for popHold, then blooms back out
+ *                to the dialed depth. Own detector state ('anaglyph:pop'
+ *                key) so its dials stay independent of the flip's.
  *
  * The un-overlapped strips at the frame edges keep tinted content (left
  * tints trail off the left edge, right tints off the right) instead of
@@ -140,6 +146,26 @@ export function drawAnaglyphFilter(
     : 0
   const dir = 1 - 2 * flipT
 
+  // Depth pop on kick — the same onset detector that drives the flip, with
+  // its own 'anaglyph:pop' state so the pop dials stay independent of the
+  // flip's (dialed the same, both fire on the same kicks). On a fired kick
+  // the separation multiplier snaps to 0 — every copy lands on the center
+  // line, the lenses recombine into the clean full-color picture — holds
+  // flat for the pop-hold time, then the 0.25 s release blooms the 3D back
+  // out to the dialed-in depth. popT 0 = the resting glasses (byte-
+  // identical to pop off).
+  const popT = cfg.depthPop
+    ? flipGate(
+        ctx,
+        Math.min(1, Math.max(0, frame.sub ?? frame.bass)),
+        frame.time,
+        Math.min(1, Math.max(0, cfg.popSensitivity ?? 0.5)),
+        Math.min(1, Math.max(0, cfg.popHold ?? 0)) * 2,
+        'anaglyph:pop',
+      )
+    : 0
+  const dxPop = Math.round(dx * (1 - popT))
+
   // One snapshot; every tint copy samples the finished frame from it.
   const snap = getWork('anaglyph:snap', W, H)
   const sc = resetWork(snap.getContext('2d')!)
@@ -159,11 +185,11 @@ export function drawAnaglyphFilter(
   const tint = getWork('anaglyph:tint', W, H)
   leftTints.forEach((color, i) => {
     channelize(tint, snap, color, W, H)
-    oc.drawImage(tint, -(i + 1) * dx * dir, 0)
+    oc.drawImage(tint, -(i + 1) * dxPop * dir, 0)
   })
   rightTints.forEach((color, i) => {
     channelize(tint, snap, color, W, H)
-    oc.drawImage(tint, (i + 1) * dx * dir, 0)
+    oc.drawImage(tint, (i + 1) * dxPop * dir, 0)
   })
   oc.globalCompositeOperation = 'source-over'
 

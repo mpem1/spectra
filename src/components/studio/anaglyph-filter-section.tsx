@@ -124,7 +124,8 @@ export function AnaglyphFilterSection() {
         twice, once through each lens&apos;s colors, shifted apart so every edge
         wears color fringes. Tint 1 is the base layer; extra tints stack
         outward like a tracer trail instead of blending in. Flip on kick turns
-        the glasses around on every hit. Baked into every export.
+        the glasses around on every hit; Depth pop flattens the 3D to zero on
+        every hit and lets it bloom back out. Baked into every export.
       </p>
 
       {filter.enabled ? (
@@ -175,6 +176,45 @@ export function AnaglyphFilterSection() {
               </p>
             </>
           ) : null}
+          <ToggleRow
+            label="Depth pop on kick"
+            checked={filter.depthPop}
+            onCheckedChange={(depthPop) => patchAnaglyphFilter({ depthPop })}
+          />
+          {filter.depthPop ? (
+            <>
+              <SliderRow
+                label="Hit sensitivity"
+                value={filter.popSensitivity}
+                min={0}
+                max={1}
+                step={0.05}
+                onChange={set('popSensitivity')}
+                format={(v) =>
+                  v <= 0.025 ? 'Slams only' : v >= 0.975 ? 'Every hit' : `${Math.round(v * 100)}%`
+                }
+              />
+              <SliderRow
+                label="Flat hold"
+                value={filter.popHold}
+                min={0}
+                max={1}
+                step={0.05}
+                onChange={set('popHold')}
+                format={(v) => (v < 0.025 ? 'Quick flash' : `${(v * 2).toFixed(1)}s`)}
+              />
+              <p className="text-[10px] leading-snug text-zinc-600">
+                On a kick the 3D depth snaps to 0% — both lenses land on top
+                of each other and the picture goes clean and flat — holds for
+                Flat hold, then blooms back out to your Depth dial. Same kick
+                detector as the flip: dialed the same, they fire on the same
+                kicks, so the glasses mirror while the picture is flat and the
+                3D blooms home as they swing back. Sensitivity listens for the
+                HIT on a clean sub-bass channel: lower = only the hardest
+                slams, higher = every tap.
+              </p>
+            </>
+          ) : null}
           <SliderRow
             label="Depth"
             value={filter.depth}
@@ -209,12 +249,14 @@ export function AnaglyphFilterSection() {
             Depth sets how far apart the two base layers sit (100% is the
             classic paper-glasses amount, push it to 250% for a wide stereo
             pop), Beat pop pushes them wider on the song&apos;s low end when
-            React to beat is on, and Mix blends the glasses look back toward
-            the untouched picture. Tint 1 on each lens is the base layer that
-            builds the picture — it never gets diluted. Every added tint sits
-            one separation-step further out, so the trail extends outward
-            step by step (tint 2 at double, tint 3 at triple the offset).
-            Skipped on transparent backgrounds so alpha recordings stay clean.
+            React to beat is on, Depth pop snaps them together to 0% on each
+            detected kick before blooming back out, and Mix blends the glasses
+            look back toward the untouched picture. Tint 1 on each lens is the
+            base layer that builds the picture — it never gets diluted. Every
+            added tint sits one separation-step further out, so the trail
+            extends outward step by step (tint 2 at double, tint 3 at triple
+            the offset). Skipped on transparent backgrounds so alpha
+            recordings stay clean.
           </p>
         </>
       ) : null}
