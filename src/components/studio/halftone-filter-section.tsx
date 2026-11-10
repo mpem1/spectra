@@ -133,7 +133,7 @@ export function HalftoneFilterSection() {
               </div>
               <p className="text-[10px] leading-snug text-zinc-600">
                 {filter.beatFlipTo === 'print'
-                  ? 'The regular picture rests on the frame between kicks; on a kick the halftone print stamps in, then fades back out as the kick decays. Runs all the way whatever the Beat pop dial says.'
+                  ? 'The regular picture rests on the frame between kicks; on a kick the halftone print stamps in, then fades back out. Runs all the way whatever the Beat pop dial says.'
                   : 'The print rests on the frame between kicks; on a kick it lifts clean off so the untouched regular picture flashes through, then settles back. Runs all the way whatever the Beat pop dial says.'}
               </p>
               <SliderRow
@@ -154,13 +154,14 @@ export function HalftoneFilterSection() {
                 max={1}
                 step={0.05}
                 onChange={set('flipHold')}
-                format={(v) => (v < 0.025 ? 'With the kick' : `${(v * 2).toFixed(1)}s`)}
+                format={(v) => (v < 0.025 ? 'Quick flash' : `${(v * 2).toFixed(1)}s`)}
               />
               <p className="text-[10px] leading-snug text-zinc-600">
-                Sensitivity sets how hard a kick must land before the flip
-                fires. Hold keeps the swapped side fully swapped for that long
-                before it fades back — “With the kick” fades out with the
-                kick, as before.
+                Sensitivity listens for the HIT, not the loudness — long bass
+                notes and drones hold their fire, only real strikes flip it.
+                Lower = only the hardest slams, higher = every tap. Hold keeps
+                the swapped side fully swapped for that long before a quick
+                0.25s fade-back — “Quick flash” gives one flash per kick.
               </p>
               <ToggleRow
                 label="Stay black & white"

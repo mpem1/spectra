@@ -490,19 +490,21 @@ export interface HalftoneFilterConfig {
    *  every kick flashes the untouched regular picture (the original
    *  behavior); 'print' = the mirror image — the regular picture rests on
    *  the frame between kicks and every kick stamps the halftone print in,
-   *  then it fades back out as the kick decays. Only matters while
-   *  beatFlip is on. Old saves without this field load as 'picture'. */
+   *  then it fades back out. Only matters while beatFlip is on. Old saves
+   *  without this field load as 'picture'. */
   beatFlipTo: 'picture' | 'print'
-  /** Flip on kick sensitivity 0..1 — how hard a kick must land before the
-   *  swap fires. 0.5 (default) is the original gate (bass 0.5–0.75); lower
-   *  values raise the bar until only a true slam flips it, higher values
-   *  drop it to a hair trigger. Only matters while beatFlip is on. Old
-   *  saves without this field load as 0.5 (the original gate). */
+  /** Flip on kick sensitivity 0..1 — how sharp a low-end hit must land
+   *  before the swap fires. The detector listens for the HIT, not the
+   *  loudness (it tracks how fast the bass rises), so long bass notes never
+   *  pin the swap open and quiet passages still fire on real kicks. 0.5
+   *  (default) is a balanced gate; lower values raise the bar until only a
+   *  true slam flips it, higher values drop it to "every hit". Only matters
+   *  while beatFlip is on. Old saves without this field load as 0.5. */
   flipSensitivity: number
   /** Flip on kick hold 0..1 — how long the swap stays FULLY swapped after
-   *  a kick before it fades back (the dial spans 0–2 s). 0 (default) fades
-   *  back with the kick exactly as before, and skips the hold machinery
-   *  entirely. Only matters while beatFlip is on. */
+   *  a fired kick before it fades back (the dial spans 0–2 s; the release
+   *  itself is a fixed 0.25 s). 0 (default) gives a quick full-strength
+   *  flash per kick. Only matters while beatFlip is on. */
   flipHold: number
   /** Stay black & white — the kick side of the Flip on kick swap keeps the
    *  picture conditioning (Grayscale / Contrast) instead of flashing back
