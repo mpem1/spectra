@@ -575,16 +575,20 @@ export interface GlitchFilterConfig {
 
 /**
  * Anaglyph filter — the old-school paper 3D-glasses look: the finished
- * picture is re-projected twice, once through the red channel and once
- * through cyan, the two copies shifted horizontally so the whole frame
- * wears classic red/blue fringes. `reactivity` lets the song's low end
- * push the copies apart on beats (frame.bass is part of the deterministic
- * AudioFrame both pipelines produce, so exports pop identically).
+ * picture is re-projected twice, once through the left tint(s) and once
+ * through the right tint(s), the two copies shifted horizontally so the
+ * whole frame wears classic color fringes. `reactivity` lets the song's
+ * low end push the copies apart on beats (frame.bass is part of the
+ * deterministic AudioFrame both pipelines produce, so exports pop
+ * identically). Each side can carry up to 4 tint colors — the tinted
+ * copies are averaged into that side's image, so extra colors restyle
+ * the glasses (e.g. green/magenta) or build full-color anaglyph trios.
  * Skipped on transparent backgrounds like the other full-frame filters.
  */
 export interface AnaglyphFilterConfig {
   enabled: boolean
-  /** Parallax separation 0..1 — how far the red/cyan copies drift apart */
+  /** Parallax separation 0..2.5 — how far the left/right copies drift
+   *  apart (1 = the classic paper-glasses amount, >1 = wider pop) */
   depth: number
   /** Beat reactivity 0..1 — how much the low end pushes the copies wider
    *  (only active when beatReactive is on) */
@@ -594,6 +598,12 @@ export interface AnaglyphFilterConfig {
   beatReactive: boolean
   /** Blend 0..1 — full anaglyph (1) vs mixed back toward the original (0) */
   strength: number
+  /** Left-lens tint colors (1–4). The left copy is multiplied by each
+   *  color and the results averaged. Absent in old saves → classic red. */
+  leftColors?: string[]
+  /** Right-lens tint colors (1–4), averaged the same way. Absent in old
+   *  saves → classic cyan. */
+  rightColors?: string[]
 }
 
 /* -------------------------------- Custom fonts ------------------------------- */
@@ -1011,6 +1021,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     reactivity: 0.5,
     beatReactive: false,
     strength: 1,
+    leftColors: ['#ff0000'],
+    rightColors: ['#00ffff'],
   },
   pulseImage: {
     enabled: false,
