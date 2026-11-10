@@ -980,7 +980,9 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     scale: 1,
     flipX: false,
     flipY: false,
-    shade: 0.5,
+    // Factory 0% — uploaded pictures show at full brightness; the Shade dial
+    // is there when a project needs darkening for readability.
+    shade: 0,
     vignette: 0.35,
     grain: 0.08,
     blur: 0,

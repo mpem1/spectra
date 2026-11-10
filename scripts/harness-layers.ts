@@ -202,6 +202,7 @@ console.log('S1 factory defaults — kick dials + layers')
   check('layers.textClear defaults to off', d.layers.textClear === false, `got ${d.layers.textClear}`)
   check('layers.filterAlpha defaults to full strength', d.layers.filterAlpha === 1, `got ${d.layers.filterAlpha}`)
   check('lyrics opacity defaults to fully opaque', d.lyrics.opacity === 1, `got ${d.lyrics.opacity}`)
+  check('background shade defaults to 0% (images show at full brightness)', d.background.shade === 0, `got ${d.background.shade}`)
   check('halftone config no longer carries flipColorLayers', !('flipColorLayers' in d.halftoneFilter), 'legacy key still present')
 }
 
