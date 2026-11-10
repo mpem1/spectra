@@ -176,6 +176,10 @@ export interface LyricsConfig {
   /** Glow blur strength 0..1 */
   glowStrength: number
   glowColor: string
+  /** Overall text opacity 0..1 — 1 = fully opaque, 0 = invisible. Sits on
+   *  top of every other alpha (fade-in, echo dim, auto-hide fade), scaling
+   *  the whole lyric layer uniformly. */
+  opacity: number
 }
 
 /* ----------------------------------- Title ------------------------------------ */
@@ -724,6 +728,15 @@ export interface LayersConfig {
    *  the layers skip every full-frame filter pass. No-op on transparent
    *  backgrounds (those skip the filters anyway). */
   stayColored: boolean
+  /** Text stays legible — the text overlays (lyrics, titles, watermark)
+   *  render into their own transparent overlay drawn back ON TOP of the
+   *  finished filter chain, so the words never get textured/doubled/torn by
+   *  screen, VHS, film, halftone print, glitch or 3D glasses. Unlike
+   *  stayColored, the moving layers (visualizer, pulse image, vinyl) still
+   *  ride through the filters and take the full look. Only meaningful while
+   *  stayColored is off — stayColored already lifts the text (with
+   *  everything else) above the chain. No-op on transparent backgrounds. */
+  textClear: boolean
 }
 
 /**
@@ -737,12 +750,15 @@ export interface LayersConfig {
  */
 export function resolveLayersConfig(saved: unknown): LayersConfig {
   const s = (saved ?? {}) as {
-    layers?: { stayColored?: unknown }
+    layers?: { stayColored?: unknown; textClear?: unknown }
     halftoneFilter?: { enabled?: unknown; beatFlip?: unknown; flipColorLayers?: unknown }
   }
-  if (typeof s.layers?.stayColored === 'boolean') return { stayColored: s.layers.stayColored }
-  const ht = s.halftoneFilter
-  return { stayColored: !!(ht?.enabled && ht.beatFlip && ht.flipColorLayers) }
+  const stayColored =
+    typeof s.layers?.stayColored === 'boolean'
+      ? s.layers.stayColored
+      : !!(s.halftoneFilter?.enabled && s.halftoneFilter.beatFlip && s.halftoneFilter.flipColorLayers)
+  const textClear = typeof s.layers?.textClear === 'boolean' ? s.layers.textClear : false
+  return { stayColored, textClear }
 }
 
 /* --------------------------------- Audio frame -------------------------------- */
@@ -980,6 +996,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     glow: false,
     glowStrength: 0.5,
     glowColor: '#ffffff',
+    opacity: 1,
   },
   title: {
     enabled: false,
@@ -1132,6 +1149,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
   },
   layers: {
     stayColored: false,
+    textClear: false,
   },
   pulseImage: {
     enabled: false,

@@ -109,14 +109,27 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // and the layer order (text above everything) is preserved because the
   // text rides the same overlay.
   const stayColored = !transparent && !!config.layers?.stayColored
+  // "Text stays legible" — the lighter sibling: ONLY the text overlays
+  // (lyrics, titles, watermark) skip the filter chain while the moving
+  // layers keep riding through it and take the full look. Inert while
+  // stayColored is on (that already lifts the text above everything) and on
+  // transparent backgrounds (those skip the filters anyway).
+  const textClear = !transparent && !stayColored && !!config.layers?.textClear
   let ovCanvas: HTMLCanvasElement | null = null
   let layersRc: RenderContext = rc
-  if (stayColored) {
+  if (stayColored || textClear) {
     ovCanvas = getWork('layers:stayColored', rc.width, rc.height)
     const ovCtx = resetWork(ovCanvas.getContext('2d')!)
     ovCtx.clearRect(0, 0, rc.width, rc.height)
     layersRc = { ...rc, ctx: ovCtx }
   }
+  // Where the moving layers draw: into the overlay while stayColored lifts
+  // everything, straight onto the frame when only the text is protected (the
+  // filters then texture them along with the background) — and onto the
+  // frame too when neither bypass is on (the classic path). The text
+  // overlays always draw to layersRc: the overlay whenever either bypass is
+  // on, the frame itself on the classic path.
+  const movingRc = stayColored ? layersRc : rc
   drawBackground(rc, frame, config.background, S)
   // Layer order vs. the album art layer: 'back' tucks the bars behind the
   // vinyl & cover, 'front' (the default, and what very old saves merge to)
@@ -125,19 +138,19 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // Pulse image behind everything except the background (pre-disc saves
   // merge layer='front', so this only runs when the user asks for it).
   if (config.pulseImage?.enabled && config.pulseImage.layer === 'back') {
-    drawPulseImage(layersRc, frame, config.pulseImage, config.visualizer.gradient, S)
+    drawPulseImage(movingRc, frame, config.pulseImage, config.visualizer.gradient, S)
   }
-  if (vizBehind) drawVisualizer(layersRc, frame, config.visualizer, S)
+  if (vizBehind) drawVisualizer(movingRc, frame, config.visualizer, S)
   // Album art layer (square cover + spinning vinyl/CD) — above the
   // visualizer, below the text overlays. Optional chaining keeps very old
   // saves (pre-disc) renderable even before the store merge runs.
   if (config.disc?.enabled) {
-    drawDisc(layersRc, frame, config.disc)
+    drawDisc(movingRc, frame, config.disc)
   }
-  if (!vizBehind) drawVisualizer(layersRc, frame, config.visualizer, S)
+  if (!vizBehind) drawVisualizer(movingRc, frame, config.visualizer, S)
   // Pulse image in front of the bars & vinyl (the default placement).
   if (config.pulseImage?.enabled && config.pulseImage.layer !== 'back') {
-    drawPulseImage(layersRc, frame, config.pulseImage, config.visualizer.gradient, S)
+    drawPulseImage(movingRc, frame, config.pulseImage, config.visualizer.gradient, S)
   }
   if (config.lyrics.enabled && config.lyrics.lines.length > 0) {
     drawLyrics(layersRc, frame, config.lyrics, config.visualizer.gradient)
@@ -165,10 +178,11 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   drawHalftoneFilter(rc, config.halftoneFilter, frame, transparent)
   drawGlitchFilter(rc, config.glitchFilter, frame, transparent)
   drawAnaglyphFilter(rc, config.anaglyphFilter, frame, transparent)
-  // "Layers stay colored": bring the overlay (moving layers + text, full
-  // color) back on top of the finished filter chain — the very last pass,
-  // so every filter (screen through 3D glasses) only ever textures the
-  // background picture.
+  // "Layers stay colored" / "Text stays legible": bring the overlay back on
+  // top of the finished filter chain — the very last pass, so every filter
+  // (screen through 3D glasses) only ever textures whatever stayed below it
+  // (the background alone, plus the moving layers when only the text is
+  // protected).
   if (ovCanvas) {
     rc.ctx.drawImage(ovCanvas, 0, 0)
   }

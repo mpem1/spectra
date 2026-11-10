@@ -817,6 +817,19 @@ export function LyricsTab() {
           arrives the oldest is pushed off. A line that is never replaced fades out after this
           many seconds.
         </p>
+        <SliderRow
+          label="Opacity"
+          value={lyrics.opacity ?? 1}
+          min={0}
+          max={1}
+          step={0.05}
+          onChange={(opacity) => patchLyrics({ opacity })}
+          format={(v) => `${Math.round(v * 100)}%`}
+        />
+        <p className="-mt-1 text-[11px] leading-snug text-zinc-600">
+          Layer transparency: 100% is the full-strength text, sliding down fades the whole
+          lyric layer (glow and outline included) into the picture behind it.
+        </p>
 
         {/* Echo: does the replaced line linger above, dimmed? */}
         <div className="flex h-7 items-center justify-between">

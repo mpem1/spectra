@@ -19,7 +19,8 @@
  * Text can be filled with a flat color, a sweep of the visualizer palette,
  * the lyrics' own gradient (angle-aware, respects stop positions), or left
  * empty — a see-through hollow letter showing only its outline stroke
- * and/or glow halo. Long lines auto-shrink to fit.
+ * and/or glow halo. Long lines auto-shrink to fit. An overall `opacity`
+ * (0..1) scales the whole layer uniformly, on top of every other alpha.
  *
  * Deterministic — a pure function of (rc, frame, lyrics, palette).
  */
@@ -68,6 +69,11 @@ export function drawLyrics(
 
   const { ctx, width, height } = rc
   const S = height / 720
+  // Overall layer opacity — render-level ?? fallback keeps very old raw
+  // configs (that skipped the store merge) fully opaque.
+  const baseOpacity = clamp01(lyrics.opacity ?? 1)
+  // Invisible layer: skip all the work (font measuring, glow passes…).
+  if (baseOpacity <= 0.002) return
   const fade = Math.max(lyrics.fade, 0.001)
   const hold = Math.max(lyrics.holdTime, 0.5)
   const lines = lyrics.lines
@@ -82,10 +88,12 @@ export function drawLyrics(
 
   const paint = (rawText: string, py: number, alpha: number) => {
     const text = lyrics.uppercase ? rawText.toUpperCase() : rawText
-    if (!text || alpha <= 0.002) return
+    // The layer opacity scales every pass (glow, outline, fill) uniformly.
+    const a = alpha * baseOpacity
+    if (!text || a <= 0.002) return
 
     ctx.save()
-    ctx.globalAlpha = alpha
+    ctx.globalAlpha = a
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
 
