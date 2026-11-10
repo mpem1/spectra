@@ -250,6 +250,7 @@ interface FlipGateState {
   armed: boolean // one gesture, one fire
   peakSinceFire: number // loudest bass since the last fire (dip reference)
   quietT: number // last song time the rise was well below the bar
+  prevRise: number // the previous frame's rise (persistence test)
 }
 const flipStates = new WeakMap<CanvasRenderingContext2D, FlipGateState>()
 /** Seconds the swap takes to fall back once the hold runs out. */
@@ -265,18 +266,21 @@ const RISE_WINDOW = 0.09
 const RISE_CAP = 32
 /**
  * The trigger bar's relative term is a multiple of this percentile of the
- * recent rise values. The 70th percentile is the sweet spot between two
- * failure modes: it sits at the between-kicks baseline when kicks are sparse
- * (so — unlike a mean/EMA — the kicks themselves can never inflate the bar
- * into missing their own followers), and it climbs WITH the note density when
- * the bassline is busy (so a 16th-note bassline raises the bar above its own
- * note onsets while the bigger kick on top still clears it).
+ * recent rise values. The 25th percentile (not a mean/EMA — those chase the
+ * spikes themselves — and not a HIGHER percentile) is the sweet spot: it
+ * sits at the between-notes baseline unless more than ~75 % of all frames
+ * carry a substantial rise, so neither the kicks nor a busy bassline's own
+ * ripple can inflate the bar into missing them. (A HIGHER percentile was
+ * tried and rejected: at p70, any bassline whose texture occupies ≥ 30 % of
+ * frames pins the bar AT its own ripple, and every kick that rises less
+ * than relMult× that ripple becomes structurally unfireable — exactly the
+ * "some sections never trigger" bug.)
  */
-const RISE_PCTL = 0.7
-/** Percentile-ring capacity: 0.7 s at 60 fps = 42 samples; 64 is comfortably safe. */
-const RISE_PCTL_CAP = 64
+const RISE_PCTL = 0.25
+/** Percentile-ring capacity: 1.0 s at 240 fps = 240 samples; 256 is safe. */
+const RISE_PCTL_CAP = 256
 /** How much recent history the percentile looks at. */
-const PCTL_WINDOW = 0.7
+const PCTL_WINDOW = 1.0
 /** One kick fires once: same-kick re-rises inside this window are ignored. */
 const REFRACTORY = 0.13
 /**
@@ -289,13 +293,24 @@ const REFRACTORY = 0.13
 const QUIET_FRAC = 0.35
 const REARM_QUIET = 0.12
 /** Absolute silence floor and cap for the trigger threshold. */
-const NOISE_FLOOR = 0.035
+const NOISE_FLOOR = 0.03
 const THR_CAP = 0.5
+/**
+ * Persistence: a fire requires the rise to have ALREADY been above 0.8× the
+ * bar on the previous frame too. Real kicks (and roll notes) hold their rise
+ * for 2–4 frames while the RMS window slides across the attack; the one
+ * residual artifact of the sub channel — the RMS window's phase alignment on
+ * a PURE sustained low note, which pulses once every few frames at up to
+ * ~10 % of the level — is a SINGLE-frame spike and can never pass. This is
+ * what lets the absolute floor sit low enough for quiet-breakdown kicks
+ * without a loud pure bassline machine-gunning the flip.
+ */
+const PERSIST_FRAC = 0.85
 
 /**
- * The 70th percentile of the rise values still inside the lookback window
+ * The 25th percentile of the rise values still inside the lookback window
  * (song-time aware, allocation-free: values are gathered into a reusable
- * scratch buffer and insertion-sorted — 64 elements max, trivial per frame).
+ * scratch buffer and insertion-sorted — ≤ 256 elements, trivial per frame).
  */
 function risePctl(st: FlipGateState, time: number): number {
   const cutoff = time - PCTL_WINDOW
@@ -361,6 +376,7 @@ export function flipGate(
       armed: true,
       peakSinceFire: 0,
       quietT: -Infinity,
+      prevRise: 0,
     }
     flipStates.set(ctx, st)
   }
@@ -374,6 +390,7 @@ export function flipGate(
     st.armed = true
     st.peakSinceFire = bass
     st.quietT = -Infinity
+    st.prevRise = 0
   }
   const dt = Math.min(0.1, Math.max(0, time - st.lastT))
   st.lastT = time
@@ -397,15 +414,16 @@ export function flipGate(
     if (v < min) min = v
   }
   const rise = bass - min
-  // The trigger bar: a multiple of the 70th-percentile rise (the local
-  // groove's own punch — sparse kicks can't inflate it, busy basslines lift
-  // it above their notes) plus an absolute term that eases down in quiet
-  // passages. Lower sensitivity = a higher bar (only true slams), higher
-  // sensitivity = a lower one (every hit).
-  const p70 = risePctl(st, time)
+  // The trigger bar: a multiple of the rolling 25th-percentile rise (the
+  // between-notes baseline — neither the kicks nor the bassline's own ripple
+  // can inflate it until ~75 % of frames carry a substantial rise) plus an
+  // absolute term that eases down in quiet passages. Lower sensitivity = a
+  // higher bar (only true slams), higher sensitivity = a lower one (every
+  // hit).
+  const p25 = risePctl(st, time)
   const relMult = 2.6 - 1.8 * sens
-  const base = (0.3 - 0.24 * sens) * (0.3 + 0.7 * Math.min(1, Math.max(0, p70 / 0.05)))
-  const thr = Math.min(THR_CAP, Math.max(NOISE_FLOOR, p70 * relMult + base))
+  const base = (0.075 - 0.05 * sens) * (0.3 + 0.7 * Math.min(1, Math.max(0, p25 / 0.05)))
+  const thr = Math.min(THR_CAP, Math.max(NOISE_FLOOR, p25 * relMult + base))
   // Push this frame's rise into the percentile ring (after reading the bar —
   // the current rise must not dilute its own threshold this frame).
   st.riseHist[st.riseHead] = rise
@@ -421,13 +439,19 @@ export function flipGate(
   if (rise < thr * QUIET_FRAC) st.quietT = time
   if (!st.armed && time - st.quietT >= REARM_QUIET) st.armed = true
   let fired = false
-  if (st.armed && rise > thr && time - st.lastKickT >= REFRACTORY) {
+  if (
+    st.armed &&
+    rise > thr &&
+    st.prevRise > thr * PERSIST_FRAC &&
+    time - st.lastKickT >= REFRACTORY
+  ) {
     fired = true
     st.lastKickT = time
     st.holdLeft = holdSec
     st.armed = false
     st.peakSinceFire = bass
   }
+  st.prevRise = rise
 
   // --- Envelope ---------------------------------------------------------------
   if (st.holdLeft > 0) {
