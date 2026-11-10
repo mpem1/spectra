@@ -114,16 +114,20 @@ export interface BackgroundConfig {
   /** Beat blur — extra blur that swells with the bass on top of the
    *  static `blur`, 0..1 (0 = off). Scales up to ~30px on a full hit. */
   blurPulse: number
-  /** Flip on kick — the media mirrors horizontally on every detected kick,
-   *  holds for `flipHold`, then dissolves back (off = steady). The same
-   *  clean sub-band onset detector as the halftone print / 3D glasses
-   *  flips, with its own state so the dials stay independent. */
+  /** Flip on kick — the With the beat motion flips ON on every detected
+   *  kick: the background rests still between kicks, the bounce/shake/
+   *  blur swell stamp in at their dialed strength, hold for `flipHold`,
+   *  then ease back to still (off = the motions follow the bass
+   *  continuously). The same clean sub-band onset detector as the halftone
+   *  print / 3D glasses flips, with its own state so the dials stay
+   *  independent. */
   beatFlip: boolean
   /** Kick sensitivity 0..1 — how sharp a bass onset must be to fire the
    *  flip (lower = only the hardest slams, higher = every tap) */
   flipSensitivity: number
-  /** Flip hold dial 0..1 (×2 s) — how long the mirrored side stays fully
-   *  on before the short 0.25 s dissolve back. 0.2 = 0.4 s factory rest. */
+  /** Flip hold dial 0..1 (×2 s) — how long the beat motion stays fully on
+   *  after a fired kick before the short 0.25 s ease back to still.
+   *  0.2 = 0.4 s factory rest. */
   flipHold: number
 }
 

@@ -193,32 +193,35 @@ function drawMediaCover(
   W: number,
   H: number,
   S: number,
-  /** Live bass energy 0..1 — drives the beat-bounce zoom, shake and blur. */
-  bass = 0,
+  /**
+   * Beat-motion driver 0..1 — what the With the beat motions ride. Flip on
+   * kick off: the live bass envelope, so the motions follow the bass
+   * continuously. Flip on kick on: the flip gate's stamp-in envelope, so
+   * the motions flip ON on each detected kick and the background rests
+   * still between them.
+   */
+  beat = 0,
   /** Song time — keeps the beat shake's jitter direction deterministic. */
   time = 0,
-  /** Flip-on-kick envelope 0..1 — a second, horizontally mirrored pass
-   *  dissolves in over the resting picture as the envelope rises. */
-  mirror = 0,
 ): void {
   if (naturalW <= 0 || naturalH <= 0) return
   const fit = Math.max(W / naturalW, H / naturalH)
   const zoom = Math.max(0.05, bg.scale ?? 1)
-  const bassLevel = clamp01(bass)
-  // Beat bounce: the media breathes with the bass — at most +8% on a full
-  // hit at pulse = 1. It only ever GROWS past the cover-fit base, so the
-  // canvas is never left uncovered, and pulse = 0 is an exact no-op.
-  const bounce = 1 + clamp01(bg.pulse ?? 0) * bassLevel * 0.08
+  const beatLevel = clamp01(beat)
+  // Beat bounce: the media breathes with the beat driver — at most +8% on
+  // a full hit at pulse = 1. It only ever GROWS past the cover-fit base,
+  // so the canvas is never left uncovered, and pulse = 0 is an exact no-op.
+  const bounce = 1 + clamp01(bg.pulse ?? 0) * beatLevel * 0.08
   // Beat shake: deterministic jitter — a fresh pseudo-random direction every
-  // 1/30 s of song time, scaled by strength × live bass, so it pulses with
-  // the kick and freezes when the song goes quiet. The seed is the song
-  // clock, not the wall clock, so exported frames stay pixel-exact.
+  // 1/30 s of song time, scaled by strength × the beat driver, so it pulses
+  // with the kick and freezes when the driver sits still. The seed is the
+  // song clock, not the wall clock, so exported frames stay pixel-exact.
   const shakeAmt = clamp01(bg.shake ?? 0)
   let sx = 0
   let sy = 0
-  if (shakeAmt > 0.001 && bassLevel > 0.001) {
+  if (shakeAmt > 0.001 && beatLevel > 0.001) {
     const rnd = mulberry32(Math.floor(time * 30))
-    const amp = shakeAmt * bassLevel * Math.min(W, H) * 0.016
+    const amp = shakeAmt * beatLevel * Math.min(W, H) * 0.016
     sx = (rnd() * 2 - 1) * amp
     sy = (rnd() * 2 - 1) * amp
   }
@@ -228,10 +231,10 @@ function drawMediaCover(
   const cx = W / 2 + (bg.x ?? 0) * W + sx
   const cy = H / 2 + (bg.y ?? 0) * H + sy
   // Static blur (the Blur slider) + beat blur (Blur pulse swells with the
-  // bass on top of it — up to ~30px more on a full hit at strength 1).
+  // beat driver on top of it — up to ~30px more on a full hit at strength 1).
   const blurPx =
     'filter' in ctx
-      ? clamp01(bg.blur ?? 0) * 40 * S + clamp01(bg.blurPulse ?? 0) * bassLevel * 30 * S
+      ? clamp01(bg.blur ?? 0) * 40 * S + clamp01(bg.blurPulse ?? 0) * beatLevel * 30 * S
       : 0
   // Overscan so blurred edges AND the shake offsets never reveal the canvas
   // beneath — check both axes, the widest margin wins.
@@ -239,32 +242,12 @@ function drawMediaCover(
   const marginY = blurPx + Math.abs(sy)
   const grow =
     marginX > 0.01 || marginY > 0.01 ? 1 + 2 * Math.max(marginX / dw, marginY / dh) : 1
-  const paint = () => {
-    ctx.save()
-    if (blurPx > 0.01) ctx.filter = `blur(${blurPx.toFixed(1)}px)`
-    ctx.translate(cx, cy)
-    ctx.scale(bg.flipX ? -1 : 1, bg.flipY ? -1 : 1)
-    ctx.drawImage(media, (-dw * grow) / 2, (-dh * grow) / 2, dw * grow, dh * grow)
-    ctx.restore()
-  }
-  paint()
-  // Flip on kick: the mirrored pass dissolves in over the resting picture —
-  // the same crossfade family as the anaglyph flip's picture/print
-  // directions. At env 1 the media is exactly as mirrored as the Mirror
-  // toggle's Flip horizontal; at env 0 the pass is skipped entirely
-  // (byte-identical to flip off). Mirroring around the canvas center maps
-  // the cover-fit rect onto itself, so the canvas beneath is never revealed,
-  // and both passes share the same deterministic bounce/shake math so they
-  // land on the same rect (the mirrored jitter folds back onto itself).
-  if (mirror > 0.001) {
-    ctx.save()
-    ctx.globalAlpha = ctx.globalAlpha * Math.min(1, mirror)
-    ctx.translate(W / 2, 0)
-    ctx.scale(-1, 1)
-    ctx.translate(-W / 2, 0)
-    paint()
-    ctx.restore()
-  }
+  ctx.save()
+  if (blurPx > 0.01) ctx.filter = `blur(${blurPx.toFixed(1)}px)`
+  ctx.translate(cx, cy)
+  ctx.scale(bg.flipX ? -1 : 1, bg.flipY ? -1 : 1)
+  ctx.drawImage(media, (-dw * grow) / 2, (-dh * grow) / 2, dw * grow, dh * grow)
+  ctx.restore()
 }
 
 function drawBackground(
@@ -277,22 +260,29 @@ function drawBackground(
 
   // Flip on kick — the same clean sub-band onset detector the halftone
   // print and the 3D glasses flips use, with its own 'bg' state so the
-  // background's dials stay independent of every other card. On each fired
-  // kick the media mirrors horizontally, holds for the hold dial, then
-  // dissolves back; OFF (or non-media backgrounds) never touches the gate.
-  // The detector listens to frame.sub — the clean 30–130 Hz RMS — falling
-  // back to the clipped bass meter for pre-sub frame sources.
-  const flipT =
-    (bg.mode === 'image' || bg.mode === 'video') && bg.beatFlip
-      ? flipGate(
-          ctx,
-          clamp01(frame.sub ?? frame.bass),
-          frame.time,
-          clamp01(bg.flipSensitivity ?? 0.1),
-          clamp01(bg.flipHold ?? 0.2) * 2,
-          'bg',
-        )
-      : 0
+  // background's dials stay independent of every other card. While it's
+  // on, the With the beat motions flip ON on each fired kick: the
+  // background rests still between kicks, the bounce/shake/blur swell
+  // stamp in at their dialed strength, hold for the hold dial, then ease
+  // back to still. OFF (or non-media backgrounds) never touches the gate
+  // and the motions keep riding the live bass continuously. The detector
+  // listens to frame.sub — the clean 30–130 Hz RMS — falling back to the
+  // clipped bass meter for pre-sub frame sources.
+  const flipOn = (bg.mode === 'image' || bg.mode === 'video') && !!bg.beatFlip
+  const flipT = flipOn
+    ? flipGate(
+        ctx,
+        clamp01(frame.sub ?? frame.bass),
+        frame.time,
+        clamp01(bg.flipSensitivity ?? 0.1),
+        clamp01(bg.flipHold ?? 0.2) * 2,
+        'bg',
+      )
+    : 0
+  // The beat-motion driver: with the flip on, the gate's stamp-in envelope
+  // (0 at rest → 1 while a kick holds → eases back to still); without it,
+  // the live bass meter exactly as before.
+  const beat = flipOn ? flipT : frame.bass
 
   if (bg.mode === 'image') {
     // Zoomed-out / panned images and transparent PNGs don't necessarily
@@ -306,7 +296,7 @@ function drawBackground(
     if (img) {
       // Cover-fit base scale, then user zoom/pan/flip/blur (shared with the
       // video/GIF background), then the shade fader on top.
-      drawMediaCover(ctx, img, img.naturalWidth, img.naturalHeight, bg, W, H, S, frame.bass, frame.time, flipT)
+      drawMediaCover(ctx, img, img.naturalWidth, img.naturalHeight, bg, W, H, S, beat, frame.time)
       // Shade fader — darkens the photo so the visualizer pops.
       const shade = clamp01(bg.shade ?? 0)
       if (shade > 0) {
@@ -331,14 +321,14 @@ function drawBackground(
       if (anim) {
         const gifFrame = gifFrameAt(anim, frame.styleTime * 1000)
         if (gifFrame) {
-          drawMediaCover(ctx, gifFrame, anim.width, anim.height, bg, W, H, S, frame.bass, frame.time, flipT)
+          drawMediaCover(ctx, gifFrame, anim.width, anim.height, bg, W, H, S, beat, frame.time)
           drawn = true
         }
       }
     } else if (src) {
       const video = getBackgroundVideo(src)
       if (video) {
-        drawMediaCover(ctx, video, video.videoWidth, video.videoHeight, bg, W, H, S, frame.bass, frame.time, flipT)
+        drawMediaCover(ctx, video, video.videoWidth, video.videoHeight, bg, W, H, S, beat, frame.time)
         drawn = true
       }
     }

@@ -89,7 +89,8 @@ function MediaBackgroundControls() {
         onChange={(blur) => patchBackground({ blur })}
         format={(v) => `${Math.round(v * 100)}%`}
       />
-      {/* Beat motion — zoom / shake / blur swell, all driven by the bass */}
+      {/* Beat motion — zoom / shake / blur swell, riding the bass — or
+          flipped on by kicks when Flip on kick is on */}
       <section className="space-y-1.5">
         <MicroLabel>With the beat</MicroLabel>
         <SliderRow
@@ -147,11 +148,13 @@ function MediaBackgroundControls() {
               format={(v) => (v < 0.025 ? 'Quick flash' : `${(v * 2).toFixed(1)}s`)}
             />
             <p className="text-[10px] leading-snug text-zinc-600">
-              On every detected kick the picture mirrors — like Flip horizontal
-              for a moment — holds for Flip hold, then dissolves back to the
-              resting picture. Same kick detector as the halftone print and
-              3D glasses flips (each card keeps its own dials): lower
-              sensitivity = only the hardest slams, higher = every tap.
+              On every detected kick the With the beat motion flips on — the
+              bounce, shake and blur swell stamp in at their dialed strength,
+              hold for Flip hold, then ease back to a still background. Turn
+              it off and the same motions follow the bass continuously. Same
+              kick detector as the halftone print and 3D glasses flips (each
+              card keeps its own dials): lower sensitivity = only the hardest
+              slams, higher = every tap.
             </p>
           </>
         ) : null}
