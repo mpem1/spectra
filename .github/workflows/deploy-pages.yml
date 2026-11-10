@@ -34,7 +34,17 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build static site
-        run: bun run build
+        run: |
+          # Route handlers under src/app/api are server-side (dev / standalone
+          # only) and cannot be collected by `output: export` — stash them out
+          # of the static build so Pages keeps deploying the browser-local app.
+          if [ -d src/app/api ]; then
+            mv src/app/api .api-stash-static-build
+          fi
+          bun run build
+          if [ -d .api-stash-static-build ]; then
+            mv .api-stash-static-build src/app/api
+          fi
         env:
           STATIC_EXPORT: '1'
 
