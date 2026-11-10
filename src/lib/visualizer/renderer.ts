@@ -165,6 +165,22 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   if (config.watermark?.enabled) {
     drawWatermark(layersRc, config.watermark, S)
   }
+  // "Filter alpha" — a single transparency dial on top of the ENTIRE filter
+  // chain. Below 100% the pre-filter frame (background + moving layers +
+  // text — exactly what the filters are about to texture) is snapshotted
+  // here, and after the chain it is drawn back over the filtered result at
+  // (1 − alpha): out = filtered·alpha + unfiltered·(1 − alpha). 100% keeps
+  // the classic path byte-identical (no snapshot, no extra draw); 0% hides
+  // every filter without touching their switches. Skipped on transparent
+  // backgrounds (the filters don't run there anyway).
+  const filterAlpha = transparent ? 1 : clamp01(config.layers?.filterAlpha ?? 1)
+  let alphaSnapshot: HTMLCanvasElement | null = null
+  if (filterAlpha < 1) {
+    alphaSnapshot = getWork('layers:filterAlpha', rc.width, rc.height)
+    const snapCtx = resetWork(alphaSnapshot.getContext('2d')!)
+    snapCtx.clearRect(0, 0, rc.width, rc.height)
+    snapCtx.drawImage(rc.ctx.canvas, 0, 0)
+  }
   // Full-frame filter chain — the outermost passes, ON TOP of everything
   // above (the watermark included). Fixed order, each filter processes the
   // previous one's output: VHS distorts the picture → CRT displays it →
@@ -178,6 +194,15 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   drawHalftoneFilter(rc, config.halftoneFilter, frame, transparent)
   drawGlitchFilter(rc, config.glitchFilter, frame, transparent)
   drawAnaglyphFilter(rc, config.anaglyphFilter, frame, transparent)
+  // Filter alpha: fade the unfiltered snapshot back over the finished chain
+  // BEFORE the layer overlay returns, so the lifted layers/text (stayColored
+  // / textClear) still land at full strength above the blend.
+  if (alphaSnapshot) {
+    rc.ctx.save()
+    rc.ctx.globalAlpha = 1 - filterAlpha
+    rc.ctx.drawImage(alphaSnapshot, 0, 0)
+    rc.ctx.restore()
+  }
   // "Layers stay colored" / "Text stays legible": bring the overlay back on
   // top of the finished filter chain — the very last pass, so every filter
   // (screen through 3D glasses) only ever textures whatever stayed below it

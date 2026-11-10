@@ -22,6 +22,12 @@
  *   S7  lyrics opacity — the layer alpha scales every text pass uniformly,
  *       0 short-circuits the whole layer, old configs without the field stay
  *       fully opaque
+ *   S8  filter alpha — the one dial over the whole filter chain: 100% keeps
+ *       the classic path (no snapshot, no extra pass), 50% fades the
+ *       pre-filter frame back over the finished chain at 1 − alpha AFTER the
+ *       glasses, 0% covers the chain with the unfiltered snapshot, the fade
+ *       sits UNDER the textClear overlay, transparent backgrounds skip it,
+ *       legacy configs without the field stay full strength
  */
 
 import { renderFrame } from '../src/lib/visualizer/renderer'
@@ -182,6 +188,7 @@ console.log('S1 factory defaults — kick dials + layers')
   check('3D glasses pop sensitivity defaults to 0.1 (same kicks as the flip)', d.anaglyphFilter.popSensitivity === 0.1, `got ${d.anaglyphFilter.popSensitivity}`)
   check('layers.stayColored defaults to off', d.layers.stayColored === false, `got ${d.layers.stayColored}`)
   check('layers.textClear defaults to off', d.layers.textClear === false, `got ${d.layers.textClear}`)
+  check('layers.filterAlpha defaults to full strength', d.layers.filterAlpha === 1, `got ${d.layers.filterAlpha}`)
   check('lyrics opacity defaults to fully opaque', d.lyrics.opacity === 1, `got ${d.lyrics.opacity}`)
   check('halftone config no longer carries flipColorLayers', !('flipColorLayers' in d.halftoneFilter), 'legacy key still present')
 }
@@ -206,6 +213,15 @@ console.log('S2 resolveLayersConfig — old halftone toggle graduates to the glo
   check('an explicit textClear carries through', resolveLayersConfig(explicitText).textClear === true, 'expected true')
   const oldSaveWithoutText = { layers: { stayColored: true, textClear: false } }
   check('a save from before textClear existed resolves it to off', resolveLayersConfig(oldSaveWithoutText).textClear === false, 'expected false')
+  check('an explicit filterAlpha carries through', resolveLayersConfig({ layers: { filterAlpha: 0.5 } }).filterAlpha === 0.5, 'expected 0.5')
+  check('a save without filterAlpha resolves to full strength', resolveLayersConfig({ layers: { stayColored: false } }).filterAlpha === 1, 'expected 1')
+  check(
+    'out-of-range filterAlpha values clamp into 0..1',
+    resolveLayersConfig({ layers: { filterAlpha: 2 } }).filterAlpha === 1 &&
+      resolveLayersConfig({ layers: { filterAlpha: -1 } }).filterAlpha === 0,
+    'expected clamp',
+  )
+  check('non-numeric filterAlpha garbage falls back to 1', resolveLayersConfig({ layers: { filterAlpha: 'half' } }).filterAlpha === 1, 'expected 1')
 }
 
 /* -------------------- S3 stayColored ON: overlay last, after anaglyph ------------------- */
@@ -214,9 +230,9 @@ console.log('S3 stayColored ON — layers ride their own overlay ABOVE the 3D gl
 {
   const cfg = baseConfig()
   // Warm-up frame (creates the anaglyph work canvases), then measure both modes.
-  renderOne({ ...cfg, layers: { stayColored: false, textClear: false } })
+  renderOne({ ...cfg, layers: { stayColored: false, textClear: false, filterAlpha: 1 } })
   const mainFillsOff = fills(main)
-  const ov = renderOne({ ...cfg, layers: { stayColored: true, textClear: false } })
+  const ov = renderOne({ ...cfg, layers: { stayColored: true, textClear: false, filterAlpha: 1 } })
   const mainFillsOn = fills(main)
   const ovDrawn = draws(main)
   const last = ovDrawn[ovDrawn.length - 1]
@@ -255,7 +271,7 @@ console.log('S3 stayColored ON — layers ride their own overlay ABOVE the 3D gl
 console.log('S4 stayColored OFF — layers draw straight onto the frame')
 {
   const cfg = baseConfig()
-  const ov = renderOne({ ...cfg, layers: { stayColored: false, textClear: false } })
+  const ov = renderOne({ ...cfg, layers: { stayColored: false, textClear: false, filterAlpha: 1 } })
   const mainDraws = draws(main)
   check('no new canvas is created (no overlay detour)', ov === null, `created=${!!ov}`)
   check(
@@ -269,9 +285,9 @@ console.log('S4 stayColored OFF — layers draw straight onto the frame')
     `main draws=${mainDraws.length}`,
   )
   const mainFillsOff = fills(main)
-  renderOne({ ...cfg, layers: { stayColored: true, textClear: false } })
+  renderOne({ ...cfg, layers: { stayColored: true, textClear: false, filterAlpha: 1 } })
   const mainFillsOn = fills(main)
-  renderOne({ ...cfg, layers: { stayColored: false, textClear: false } })
+  renderOne({ ...cfg, layers: { stayColored: false, textClear: false, filterAlpha: 1 } })
   check(
     'turning it back off restores the classic fill layout exactly',
     fills(main) === mainFillsOff && mainFillsOn === 0,
@@ -285,7 +301,7 @@ console.log('S5 transparent background — the overlay pass is skipped (alpha st
 {
   const cfg = baseConfig()
   cfg.background = { ...cfg.background, mode: 'transparent' }
-  const ov = renderOne({ ...cfg, layers: { stayColored: true, textClear: false } })
+  const ov = renderOne({ ...cfg, layers: { stayColored: true, textClear: false, filterAlpha: 1 } })
   check('no overlay canvas is created on a transparent background', ov === null, `created=${!!ov}`)
   check(
     'the layers drew straight onto the main frame',
@@ -309,7 +325,7 @@ console.log('S6 text stays legible — words ride the overlay, the bars stay fil
   cfg.watermark = { ...cfg.watermark, enabled: true, text: '@channel' }
 
   // Classic path for reference: text paints straight onto the main frame.
-  renderOne({ ...cfg, layers: { stayColored: false, textClear: false } })
+  renderOne({ ...cfg, layers: { stayColored: false, textClear: false, filterAlpha: 1 } })
   const classicTextOnMain = texts(main).length
   check(
     'classic path: the words paint straight onto the main frame',
@@ -317,7 +333,7 @@ console.log('S6 text stays legible — words ride the overlay, the bars stay fil
     `main text ops=${classicTextOnMain}`,
   )
 
-  renderOne({ ...cfg, layers: { stayColored: false, textClear: true } })
+  renderOne({ ...cfg, layers: { stayColored: false, textClear: true, filterAlpha: 1 } })
   // getWork REUSES its canvas across frames, so the overlay is identified by
   // what it drew THIS frame (its log), not by creation order.
   const ov = created.find((c) => texts(c).length >= 3) ?? null
@@ -350,7 +366,7 @@ console.log('S6 text stays legible — words ride the overlay, the bars stay fil
   )
 
   // stayColored wins when both are on: same all-lifting overlay path.
-  renderOne({ ...cfg, layers: { stayColored: true, textClear: true } })
+  renderOne({ ...cfg, layers: { stayColored: true, textClear: true, filterAlpha: 1 } })
   const ovBoth = created.find((c) => fills(c) >= 24 && texts(c).length >= 3) ?? null
   check(
     'stayColored ON ignores textClear (one overlay for everything)',
@@ -359,7 +375,7 @@ console.log('S6 text stays legible — words ride the overlay, the bars stay fil
   )
 
   // Toggling textClear back off restores the classic layout exactly.
-  renderOne({ ...cfg, layers: { stayColored: false, textClear: false } })
+  renderOne({ ...cfg, layers: { stayColored: false, textClear: false, filterAlpha: 1 } })
   check(
     'turning textClear back off restores the classic layout exactly',
     fills(main) >= 24 && texts(main).length === classicTextOnMain,
@@ -424,6 +440,97 @@ console.log('S7 lyrics opacity — one dial scales the whole text layer')
   cfg.lyrics = { ...lyricsBase, opacity: 0 }
   renderOne(cfg)
   check('opacity 0 through renderFrame leaves the frame text-free', texts(main).length === 0, `main text ops=${texts(main).length}`)
+}
+
+/* ------------------------- S8 filter alpha (the chain dial) ------------------------- */
+
+console.log('S8 filter alpha — one dial fades the whole filter chain')
+{
+  const cfg = baseConfig()
+  const layersOf = (filterAlpha?: number) =>
+    (filterAlpha === undefined
+      ? { stayColored: false, textClear: false }
+      : { stayColored: false, textClear: false, filterAlpha }) as typeof cfg.layers
+
+  // Baseline: the classic path is exactly one anaglyph composite draw.
+  renderOne({ ...cfg, layers: layersOf(1) })
+  const classicDraws = draws(main).length
+
+  // Alpha 100%: byte-identical classic path — no snapshot canvas, no extra
+  // pass, nothing to identify.
+  const ov100 = renderOne({ ...cfg, layers: layersOf(1) })
+  check('alpha 100% creates no snapshot canvas', ov100 === null, `created=${!!ov100}`)
+  check(
+    'alpha 100% draws exactly the classic frame (no fade pass)',
+    draws(main).length === classicDraws,
+    `draws=${draws(main).length} classic=${classicDraws}`,
+  )
+
+  // Alpha 50%: one extra pass, LAST on the frame, at exactly 1 − alpha.
+  // (First 0.5 frame warms up the snapshot work canvas; the second measures.)
+  renderOne({ ...cfg, layers: layersOf(0.5) })
+  renderOne({ ...cfg, layers: layersOf(0.5) })
+  const draws50 = draws(main)
+  const last50 = draws50[draws50.length - 1]
+  check(
+    'alpha 50% adds exactly one extra pass to the frame',
+    draws50.length === classicDraws + 1,
+    `draws=${draws50.length} classic=${classicDraws}`,
+  )
+  check('the fade pass draws at exactly 1 − alpha', !!last50 && last50.alpha === 0.5, `alpha=${last50?.alpha}`)
+  // The fade's source canvas must be the pre-filter snapshot: a canvas whose
+  // ENTIRE content this frame is a single draw of the main frame (taken
+  // before the chain ran). Filter work canvases draw the frame too, but they
+  // log more than one op — only the alpha snapshot is a lone main copy.
+  const snap = (last50?.src ?? null) as HTMLCanvasElement | null
+  const snapLog = snap ? logOf(snap) : []
+  // Cycle-safe op description (op.src canvases reference logs reference ops).
+  const srcName = (d?: OpRec): string =>
+    !d ? 'none' : d.src === main ? 'main' : d.src === snap ? 'snapshot' : 'other-canvas'
+  check(
+    'the fade pass carries the pre-filter snapshot of the unfiltered frame',
+    !!snap && snapLog.length === 1 && snapLog[0].kind === 'draw' && snapLog[0].src === main,
+    `snap ops=${snapLog.length} kind=${snapLog[0]?.kind} srcIsMain=${snapLog[0]?.src === main}`,
+  )
+  check('the fade pass draws that snapshot back over the chain', !!snap && last50.src === snap, `last=${srcName(last50)} α=${last50?.alpha}`)
+
+  // Alpha 0: the unfiltered snapshot covers the chain at full strength.
+  renderOne({ ...cfg, layers: layersOf(0) })
+  const draws0 = draws(main)
+  check(
+    'alpha 0 hides every filter with one full-strength fade pass',
+    draws0.length === classicDraws + 1 && draws0[draws0.length - 1].alpha === 1,
+    `draws=${draws0.length} last=${srcName(draws0[draws0.length - 1])} α=${draws0[draws0.length - 1]?.alpha}`,
+  )
+
+  // With the text overlay up, the fade sits UNDER the words (overlay last).
+  renderOne({ ...cfg, layers: { stayColored: false, textClear: true, filterAlpha: 0.5 } })
+  const drawsT = draws(main)
+  const fadeIdx = drawsT.findIndex((d) => d.alpha === 0.5)
+  check(
+    'with textClear on, the alpha fade sits under the text overlay',
+    fadeIdx >= 0 && fadeIdx < drawsT.length - 1,
+    `fadeIdx=${fadeIdx} last=${srcName(drawsT[drawsT.length - 1])} α=${drawsT[drawsT.length - 1]?.alpha}`,
+  )
+
+  // Transparent backgrounds: the dial is inert (the filters don't run).
+  const cfgT = { ...cfg, background: { ...cfg.background, mode: 'transparent' as const } }
+  renderOne({ ...cfgT, layers: layersOf(1) })
+  const transparentDraws = draws(main).length
+  renderOne({ ...cfgT, layers: layersOf(0.5) })
+  check(
+    'transparent backgrounds skip the alpha pass entirely',
+    draws(main).length === transparentDraws,
+    `draws=${draws(main).length} baseline=${transparentDraws}`,
+  )
+
+  // A raw config without the field (older save) stays full strength.
+  renderOne({ ...cfg, layers: layersOf(undefined) })
+  check(
+    'a raw config without filterAlpha renders the classic path',
+    draws(main).length === classicDraws,
+    `draws=${draws(main).length} classic=${classicDraws}`,
+  )
 }
 
 /* --------------------------------- verdict -------------------------------- */

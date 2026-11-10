@@ -737,6 +737,14 @@ export interface LayersConfig {
    *  stayColored is off — stayColored already lifts the text (with
    *  everything else) above the chain. No-op on transparent backgrounds. */
   textClear: boolean
+  /** Filter alpha — a single transparency dial on top of the ENTIRE filter
+   *  chain (screen, VHS, film, halftone print, glitch, 3D glasses). Below
+   *  100% the pre-filter frame is snapshotted and drawn back over the
+   *  filtered result at (1 − alpha), so 100% is the classic full-strength
+   *  look (byte-identical, no extra pass), 0% hides every filter without
+   *  touching their switches, and in between the filtered look fades into
+   *  the unfiltered frame. No-op on transparent backgrounds. */
+  filterAlpha: number
 }
 
 /**
@@ -750,7 +758,7 @@ export interface LayersConfig {
  */
 export function resolveLayersConfig(saved: unknown): LayersConfig {
   const s = (saved ?? {}) as {
-    layers?: { stayColored?: unknown; textClear?: unknown }
+    layers?: { stayColored?: unknown; textClear?: unknown; filterAlpha?: unknown }
     halftoneFilter?: { enabled?: unknown; beatFlip?: unknown; flipColorLayers?: unknown }
   }
   const stayColored =
@@ -758,7 +766,14 @@ export function resolveLayersConfig(saved: unknown): LayersConfig {
       ? s.layers.stayColored
       : !!(s.halftoneFilter?.enabled && s.halftoneFilter.beatFlip && s.halftoneFilter.flipColorLayers)
   const textClear = typeof s.layers?.textClear === 'boolean' ? s.layers.textClear : false
-  return { stayColored, textClear }
+  // Saves from before the alpha dial existed stay at full filter strength;
+  // finite values clamp into 0..1, anything else falls back to 1.
+  const rawAlpha = s.layers?.filterAlpha
+  const filterAlpha =
+    typeof rawAlpha === 'number' && Number.isFinite(rawAlpha)
+      ? Math.min(1, Math.max(0, rawAlpha))
+      : 1
+  return { stayColored, textClear, filterAlpha }
 }
 
 /* --------------------------------- Audio frame -------------------------------- */
@@ -1150,6 +1165,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
   layers: {
     stayColored: false,
     textClear: false,
+    filterAlpha: 1,
   },
   pulseImage: {
     enabled: false,

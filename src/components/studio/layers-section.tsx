@@ -3,7 +3,7 @@
 import { Layers } from 'lucide-react'
 import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
-import { MicroLabel, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, sectionShell, SliderRow } from '@/components/studio/controls'
 
 /**
  * Layers card — how the moving layers (visualizer, pulse image, vinyl disc,
@@ -14,7 +14,9 @@ import { MicroLabel, sectionShell } from '@/components/studio/controls'
  * picture. "Text stays legible" is the lighter sibling: only the words
  * (lyrics, titles, watermark) skip the filter chain so they stay crisp and
  * readable, while the visualizer/pulse image/vinyl still take the full
- * filtered look. Neither has anything to do with Flip on kick.
+ * filtered look. Neither has anything to do with Flip on kick. "Filter
+ * alpha" is the one dial over the whole chain: how strongly the filtered
+ * look shows at all, independent of which filters are switched on.
  */
 export function LayersSection() {
   const layers = useStudioStore((s) => s.config.layers)
@@ -76,6 +78,22 @@ export function LayersSection() {
           )}
         </>
       )}
+      <SliderRow
+        label="Filter alpha"
+        value={layers.filterAlpha ?? 1}
+        min={0}
+        max={1}
+        step={0.05}
+        onChange={(filterAlpha) => patchLayers({ filterAlpha })}
+        format={(v) => `${Math.round(v * 100)}%`}
+      />
+      <p className="-mt-1 text-[11px] leading-snug text-zinc-600">
+        A transparency dial on top of the whole filter chain — screen, VHS,
+        film, halftone print, glitch and 3D glasses alike: 100% is the
+        full-strength look, sliding down fades the filtered frame back into
+        the unfiltered one, and 0% hides every filter without touching their
+        switches. Inert on transparent backgrounds.
+      </p>
     </section>
   )
 }
