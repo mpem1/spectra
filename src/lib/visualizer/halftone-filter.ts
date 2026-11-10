@@ -54,11 +54,13 @@
  * Why sprites instead of Path2D: a frame can carry tens of thousands of dots
  * and Skia's build+scan-convert of that many AA circles measured ~40 ms per
  * frame (measured 7.6 ms path build + 31.9 ms fill at 23k dots). Radii are
- * quantized to ~24 invisible steps (≤ 0.35 px on a several-px dot) and each
+ * quantized to a GEOMETRIC ladder of ~2%-area rungs (see below) and each
  * (radius × sub-pixel offset) variant is rasterized EXACTLY ONCE into a tiny
- * coverage sprite; stamping is then a max-blend copy (~3 ms for the whole
- * frame, measured), and alpha-max reproduces the same dot-union a nonzero
- * Path2D fill paints.
+ * coverage sprite — supersampled with a size-aware soft rim, so even 1 px
+ * specks render as round ink blobs instead of the square/plus/X clusters
+ * that spelled an artificial grid on gradients; stamping is then a max-blend
+ * copy (~3 ms for the whole frame, measured), and alpha-max reproduces the
+ * same dot-union a nonzero Path2D fill paints.
  */
 import type { AudioFrame, HalftoneFilterConfig, RenderContext } from './types'
 import { clamp01, getWork, resetWork } from './filter-utils'
@@ -71,34 +73,119 @@ interface DotSprite {
   box: number
 }
 
-const SPRITE_LEVELS = 24 // radius steps across [0.4, rMax] — ≤ ~0.35 px quantization
-const sprites = new Map<string, DotSprite>()
+// Radius ladder — rungs at R_MIN·(1+RUNG_GROW)^k, ABSOLUTE constants (they do
+// not move with rMax) so sprite keys stay stable while beat-reactive press
+// swings every frame — the cache never churns mid-song.
+//
+// Why GEOMETRIC (and why the old 24-linear steps had to go): a multiplicative
+// ladder keeps the dot AREA step constant (~2%) at every size. The old linear
+// ladder quantized radii in ~0.07 px jumps, and on a smooth gradient that made
+// every dot inside a contour band exactly the same size — whole ROWS of
+// same-size dots lined up into visible bands following the luminance contours
+// (horizontal bands on a horizontal ramp, vertical on a vertical one, both at
+// once on 2-D gradients). At small dot sizes those bands crossed into exactly
+// what users reported: an artificial square-looking grid over smooth colors.
+// A 2% area rung sits below the eye's contrast step, and the size changes
+// every 1–2 cells instead of every 3–10, so no coherent rows survive.
+const R_MIN = 0.4 // smallest dot worth stamping (a sub-pixel speck)
+const RUNG_GROW = 0.01 // +1% radius per rung ≈ +2% dot area per rung
+const LOG_RUNG = Math.log(1 + RUNG_GROW)
+const INV_R_MIN = 1 / R_MIN
+const MAX_RUNGS = 4096 // hard stop; rMax clamps far below this in practice
+const rungRadii: number[] = [] // rung index → exact radius, filled on demand
+
+// Ladder-position lookup table — the hot loop's only new math. Dots are the
+// most numerous thing in the filter (up to ~10⁵ per frame), and a per-dot
+// Math.log measured ~15–20% slower frames; tabulating the (pure, monotonic)
+// ladder position at 1/512 px turns it into one array read. Worst-case
+// tabulation error: |d(ladder)/dr| = 1/(r·ln 1.01), so ±1/1024 px of radius
+// bends the position by ≤ 0.24 rungs at the smallest dot (r = 0.4) and ≤
+// 0.02 rungs at r = 4 — i.e. ≤ 0.24% radius noise, an order of magnitude
+// below the rung spacing itself. Table covers r ≤ 128 px — far beyond any
+// real dot (rMax ≤ ~15 px even at 1080p), so no clamping branch is needed.
+const LADDER_LUT_STEP = 512
+const LADDER_LUT = new Float32Array(65536)
+for (let i = 0; i < LADDER_LUT.length; i++) {
+  LADDER_LUT[i] = Math.log(((i + 0.5) / LADDER_LUT_STEP) * INV_R_MIN) / LOG_RUNG
+}
+
+function rungRadius(lvl: number): number {
+  let r = rungRadii[lvl]
+  if (r === undefined) {
+    r = R_MIN * Math.exp(lvl * LOG_RUNG)
+    rungRadii[lvl] = r
+  }
+  return r
+}
+
+/*
+ * Sprite store — a flat array indexed by (rung, oy, ox) instead of a
+ * string-keyed Map. The finer ladder (hundreds of rungs × 25 offset variants)
+ * pushes the variant count into the thousands, and the old per-dot cost of
+ * building a template-string key and hashing it through a big Map showed up
+ * in frame times; the key space here is fully enumerable
+ * (lvl·5 + oy)·5 + ox, so a direct array slot does the same job with zero
+ * allocation and zero hashing. The working set is bounded by the lattice
+ * itself (only rungs the current dotSize actually reaches are ever built —
+ * ≤ ~6,000 sprites ≈ 2 MB at the finest real settings), so it can never
+ * churn or grow without bound.
+ */
+const SPRITE_O = 5 // offset grid: ox, oy ∈ {−0.5, −0.25, 0, 0.25, 0.5}
+const spriteLut: (DotSprite | undefined)[] = []
 
 /**
- * Coverage sprite for a dot of radius `r` centered at (ox, oy) sub-pixel
- * offset from the integer stamp position. Coverage ramps linearly over the
- * same ~1 px band canvas AA uses, so dot edges keep the exact same softness
- * the old Path2D fill produced — just computed deterministically in JS.
+ * Coverage sprite for ladder rung `lvl` at offset indices (oxIdx, oyIdx) —
+ * the sub-pixel offset is (idx − 2) / 4 px from the integer stamp position.
+ *
+ * Two fidelity layers, both pure deterministic math (same frame in, same
+ * coverage out, in every pipeline):
+ *   1. SOFT RIM — the coverage ramp width grows as dots shrink (2.1 px on the
+ *      smallest specks → the classic 1 px canvas-AA edge at r ≥ 2.6). At the
+ *      tiny radii the small dial sizes produce, a hard-edged disc cannot be
+ *      round — it rasterizes into the square / plus / X pixel clusters that
+ *      read as an artificial grid on smooth gradients. A wider radial falloff
+ *      turns those same dots into graded round blobs, exactly how a real ink
+ *      dot bleeds into the paper.
+ *   2. 4×4 SUPERSAMPLING — each sprite pixel averages the soft coverage over
+ *      a 4×4 subsample grid, so the ramp is measured, not stabbed at one
+ *      center point: edges grade smoothly and the dot's total ink matches its
+ *      dialled area.
+ * Each (rung, offset) sprite is rasterized EXACTLY ONCE; the rim width
+ * derives from the rung alone, so (lvl, oxIdx, oyIdx) is a complete key.
  */
-function getSprite(r: number, ox: number, oy: number): DotSprite {
-  const key = `${Math.round(r * 32)}|${ox}|${oy}`
-  let s = sprites.get(key)
+function getSprite(lvl: number, oxIdx: number, oyIdx: number): DotSprite {
+  const slot = (lvl * SPRITE_O + oyIdx) * SPRITE_O + oxIdx
+  let s = spriteLut[slot]
   if (!s) {
-    const box = Math.ceil(r) + 1
+    const r = rungRadius(lvl)
+    const ox = (oxIdx - 2) / 4
+    const oy = (oyIdx - 2) / 4
+    // Soft-rim width: 2.1 px on the smallest specks, easing down to the
+    // classic 1 px edge by r = 2.6 — big dots keep the crisp print look.
+    const rim = r >= 2.6 ? 1 : 1 + 1.1 * ((2.6 - r) / 2.2)
+    const box = Math.ceil(r + rim * 0.5) + 1
     const a = new Uint8Array((2 * box + 1) * (2 * box + 1))
     let p = 0
+    const SUB = 4 // 4×4 subsamples per sprite pixel
+    const SUB2 = SUB * SUB
+    const halfRim = rim * 0.5
     for (let dy = -box; dy <= box; dy++) {
-      const ddy = dy + 0.5 - oy
       for (let dx = -box; dx <= box; dx++) {
-        const ddx = dx + 0.5 - ox
-        const d = Math.sqrt(ddx * ddx + ddy * ddy)
-        const cov = Math.min(1, Math.max(0, r + 0.5 - d))
-        a[p++] = Math.round(cov * 255)
+        let cov = 0
+        for (let sy = 0; sy < SUB; sy++) {
+          const ddy = dy + (sy + 0.5) / SUB - oy
+          const dy2 = ddy * ddy
+          for (let sx = 0; sx < SUB; sx++) {
+            const ddx = dx + (sx + 0.5) / SUB - ox
+            const d = Math.sqrt(ddx * ddx + dy2)
+            cov += Math.min(1, Math.max(0, (r + halfRim - d) / rim))
+          }
+        }
+        a[p++] = Math.round((cov / SUB2) * 255)
       }
     }
     s = { a, box }
-    if (sprites.size > 512) sprites.clear() // beat swings can't grow this forever
-    sprites.set(key, s)
+    spriteLut[slot] = s
   }
   return s
 }
@@ -285,7 +372,11 @@ export function drawHalftoneFilter(
   const smCtx = resetWork(sample.getContext('2d')!)
   smCtx.clearRect(0, 0, n, n)
   smCtx.imageSmoothingEnabled = true
-  smCtx.imageSmoothingQuality = 'low'
+  // 'high' engages the browser's mipmapped downscale, so each grid cell holds
+  // a proper area average of the frame instead of a 2×2 bilinear stab —
+  // detailed sources no longer leak pixel-level speckle into the dot sizes
+  // (speckle that used to sparkle as grid noise over smooth gradients).
+  smCtx.imageSmoothingQuality = 'high'
   smCtx.setTransform(1, 0, 0, 1, n / 2, n / 2)
   smCtx.scale(1 / cellS, 1 / cellS)
   smCtx.rotate(-Math.PI / 4)
@@ -301,11 +392,11 @@ export function drawHalftoneFilter(
   const buf = ink.buf
   const SQ = Math.SQRT1_2
   const rMax = cellS * 0.72 * press
-  // Radius ladder anchored at 0.4 with ABSOLUTE rungs (step rounded to 1/16 px,
-  // independent of rMax) so the sprite keys stay stable while beat-reactive
-  // press swings every frame — the cache never churns mid-song.
-  const stepQ = Math.max(1 / 16, Math.round(((rMax - 0.4) / (SPRITE_LEVELS - 1)) * 16) / 16)
-  const maxLvl = Math.max(0, Math.floor((rMax - 0.4) / stepQ))
+  // Deepest reachable rung for this frame's widest dot.
+  const maxLvl = Math.min(
+    MAX_RUNGS,
+    Math.max(0, Math.floor(Math.log(rMax * INV_R_MIN) / LOG_RUNG)),
+  )
   let dots = 0
   for (let j = 0; j < n; j++) {
     const gy = (j + 0.5 - n / 2) * cellS
@@ -319,16 +410,29 @@ export function drawHalftoneFilter(
       if (r < 0.4) continue
       const gx = (i + 0.5 - n / 2) * cellS
       // Stamp position: R(45°)·(gx, gy) + center, snapped to the pixel grid
-      // with the sub-pixel residue carried by the sprite variant (≤ 0.25 px
-      // center error — invisible, and the dot LATTICE stays true).
+      // with the sub-pixel residue carried by the sprite variant at 1/4 px
+      // steps (≤ 0.125 px center error). The old 1/2 px steps left a periodic
+      // position error whose beat against the pixel grid aligned dot
+      // columns/rows into faint stripes at small dot sizes — half the
+      // quantization error removes the beat's contrast, and the dot LATTICE
+      // stays just as true.
       const fx = W / 2 + (gx - gy) * SQ
       const fy = H / 2 + (gx + gy) * SQ
       const sx = Math.round(fx)
       const sy = Math.round(fy)
-      const ox = Math.round((fx - sx) * 2) / 2 // −0.5 | 0 | 0.5
-      const oy = Math.round((fy - sy) * 2) / 2
-      const lvl = Math.min(maxLvl, Math.round((r - 0.4) / stepQ))
-      const sp = getSprite(0.4 + lvl * stepQ, ox, oy)
+      // Residue ∈ [−0.5, 0.5); ×4 rounding yields indices 0..4 ⇔ offsets
+      // {−0.5, −0.25, 0, 0.25, 0.5} — every value is a legitimate sub-pixel
+      // stamp position, so NO wrapping/folding of the residue (folding here
+      // once silently displaced a quarter of the dots by up to a full pixel).
+      const oxIdx = Math.round((fx - sx) * 4) + 2
+      const oyIdx = Math.round((fy - sy) * 4) + 2
+      // Continuous ladder position of this dot's radius (tabulated — see the
+      // LADDER_LUT note); round to the nearest rung — the ~2%-area rung
+      // spacing keeps that quantization below the eye's contrast step on any
+      // gradient.
+      const lr = LADDER_LUT[(r * LADDER_LUT_STEP) | 0]
+      const lvl = Math.min(maxLvl, Math.round(lr))
+      const sp = getSprite(lvl, oxIdx, oyIdx)
       const box = sp.box
       const x0 = sx - box
       const y0 = sy - box
