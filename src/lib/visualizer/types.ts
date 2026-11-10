@@ -575,14 +575,14 @@ export interface GlitchFilterConfig {
 
 /**
  * Anaglyph filter — the old-school paper 3D-glasses look: the finished
- * picture is re-projected twice, once through the left tint(s) and once
- * through the right tint(s), the two copies shifted horizontally so the
- * whole frame wears classic color fringes. `reactivity` lets the song's
- * low end push the copies apart on beats (frame.bass is part of the
- * deterministic AudioFrame both pipelines produce, so exports pop
- * identically). Each side can carry up to 4 tint colors — the tinted
- * copies are averaged into that side's image, so extra colors restyle
- * the glasses (e.g. green/magenta) or build full-color anaglyph trios.
+ * picture is re-projected once per tint, the base copies shifted
+ * horizontally so the whole frame wears classic color fringes.
+ * `reactivity` lets the song's low end push the copies apart on beats
+ * (frame.bass is part of the deterministic AudioFrame both pipelines
+ * produce, so exports pop identically). Each side carries 1–4 tint
+ * colors, ordered base → outward: tint 1 is the base lens that
+ * recomposes the picture, and every extra tint is a tracer echo one
+ * separation-step further out (never averaged into the base).
  * Skipped on transparent backgrounds like the other full-frame filters.
  */
 export interface AnaglyphFilterConfig {
@@ -598,10 +598,11 @@ export interface AnaglyphFilterConfig {
   beatReactive: boolean
   /** Blend 0..1 — full anaglyph (1) vs mixed back toward the original (0) */
   strength: number
-  /** Left-lens tint colors (1–4). The left copy is multiplied by each
-   *  color and the results averaged. Absent in old saves → classic red. */
+  /** Left-lens tint colors (1–4), ordered base → outward: tint 1 is the
+   *  base layer, extra tints trail one separation-step further out each.
+   *  Absent in old saves → classic red. */
   leftColors?: string[]
-  /** Right-lens tint colors (1–4), averaged the same way. Absent in old
+  /** Right-lens tint colors (1–4), stacked the same way. Absent in old
    *  saves → classic cyan. */
   rightColors?: string[]
 }

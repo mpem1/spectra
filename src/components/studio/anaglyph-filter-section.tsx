@@ -46,7 +46,12 @@ function TintList({
       </div>
       {list.map((color, i) => (
         <div key={i} className="flex h-6 items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/60 px-2">
-          <MicroLabel>Tint {i + 1}</MicroLabel>
+          <MicroLabel>
+            Tint {i + 1}
+            <span className="ml-1 normal-case tracking-normal text-zinc-600">
+              {i === 0 ? '· base' : '· tracer'}
+            </span>
+          </MicroLabel>
           <div className="flex items-center gap-1.5">
             <ColorPickerButton
               ariaLabel={`${label} tint ${i + 1} color`}
@@ -115,8 +120,9 @@ export function AnaglyphFilterSection() {
       <p className="text-[11px] leading-snug text-zinc-600">
         The old-school paper 3D-glasses look — the whole picture is re-projected
         twice, once through each lens&apos;s colors, shifted apart so every edge
-        wears color fringes. Stack up to 4 tints per lens for custom glasses.
-        Baked into every export.
+        wears color fringes. Tint 1 is the base layer; extra tints stack
+        outward like a tracer trail instead of blending in. Baked into every
+        export.
       </p>
 
       {filter.enabled ? (
@@ -159,12 +165,14 @@ export function AnaglyphFilterSection() {
             format={(v) => `${Math.round(v * 100)}%`}
           />
           <p className="text-[10px] leading-snug text-zinc-600">
-            Depth sets how far apart the two layers sit (100% is the classic
-            paper-glasses amount, push it to 250% for a wide stereo pop), Beat
-            pop pushes them wider on the song&apos;s low end when React to beat
-            is on, and Mix blends the glasses look back toward the untouched
-            picture. Extra tints on a lens are averaged together — two lenses
-            sharing a tint family (red + green vs blue) recompose full color.
+            Depth sets how far apart the two base layers sit (100% is the
+            classic paper-glasses amount, push it to 250% for a wide stereo
+            pop), Beat pop pushes them wider on the song&apos;s low end when
+            React to beat is on, and Mix blends the glasses look back toward
+            the untouched picture. Tint 1 on each lens is the base layer that
+            builds the picture — it never gets diluted. Every added tint sits
+            one separation-step further out, so the trail extends outward
+            step by step (tint 2 at double, tint 3 at triple the offset).
             Skipped on transparent backgrounds so alpha recordings stay clean.
           </p>
         </>

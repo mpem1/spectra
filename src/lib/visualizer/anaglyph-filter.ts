@@ -1,17 +1,20 @@
 /**
- * Anaglyph filter — the old-school paper 3D-glasses look.
+ * Anaglyph filter — the old-school paper 3D-glasses look with tracer
+ * stacking.
  *
- * The finished picture is re-projected twice and the copies drift apart
- * horizontally: the LEFT copy is tinted by the left-lens colors (multiply),
- * the RIGHT copy by the right-lens colors. Each side can carry 1–4 tints —
- * the tinted copies are averaged into that side's image (so two tints look
- * like wearing two pairs of glasses at once, at half strength each), then
- * the two side images are summed back with 'lighter' so their overlap
- * recomposes the picture while everything near high-contrast edges wears
- * the tint fringes. The default red/cyan pair is the authentic paper-glasses
- * look; any other pairs restyle it (green/magenta, blue/amber, full-color
- * trios like red+green / blue).
+ * The finished picture is re-projected once per tint: tint 1 of each lens
+ * is the BASE layer — the left base copy and the right base copy drift
+ * apart by the depth separation and are summed with 'lighter' so their
+ * overlap recomposes the picture while edges wear the classic tint
+ * fringes. Every EXTRA tint is a tracer echo: its own channelized copy of
+ * the full frame, drawn additively one separation-step FURTHER OUT than
+ * the previous tint (tint 2 at 2×, tint 3 at 3×, tint 4 at 4× the base
+ * offset). The echoes never dilute or recolor the base layer — adding a
+ * color extends the trail outward instead of averaging into the glasses.
  *
+ *   leftColors / rightColors — 1–4 tint hex strings per lens, ordered from
+ *     the base layer outward (tint 1 = the lens that recomposes the
+ *     picture). The classic red/cyan pair is the default.
  *   depth      — base separation, the amount of 3D-ness (up to 2.5× the
  *                classic amount for a wide-POP stereo look)
  *   reactivity — how much the song's low end pushes the copies apart, so
@@ -21,11 +24,12 @@
  *   strength   — blend of the anaglyph back over the untouched picture
  *
  * The un-overlapped strips at the frame edges keep tinted content (left
- * tints only on the left, right tints only on the right) instead of black
- * bars — the authentic anaglyph border fringe. Deterministic: no
- * Math.random / Date.now anywhere, same (frame, config) → same pixels in
- * preview, MP4 and PNG exports. Transparent backgrounds skip the pass
- * (alpha must stay clean).
+ * tints trail off the left edge, right tints off the right) instead of
+ * black bars — the authentic anaglyph border fringe, now with the tracer
+ * echos stepping outward through it. Deterministic: no Math.random /
+ * Date.now anywhere, same (frame, config) → same pixels in preview, MP4
+ * and PNG exports. Transparent backgrounds skip the pass (alpha must
+ * stay clean).
  */
 import type { AudioFrame, RenderContext, AnaglyphFilterConfig } from './types'
 import { getWork, resetWork } from './filter-utils'
@@ -78,34 +82,6 @@ function channelize(
   c.globalCompositeOperation = 'source-over'
 }
 
-/**
- * Average every tint of one side into `acc`: each tint colors its own copy
- * of the snapshot, the copies are summed with 'lighter' at alpha 1/count, so
- * the side image is the MEAN of the tinted passes — one tint reproduces the
- * classic lens exactly, two tints = two lenses averaged (no blowout), and
- * matching pairs across sides can still recompose full color in the overlap.
- */
-function accumulateSide(
-  acc: HTMLCanvasElement,
-  snap: HTMLCanvasElement,
-  tint: HTMLCanvasElement,
-  colors: string[],
-  w: number,
-  h: number,
-): void {
-  const ac = resetWork(acc.getContext('2d')!)
-  ac.clearRect(0, 0, w, h)
-  ac.globalCompositeOperation = 'lighter'
-  const alpha = 1 / colors.length
-  for (const color of colors) {
-    channelize(tint, snap, color, w, h)
-    ac.globalAlpha = alpha
-    ac.drawImage(tint, 0, 0)
-  }
-  ac.globalCompositeOperation = 'source-over'
-  ac.globalAlpha = 1
-}
-
 export function drawAnaglyphFilter(
   rc: RenderContext,
   cfg: AnaglyphFilterConfig | undefined,
@@ -134,28 +110,31 @@ export function drawAnaglyphFilter(
   const dx = Math.round(sep / 2) // each copy moves half the separation
   if (dx < 1) return
 
-  // One snapshot; both side copies sample the finished frame from it.
+  // One snapshot; every tint copy samples the finished frame from it.
   const snap = getWork('anaglyph:snap', W, H)
   const sc = resetWork(snap.getContext('2d')!)
   sc.clearRect(0, 0, W, H)
   sc.drawImage(ctx.canvas, 0, 0)
 
-  const leftAcc = getWork('anaglyph:left', W, H)
-  const rightAcc = getWork('anaglyph:right', W, H)
-  const tint = getWork('anaglyph:tint', W, H)
-  accumulateSide(leftAcc, snap, tint, leftTints, W, H)
-  accumulateSide(rightAcc, snap, tint, rightTints, W, H)
-
-  // Recombine on black so the edge strips keep their tinted content —
-  // left edge = left-lens copy, right edge = right-lens copy, middle = the
-  // full-color recombined anaglyph.
+  // Recombine on black: tint 1 of each lens at the base ±dx (the classic
+  // anaglyph pair — byte-identical to the single-tint pipeline), then every
+  // extra tint additively one step FURTHER OUT (2dx, 3dx, 4dx). Nothing is
+  // averaged or diluted: added colors only extend the trail outward, so the
+  // base layer keeps its full strength everywhere.
   const out = getWork('anaglyph:out', W, H)
   const oc = resetWork(out.getContext('2d')!)
   oc.fillStyle = '#000000'
   oc.fillRect(0, 0, W, H)
-  oc.drawImage(leftAcc, -dx, 0)
   oc.globalCompositeOperation = 'lighter'
-  oc.drawImage(rightAcc, dx, 0)
+  const tint = getWork('anaglyph:tint', W, H)
+  leftTints.forEach((color, i) => {
+    channelize(tint, snap, color, W, H)
+    oc.drawImage(tint, -(i + 1) * dx, 0)
+  })
+  rightTints.forEach((color, i) => {
+    channelize(tint, snap, color, W, H)
+    oc.drawImage(tint, (i + 1) * dx, 0)
+  })
   oc.globalCompositeOperation = 'source-over'
 
   // Blend over the original — strength 1 is the full glasses look, lower
