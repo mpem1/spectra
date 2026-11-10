@@ -29,7 +29,13 @@
  * flashes the untouched regular picture on a solid low-end hit — print and
  * negative, if on, dissolve together; 'print' is the mirror image — the
  * regular picture rests between kicks and the print stamps in on the kick,
- * then fades back out as the kick decays.
+ * then fades back out as the kick decays. The swap is tunable:
+ * `flipSensitivity` moves the kick gate (how hard a hit fires it),
+ * `flipHold` pins the swap fully open for a dialled time after the kick
+ * before it fades back (a per-canvas envelope driven by SONG time —
+ * deterministic, preview and export agree), and `flipMono` keeps the
+ * picture conditioning (Grayscale/Contrast) on the kick side so only the
+ * dots come and go instead of the color flashing back.
  *
  * The ink is black by default but can be any color, or a two-color gradient
  * whose angle drifts slowly with song time and swings with the low end —
@@ -216,6 +222,71 @@ function smoothstep(e0: number, e1: number, x: number): number {
   return t * t * (3 - 2 * t)
 }
 
+/*
+ * Flip hold state, per canvas context: the live preview and each offline
+ * export run their own envelope, so interleaved pipelines never see each
+ * other's kicks. Driven by SONG time (frame.time), never the wall clock —
+ * same frame sequence in, same envelope out, which is what keeps exports
+ * frame-exact against the preview.
+ */
+interface FlipGateState {
+  env: number
+  holdLeft: number
+  lastT: number
+}
+const flipStates = new WeakMap<CanvasRenderingContext2D, FlipGateState>()
+/** Seconds the swap takes to fall back once the hold runs out. */
+const FLIP_RELEASE = 0.25
+
+/**
+ * The flip's drive level 0..1. With the hold dial at 0 this is the pure,
+ * stateless kick gate (the original behavior, bit-for-bit). With a hold,
+ * a landed kick (gate ≥ 0.5) pins the level at 1 for the dialled time —
+ * the swap stays fully swapped whatever the kick's tail does — then falls
+ * back over a short linear release to the live gate, which itself still
+ * tracks the kick's decay. Seeks / loop restarts (song time moving
+ * backward) drop the stale envelope.
+ */
+function flipGate(
+  ctx: CanvasRenderingContext2D,
+  bass: number,
+  time: number,
+  e0: number,
+  e1: number,
+  holdSec: number,
+): number {
+  const gate = smoothstep(e0, e1, bass)
+  if (holdSec <= 0.0005) {
+    // The default (and toggle/dial-off): no state, the old path — and never
+    // resume a stale hold that was armed before the dial moved to zero.
+    flipStates.delete(ctx)
+    return gate
+  }
+  let st = flipStates.get(ctx)
+  if (!st) {
+    st = { env: 0, holdLeft: 0, lastT: time }
+    flipStates.set(ctx, st)
+  }
+  if (time < st.lastT) {
+    // Seek / loop restart — the envelope is stale, drop it.
+    st.env = 0
+    st.holdLeft = 0
+  }
+  const dt = Math.min(0.1, Math.max(0, time - st.lastT))
+  st.lastT = time
+  if (gate >= 0.5) st.holdLeft = holdSec // the kick landed — (re)arm the hold
+  if (st.holdLeft > 0) {
+    // Hold phase: the swap stays fully open whatever the kick does.
+    st.holdLeft = Math.max(0, st.holdLeft - dt)
+    st.env = 1
+  } else {
+    // Release: instant attack, then a short linear fall back to the live
+    // gate (which itself tracks the kick's decay).
+    st.env = gate >= st.env ? gate : Math.max(gate, st.env - dt / FLIP_RELEASE)
+  }
+  return st.env
+}
+
 export function drawHalftoneFilter(
   rc: RenderContext,
   cfg: HalftoneFilterConfig | undefined,
@@ -233,22 +304,68 @@ export function drawHalftoneFilter(
   // settles back as the kick decays. 'print': the mirror image — the
   // regular picture rests between kicks and the print stamps in on the
   // kick, then fades back out as the kick decays. Driven by the same
-  // smoothed bass field as every other beat reaction — no state, no wall
-  // clock — so exports match the preview frame-exactly. At rest (and with
-  // the toggle off) everything below costs exactly what it cost before.
+  // smoothed bass field as every other beat reaction, so exports match
+  // the preview frame-exactly. At rest (and with the toggle off) everything
+  // below costs exactly what it cost before.
   const bass = clamp01(frame.bass)
   const flipOn = !!cfg.beatFlip
   const flipToPrint = flipOn && cfg.beatFlipTo === 'print'
-  const flipT = flipOn ? smoothstep(0.5, 0.75, bass) : 0
+  // Kick sensitivity — how hard a kick must land before the gate opens.
+  // 50% (the default) is EXACTLY the original gate: bass 0.5 → 0.75. Lower
+  // sensitivity raises the floor toward (0.75, 1.0) — only a true slam
+  // fires it; higher sensitivity drops it toward (0.15, 0.4) — a hair
+  // trigger. The window stays 0.25 wide and its top edge never passes 1.0,
+  // so whenever a flip fires it can always complete.
+  const flipSens = clamp01(cfg.flipSensitivity ?? 0.5)
+  const gate0 = Math.min(0.75, 0.5 - (flipSens - 0.5) * 0.7)
+  const gate1 = gate0 + 0.25
+  // Flip hold — how long the swap stays FULLY swapped after a kick before
+  // it fades back (the dial spans 0–2 s). 0 bypasses the state machine
+  // entirely: the flip fades back with the kick, exactly as before.
+  const holdSec = clamp01(cfg.flipHold ?? 0) * 2
+  const flipT = flipOn ? flipGate(ctx, bass, frame.time, gate0, gate1, holdSec) : 0
+  // "Stay black & white" — the kick side of the swap keeps the picture
+  // conditioning below instead of flashing back to the untouched color
+  // picture, so only the dots come and go. A no-op without conditioning.
+  const flipMono = flipOn && !!cfg.flipMono
+
+  // Picture conditioning pass — grayscale + contrast, always applied while
+  // the filter is on (independent of the ink dials below). One GPU pass:
+  // draw the live frame onto a work canvas through the CSS filter chain,
+  // draw it straight back. These two shape the picture AND the print (the
+  // screen samples what they produce). Defaults skip this. Defined BEFORE
+  // the flip early exits so "Stay black & white" can run it on the
+  // kick-side frames that would otherwise show the raw picture.
+  const grayscale = !!cfg.grayscale
+  const invert = !!cfg.invert
+  const contrast = clamp01(cfg.contrast ?? 0.5)
+  const preF: string[] = []
+  if (grayscale) preF.push('grayscale(1)')
+  if (Math.abs(contrast - 0.5) > 1e-3)
+    preF.push(`contrast(${(contrast * 2).toFixed(4)})`) // 0.5 → 1.0 = untouched
+  const applyConditioning = () => {
+    if (!preF.length) return
+    const cond = getWork('ht:cond', W, H)
+    const cctx = resetWork(cond.getContext('2d')!)
+    cctx.filter = preF.join(' ')
+    cctx.drawImage(ctx.canvas, 0, 0, W, H)
+    cctx.filter = 'none'
+    ctx.drawImage(cond, 0, 0, W, H)
+  }
+
   if (!flipToPrint && flipT >= 0.999) {
     // Kick peak, picture direction: the regular picture alone — even the
-    // picture conditioning below is skipped, so the flash shows the frame
-    // exactly as the earlier filters left it.
+    // picture conditioning is skipped, so the flash shows the frame exactly
+    // as the earlier filters left it (with Stay black & white on, the
+    // conditioning IS applied first so the flash keeps the mono look).
+    if (flipMono) applyConditioning()
     return
   }
   if (flipToPrint && flipT <= 0.001) {
     // Rest, print direction: the regular picture alone — zero cost, the
-    // frame is exactly as the earlier filters left it.
+    // frame is exactly as the earlier filters left it (with Stay black &
+    // white on, the conditioning runs so the rest keeps the mono look).
+    if (flipMono) applyConditioning()
     return
   }
   let raw: HTMLCanvasElement | null = null
@@ -256,6 +373,15 @@ export function drawHalftoneFilter(
   // direction it dissolves IN over the finished print as the kick lands;
   // in the print direction it dissolves OUT as the print stamps in.
   const rawA = flipToPrint ? 1 - flipT : flipT
+  if (flipMono) {
+    // "Stay black & white" conditions BEFORE the raw snapshot so the
+    // dissolving picture is the mono one too — the whole swap then happens
+    // inside the mono look, with no color popping through mid-crossfade
+    // (conditioning after the snapshot would leave the dissolving side
+    // full-color while the peak/rest sides are mono — a visible jump at
+    // the swap's edges). The pass below is skipped when this ran.
+    applyConditioning()
+  }
   if (flipOn && rawA > 0.001) {
     // Keep the untouched frame around so the swap can dissolve between
     // the print state and the regular picture (one full-frame GPU copy,
@@ -277,26 +403,11 @@ export function drawHalftoneFilter(
     ctx.restore()
   }
 
-  // 0) Picture conditioning, part 1 — grayscale + contrast, always applied
-  //    while the filter is on (independent of the ink dials below). One GPU
-  //    pass: draw the live frame onto a work canvas through the CSS filter
-  //    chain, draw it straight back. These two shape the picture AND the
-  //    print (the screen samples what they produce). Defaults skip this.
-  const grayscale = !!cfg.grayscale
-  const invert = !!cfg.invert
-  const contrast = clamp01(cfg.contrast ?? 0.5)
-  const preF: string[] = []
-  if (grayscale) preF.push('grayscale(1)')
-  if (Math.abs(contrast - 0.5) > 1e-3)
-    preF.push(`contrast(${(contrast * 2).toFixed(4)})`) // 0.5 → 1.0 = untouched
-  if (preF.length) {
-    const cond = getWork('ht:cond', W, H)
-    const cctx = resetWork(cond.getContext('2d')!)
-    cctx.filter = preF.join(' ')
-    cctx.drawImage(ctx.canvas, 0, 0, W, H)
-    cctx.filter = 'none'
-    ctx.drawImage(cond, 0, 0, W, H)
-  }
+  // 0) Picture conditioning — run the pass defined above (one GPU pass;
+  //    the defaults skip it inside). Shapes the picture AND the print.
+  //    "Stay black & white" already conditioned up above (before the raw
+  //    snapshot), and running it twice would double the contrast.
+  if (!flipMono) applyConditioning()
 
   // The negative flip — one GPU pass that inverts whatever is currently on
   // the frame. Runs at the very END (after the ink is laid down) so picture

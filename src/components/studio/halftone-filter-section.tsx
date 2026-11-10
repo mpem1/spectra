@@ -95,8 +95,10 @@ export function HalftoneFilterSection() {
         must be before it gets dotted: low = only the deepest shadows, high =
         most of the picture. Beat pop spans a wide range: low = a gentle
         breath on the kick, max = the print lifts clean off the page and
-        snaps back between kicks. Flip on kick goes all the way: the whole
-        look swaps on every kick, and you choose which side the kick shows.
+        snaps back between kicks. Flip on kick swaps the whole look on every
+        kick — you choose which side shows, how hard a kick fires it, how
+        long it stays, and whether the picture stays black & white or the
+        moving layers stay colored.
       </p>
 
       {filter.enabled ? (
@@ -133,6 +135,54 @@ export function HalftoneFilterSection() {
                 {filter.beatFlipTo === 'print'
                   ? 'The regular picture rests on the frame between kicks; on a kick the halftone print stamps in, then fades back out as the kick decays. Runs all the way whatever the Beat pop dial says.'
                   : 'The print rests on the frame between kicks; on a kick it lifts clean off so the untouched regular picture flashes through, then settles back. Runs all the way whatever the Beat pop dial says.'}
+              </p>
+              <SliderRow
+                label="Kick sensitivity"
+                value={filter.flipSensitivity}
+                min={0}
+                max={1}
+                step={0.05}
+                onChange={set('flipSensitivity')}
+                format={(v) =>
+                  v <= 0.025 ? 'Slams only' : v >= 0.975 ? 'Every hit' : `${Math.round(v * 100)}%`
+                }
+              />
+              <SliderRow
+                label="Flip hold"
+                value={filter.flipHold}
+                min={0}
+                max={1}
+                step={0.05}
+                onChange={set('flipHold')}
+                format={(v) => (v < 0.025 ? 'With the kick' : `${(v * 2).toFixed(1)}s`)}
+              />
+              <p className="text-[10px] leading-snug text-zinc-600">
+                Sensitivity sets how hard a kick must land before the flip
+                fires. Hold keeps the swapped side fully swapped for that long
+                before it fades back — “With the kick” fades out with the
+                kick, as before.
+              </p>
+              <ToggleRow
+                label="Stay black & white"
+                checked={filter.flipMono}
+                onCheckedChange={(flipMono) => patchHalftoneFilter({ flipMono })}
+              />
+              <p className="text-[10px] leading-snug text-zinc-600">
+                The picture keeps its Black &amp; white / Contrast look on the
+                kick side too — the color never flashes back, only the dots
+                come and go. Needs a picture conditioning turned on (e.g.
+                Black &amp; white) to change anything.
+              </p>
+              <ToggleRow
+                label="Layers stay colored"
+                checked={filter.flipColorLayers}
+                onCheckedChange={(flipColorLayers) => patchHalftoneFilter({ flipColorLayers })}
+              />
+              <p className="text-[10px] leading-snug text-zinc-600">
+                The visualizer, pulse image, vinyl cover and text overlays
+                stay in full color on top of the print — the halftone only
+                textures the background picture. While on, those layers skip
+                the screen, VHS and film passes.
               </p>
             </>
           ) : null}

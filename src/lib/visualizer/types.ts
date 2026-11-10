@@ -493,6 +493,33 @@ export interface HalftoneFilterConfig {
    *  then it fades back out as the kick decays. Only matters while
    *  beatFlip is on. Old saves without this field load as 'picture'. */
   beatFlipTo: 'picture' | 'print'
+  /** Flip on kick sensitivity 0..1 — how hard a kick must land before the
+   *  swap fires. 0.5 (default) is the original gate (bass 0.5–0.75); lower
+   *  values raise the bar until only a true slam flips it, higher values
+   *  drop it to a hair trigger. Only matters while beatFlip is on. Old
+   *  saves without this field load as 0.5 (the original gate). */
+  flipSensitivity: number
+  /** Flip on kick hold 0..1 — how long the swap stays FULLY swapped after
+   *  a kick before it fades back (the dial spans 0–2 s). 0 (default) fades
+   *  back with the kick exactly as before, and skips the hold machinery
+   *  entirely. Only matters while beatFlip is on. */
+  flipHold: number
+  /** Stay black & white — the kick side of the Flip on kick swap keeps the
+   *  picture conditioning (Grayscale / Contrast) instead of flashing back
+   *  to the untouched full-color picture, so only the dots come and go.
+   *  Meaningful once a conditioning dial is set (e.g. Grayscale on); a
+   *  no-op otherwise. Only matters while beatFlip is on. */
+  flipMono: boolean
+  /** Layers stay colored — the moving layers (visualizer, pulse image,
+   *  vinyl disc, text overlays and the watermark) render into their own
+   *  overlay and are drawn back in full color ON TOP of the finished
+   *  print, so the halftone only ever textures the background picture and
+   *  those layers never lose their color — through any phase of the flip.
+   *  While on, they skip the screen/VHS/film passes that run before the
+   *  halftone (glitch and anaglyph still see them). Only matters while
+   *  the halftone filter AND Flip on kick are on. Old saves without this
+   *  field load as false. */
+  flipColorLayers: boolean
   /** Black & white — desaturate the whole picture before printing */
   grayscale: boolean
   /** Picture contrast 0..1 — 0.5 is the untouched picture, 0 flattens
@@ -947,6 +974,10 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     beatStrength: 0.5,
     beatFlip: false,
     beatFlipTo: 'picture',
+    flipSensitivity: 0.5,
+    flipHold: 0,
+    flipMono: false,
+    flipColorLayers: false,
     grayscale: false,
     contrast: 0.5,
     invert: false,

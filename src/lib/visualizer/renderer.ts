@@ -29,6 +29,7 @@ import { drawFilmFilter } from './film-filter'
 import { drawHalftoneFilter } from './halftone-filter'
 import { drawGlitchFilter } from './glitch-filter'
 import { drawAnaglyphFilter } from './anaglyph-filter'
+import { getWork, resetWork } from './filter-utils'
 
 /* --------------------------------- Utilities -------------------------------- */
 
@@ -96,6 +97,30 @@ function fillRoundRect(
 export function renderFrame(rc: RenderContext, frame: AudioFrame, config: StudioConfig): void {
   const S = rc.height / 720
   rc.ctx.save()
+  // Full-frame filter chain gate: transparent backgrounds skip them all so
+  // alpha recordings stay clean.
+  const transparent = config.background?.mode === 'transparent'
+  // Flip on kick → "Layers stay colored": the moving layers (visualizer,
+  // pulse image, vinyl disc) AND the text overlays render into their own
+  // transparent overlay canvas instead of the main frame, and the overlay
+  // is drawn back right after the halftone filter. The print then only ever
+  // textures the background picture — through every phase of the flip the
+  // layers keep their full color, and the layer order (text above
+  // everything) is preserved because the text rides the same overlay.
+  // While this is on the layers skip the screen/VHS/film passes that run
+  // before the halftone; glitch and anaglyph still see the finished
+  // composite (overlay included).
+  const ht = config.halftoneFilter
+  const flipColorLayers =
+    !transparent && !!ht?.enabled && !!ht.beatFlip && !!ht.flipColorLayers
+  let ovCanvas: HTMLCanvasElement | null = null
+  let layersRc: RenderContext = rc
+  if (flipColorLayers) {
+    ovCanvas = getWork('ht:flipOv', rc.width, rc.height)
+    const ovCtx = resetWork(ovCanvas.getContext('2d')!)
+    ovCtx.clearRect(0, 0, rc.width, rc.height)
+    layersRc = { ...rc, ctx: ovCtx }
+  }
   drawBackground(rc, frame, config.background, S)
   // Layer order vs. the album art layer: 'back' tucks the bars behind the
   // vinyl & cover, 'front' (the default, and what very old saves merge to)
@@ -104,32 +129,32 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // Pulse image behind everything except the background (pre-disc saves
   // merge layer='front', so this only runs when the user asks for it).
   if (config.pulseImage?.enabled && config.pulseImage.layer === 'back') {
-    drawPulseImage(rc, frame, config.pulseImage, config.visualizer.gradient, S)
+    drawPulseImage(layersRc, frame, config.pulseImage, config.visualizer.gradient, S)
   }
-  if (vizBehind) drawVisualizer(rc, frame, config.visualizer, S)
+  if (vizBehind) drawVisualizer(layersRc, frame, config.visualizer, S)
   // Album art layer (square cover + spinning vinyl/CD) — above the
   // visualizer, below the text overlays. Optional chaining keeps very old
   // saves (pre-disc) renderable even before the store merge runs.
   if (config.disc?.enabled) {
-    drawDisc(rc, frame, config.disc)
+    drawDisc(layersRc, frame, config.disc)
   }
-  if (!vizBehind) drawVisualizer(rc, frame, config.visualizer, S)
+  if (!vizBehind) drawVisualizer(layersRc, frame, config.visualizer, S)
   // Pulse image in front of the bars & vinyl (the default placement).
   if (config.pulseImage?.enabled && config.pulseImage.layer !== 'back') {
-    drawPulseImage(rc, frame, config.pulseImage, config.visualizer.gradient, S)
+    drawPulseImage(layersRc, frame, config.pulseImage, config.visualizer.gradient, S)
   }
   if (config.lyrics.enabled && config.lyrics.lines.length > 0) {
-    drawLyrics(rc, frame, config.lyrics, config.visualizer.gradient)
+    drawLyrics(layersRc, frame, config.lyrics, config.visualizer.gradient)
   }
   // Optional chaining: configs from very old saves (pre-title) merge over
   // defaults in setConfig, but stay defensive here anyway.
   if (config.title?.enabled && config.title.text.trim().length > 0) {
-    drawTitle(rc, frame, config.title, config.visualizer.gradient)
+    drawTitle(layersRc, frame, config.title, config.visualizer.gradient)
   }
   // Corner watermark — the very top layer, above lyrics/title, so posted
   // videos always carry the credit. Optional chaining: pre-watermark saves.
   if (config.watermark?.enabled) {
-    drawWatermark(rc, config.watermark, S)
+    drawWatermark(layersRc, config.watermark, S)
   }
   // Full-frame filter chain — the outermost passes, ON TOP of everything
   // above (the watermark included). Fixed order, each filter processes the
@@ -137,13 +162,17 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // film damage scratches the display → halftone prints the result → glitch
   // corrupts the digital copy of it all → 3D glasses re-project the whole
   // mess for the paper-glasses viewer.
-  // Optional chaining keeps very old saves renderable before the merge;
-  // transparent backgrounds skip them all so alpha recordings stay clean.
-  const transparent = config.background?.mode === 'transparent'
+  // Optional chaining keeps very old saves renderable before the merge.
   drawScreenFilter(rc, config.screenFilter, frame, transparent)
   drawVhsFilter(rc, config.vhsFilter, frame, transparent)
   drawFilmFilter(rc, config.filmFilter, frame, transparent)
   drawHalftoneFilter(rc, config.halftoneFilter, frame, transparent)
+  // "Layers stay colored": bring the overlay (moving layers + text, full
+  // color) back over the finished print — before glitch/anaglyph so they
+  // corrupt and re-project the whole composite as usual.
+  if (ovCanvas) {
+    rc.ctx.drawImage(ovCanvas, 0, 0)
+  }
   drawGlitchFilter(rc, config.glitchFilter, frame, transparent)
   drawAnaglyphFilter(rc, config.anaglyphFilter, frame, transparent)
   rc.ctx.restore()
