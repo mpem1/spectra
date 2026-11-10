@@ -22,6 +22,14 @@
  *                fixed, steady separation; frame.bass ships in AudioFrame,
  *                so the live preview and the offline exporter pop identically)
  *   strength   — blend of the anaglyph back over the untouched picture
+ *   beatFlip   — Flip on kick: on a solid low-end hit the whole stack
+ *                mirrors (every copy jumps to the opposite side, like
+ *                turning the paper glasses around), holds for flipHold,
+ *                then swings back — through the clean recomposed picture
+ *                — to rest. Same onset detector as the halftone print's
+ *                flip (imported flipGate, clean sub-band drive, per-filter
+ *                detector state — dialed the same, both flip on the same
+ *                kicks).
  *
  * The un-overlapped strips at the frame edges keep tinted content (left
  * tints trail off the left edge, right tints off the right) instead of
@@ -33,6 +41,7 @@
  */
 import type { AudioFrame, RenderContext, AnaglyphFilterConfig } from './types'
 import { getWork, resetWork } from './filter-utils'
+import { flipGate } from './halftone-filter'
 
 /** Tints per side — hard cap so a hand-edited project can't spawn 100 passes. */
 const MAX_TINTS = 4
@@ -85,7 +94,7 @@ function channelize(
 export function drawAnaglyphFilter(
   rc: RenderContext,
   cfg: AnaglyphFilterConfig | undefined,
-  frame: Pick<AudioFrame, 'bass'>,
+  frame: Pick<AudioFrame, 'bass' | 'sub' | 'time'>,
   transparent: boolean,
 ): void {
   if (!cfg?.enabled || transparent) return
@@ -110,6 +119,27 @@ export function drawAnaglyphFilter(
   const dx = Math.round(sep / 2) // each copy moves half the separation
   if (dx < 1) return
 
+  // Flip on kick — the same detector the halftone print's flip uses: bass
+  // ONSETS on the clean sub-band channel fire once per hit, pin the flip
+  // fully swapped for the hold dial's time, then fall back over a short
+  // release. The flip multiplies every copy's offset by (1 − 2·env): env 0
+  // is the resting glasses (byte-identical to flip off), env 1 mirrors the
+  // whole stack — left-lens copies land where the right-lens copies sat and
+  // vice versa, like the glasses turned around — and the release swings
+  // back through offset 0, where the lens copies recombine into the clean
+  // full-color picture, so each kick reads as a snap flip and a swing home.
+  const flipT = cfg.beatFlip
+    ? flipGate(
+        ctx,
+        Math.min(1, Math.max(0, frame.sub ?? frame.bass)),
+        frame.time,
+        Math.min(1, Math.max(0, cfg.flipSensitivity ?? 0.5)),
+        Math.min(1, Math.max(0, cfg.flipHold ?? 0)) * 2,
+        'anaglyph',
+      )
+    : 0
+  const dir = 1 - 2 * flipT
+
   // One snapshot; every tint copy samples the finished frame from it.
   const snap = getWork('anaglyph:snap', W, H)
   const sc = resetWork(snap.getContext('2d')!)
@@ -129,11 +159,11 @@ export function drawAnaglyphFilter(
   const tint = getWork('anaglyph:tint', W, H)
   leftTints.forEach((color, i) => {
     channelize(tint, snap, color, W, H)
-    oc.drawImage(tint, -(i + 1) * dx, 0)
+    oc.drawImage(tint, -(i + 1) * dx * dir, 0)
   })
   rightTints.forEach((color, i) => {
     channelize(tint, snap, color, W, H)
-    oc.drawImage(tint, (i + 1) * dx, 0)
+    oc.drawImage(tint, (i + 1) * dx * dir, 0)
   })
   oc.globalCompositeOperation = 'source-over'
 

@@ -6,7 +6,7 @@ import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { ColorPickerButton } from '@/components/studio/color-picker'
-import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, BeatPunchRow, SliderRow, ToggleRow, sectionShell } from '@/components/studio/controls'
 
 /** Hard cap mirroring the renderer's MAX_TINTS — 4 lenses per side is plenty
  *  (each adds a full-frame multiply pass) and keeps the card compact. */
@@ -94,8 +94,10 @@ function TintList({
  * picture is re-projected twice, once through the left tints and once through
  * the right tints, shifted apart so every edge wears color fringes. Each lens
  * can stack up to 4 tint colors; Depth goes well past the classic amount for
- * a wide-POP look. React to beat makes the fringes pop wider on every kick.
- * Baked into every export; skipped on transparent backgrounds.
+ * a wide-POP look. React to beat makes the fringes pop wider on every kick,
+ * and Flip on kick turns the glasses around on every hit — the whole stack
+ * mirrors, holds, then swings back home. Baked into every export; skipped on
+ * transparent backgrounds.
  */
 export function AnaglyphFilterSection() {
   const filter = useStudioStore((s) => s.config.anaglyphFilter)
@@ -121,8 +123,8 @@ export function AnaglyphFilterSection() {
         The old-school paper 3D-glasses look — the whole picture is re-projected
         twice, once through each lens&apos;s colors, shifted apart so every edge
         wears color fringes. Tint 1 is the base layer; extra tints stack
-        outward like a tracer trail instead of blending in. Baked into every
-        export.
+        outward like a tracer trail instead of blending in. Flip on kick turns
+        the glasses around on every hit. Baked into every export.
       </p>
 
       {filter.enabled ? (
@@ -134,6 +136,45 @@ export function AnaglyphFilterSection() {
             onStrength={(reactivity) => patchAnaglyphFilter({ reactivity })}
             strengthLabel="Beat pop"
           />
+          <ToggleRow
+            label="Flip on kick"
+            checked={filter.beatFlip}
+            onCheckedChange={(beatFlip) => patchAnaglyphFilter({ beatFlip })}
+          />
+          {filter.beatFlip ? (
+            <>
+              <SliderRow
+                label="Kick sensitivity"
+                value={filter.flipSensitivity}
+                min={0}
+                max={1}
+                step={0.05}
+                onChange={set('flipSensitivity')}
+                format={(v) =>
+                  v <= 0.025 ? 'Slams only' : v >= 0.975 ? 'Every hit' : `${Math.round(v * 100)}%`
+                }
+              />
+              <SliderRow
+                label="Flip hold"
+                value={filter.flipHold}
+                min={0}
+                max={1}
+                step={0.05}
+                onChange={set('flipHold')}
+                format={(v) => (v < 0.025 ? 'Quick flash' : `${(v * 2).toFixed(1)}s`)}
+              />
+              <p className="text-[10px] leading-snug text-zinc-600">
+                On a kick the whole stereo stack mirrors — the left lens&apos;s
+                copies jump to the right side and the right lens&apos;s to the
+                left, like the glasses turned around — holds for Flip hold,
+                then swings back through the clean full-color picture to rest.
+                Sensitivity listens for the HIT on a clean sub-bass channel
+                (the same detector as the halftone print&apos;s flip — each
+                card keeps its own dials, so dialed the same they fire
+                together): lower = only the hardest slams, higher = every tap.
+              </p>
+            </>
+          ) : null}
           <SliderRow
             label="Depth"
             value={filter.depth}

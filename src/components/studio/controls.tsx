@@ -138,6 +138,30 @@ export function SectionTitle({
   )
 }
 
+/** Label + control on one row, the standard dense studio toggle row — the
+ *  optional control slot renders left of the switch (chips, readouts). */
+export function ToggleRow({
+  label,
+  checked,
+  onCheckedChange,
+  children,
+}: {
+  label: string
+  checked: boolean
+  onCheckedChange: (v: boolean) => void
+  children?: React.ReactNode
+}) {
+  return (
+    <div className="flex h-5 items-center justify-between">
+      <MicroLabel>{label}</MicroLabel>
+      <div className="flex items-center gap-2">
+        {children}
+        <Switch aria-label={label} checked={checked} onCheckedChange={onCheckedChange} />
+      </div>
+    </div>
+  )
+}
+
 /** Label + numeric readout + slider, the standard dense studio slider row. */
 export function SliderRow({
   label,

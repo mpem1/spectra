@@ -583,6 +583,10 @@ export interface GlitchFilterConfig {
  * colors, ordered base → outward: tint 1 is the base lens that
  * recomposes the picture, and every extra tint is a tracer echo one
  * separation-step further out (never averaged into the base).
+ * `beatFlip` mirrors the whole stack on every kick (same ONSET detector
+ * as Halftone's Flip on kick, listening to the clean sub channel): every
+ * copy snaps to the opposite side, holds, then swings back home through
+ * offset 0 — where the two lenses recompose the clean full-color picture.
  * Skipped on transparent backgrounds like the other full-frame filters.
  */
 export interface AnaglyphFilterConfig {
@@ -596,6 +600,20 @@ export interface AnaglyphFilterConfig {
   /** React to beat — gates the low-end push: off = a fixed, steady
    *  separation; on = the 3D pops on every kick and rests in between */
   beatReactive: boolean
+  /** Flip on kick — on a solid low-end hit the whole stereo stack mirrors:
+   *  every copy jumps to the opposite side (like turning the paper glasses
+   *  around), holds for the flip-hold time, then swings back through the
+   *  clean recomposed picture to rest. Uses the same kick detector as the
+   *  halftone print's flip. Old saves without this field load as off. */
+  beatFlip: boolean
+  /** Flip on kick sensitivity 0..1 — how sharp a low-end hit must land
+   *  before the flip fires (same clean sub-band onset detector as the
+   *  halftone print). Old saves without this field load as 0.5. */
+  flipSensitivity: number
+  /** Flip on kick hold 0..1 — how long the stack stays fully mirrored
+   *  after a fired kick (0 = one quick flash, 1 = 2 s) before the 0.25 s
+   *  swing back. Old saves without this field load as 0. */
+  flipHold: number
   /** Blend 0..1 — full anaglyph (1) vs mixed back toward the original (0) */
   strength: number
   /** Left-lens tint colors (1–4), ordered base → outward: tint 1 is the
@@ -1021,6 +1039,9 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     depth: 0.5,
     reactivity: 0.5,
     beatReactive: false,
+    beatFlip: false,
+    flipSensitivity: 0.5,
+    flipHold: 0,
     strength: 1,
     leftColors: ['#ff0000'],
     rightColors: ['#00ffff'],

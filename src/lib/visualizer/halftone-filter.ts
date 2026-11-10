@@ -252,7 +252,13 @@ interface FlipGateState {
   quietT: number // last song time the rise was well below the bar
   prevRise: number // the previous frame's rise (persistence test)
 }
-const flipStates = new WeakMap<CanvasRenderingContext2D, FlipGateState>()
+/** Per-canvas, per-consumer kick-detector state. The key namespaces consumers
+ *  sharing one render canvas (halftone print, 3D glasses) so each filter runs
+ *  its own detector on its own dials instead of two filters double-advancing
+ *  one shared state (duplicate history samples, hold dials overwriting each
+ *  other). Identical inputs → identical envelopes, so two filters dialed the
+ *  same still flip on exactly the same kicks. */
+const flipStates = new WeakMap<CanvasRenderingContext2D, Map<string, FlipGateState>>()
 /** Seconds the swap takes to fall back once the hold runs out. */
 const FLIP_RELEASE = 0.25
 /**
@@ -348,7 +354,8 @@ function risePctl(st: FlipGateState, time: number): number {
  * dial's time — the swap stays fully swapped whatever the kick's tail does —
  * then falls back over a short linear release. Seeks / loop restarts (song
  * time moving backward) drop the stale envelope AND the stale detector
- * history.
+ * history. The optional `key` namespaces the per-canvas state per consumer
+ * filter (defaults to the halftone print's own key).
  */
 export function flipGate(
   ctx: CanvasRenderingContext2D,
@@ -356,8 +363,14 @@ export function flipGate(
   time: number,
   sens: number,
   holdSec: number,
+  key = 'halftone',
 ): number {
-  let st = flipStates.get(ctx)
+  let perCanvas = flipStates.get(ctx)
+  if (!perCanvas) {
+    perCanvas = new Map()
+    flipStates.set(ctx, perCanvas)
+  }
+  let st = perCanvas.get(key)
   if (!st) {
     st = {
       env: 0,
@@ -378,7 +391,7 @@ export function flipGate(
       quietT: -Infinity,
       prevRise: 0,
     }
-    flipStates.set(ctx, st)
+    perCanvas.set(key, st)
   }
   if (time < st.lastT) {
     // Seek / loop restart — the envelope and the detector history are stale.
@@ -508,7 +521,7 @@ export function drawHalftoneFilter(
   // The detector listens to the clean sub band, falling back to the (clipped)
   // bass meter for any frame source that predates it.
   const flipBass = clamp01(frame.sub ?? frame.bass)
-  const flipT = flipOn ? flipGate(ctx, flipBass, frame.time, flipSens, holdSec) : 0
+  const flipT = flipOn ? flipGate(ctx, flipBass, frame.time, flipSens, holdSec, 'halftone') : 0
   // "Stay black & white" — the kick side of the swap keeps the picture
   // conditioning below instead of flashing back to the untouched color
   // picture, so only the dots come and go. A no-op without conditioning.

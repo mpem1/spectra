@@ -5,31 +5,8 @@ import type { HalftoneFilterConfig } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
 import { ColorPickerButton } from '@/components/studio/color-picker'
-import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, BeatPunchRow, SliderRow, ToggleRow, sectionShell } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
-
-/** Label + control on one row, the standard dense studio toggle row. */
-function ToggleRow({
-  label,
-  checked,
-  onCheckedChange,
-  children,
-}: {
-  label: string
-  checked: boolean
-  onCheckedChange: (v: boolean) => void
-  children?: React.ReactNode
-}) {
-  return (
-    <div className="flex h-5 items-center justify-between">
-      <MicroLabel>{label}</MicroLabel>
-      <div className="flex items-center gap-2">
-        {children}
-        <Switch aria-label={label} checked={checked} onCheckedChange={onCheckedChange} />
-      </div>
-    </div>
-  )
-}
 
 /** One side of the Flip on kick chooser — which side of the swap the kick
  * reveals. Compact two-up chip, active side picks up the section's yellow. */
