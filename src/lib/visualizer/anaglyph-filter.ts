@@ -153,8 +153,8 @@ export function drawAnaglyphFilter(
         ctx,
         Math.min(1, Math.max(0, frame.sub ?? frame.bass)),
         frame.time,
-        Math.min(1, Math.max(0, cfg.flipSensitivity ?? 0.5)),
-        Math.min(1, Math.max(0, cfg.flipHold ?? 0)) * 2,
+        Math.min(1, Math.max(0, cfg.flipSensitivity ?? 0.1)),
+        Math.min(1, Math.max(0, cfg.flipHold ?? 0.2)) * 2,
         'anaglyph',
       )
     : 0
@@ -173,8 +173,8 @@ export function drawAnaglyphFilter(
         ctx,
         Math.min(1, Math.max(0, frame.sub ?? frame.bass)),
         frame.time,
-        Math.min(1, Math.max(0, cfg.popSensitivity ?? 0.5)),
-        Math.min(1, Math.max(0, cfg.popHold ?? 0)) * 2,
+        Math.min(1, Math.max(0, cfg.popSensitivity ?? 0.1)),
+        Math.min(1, Math.max(0, cfg.popHold ?? 0.2)) * 2,
         'anaglyph:pop',
       )
     : 0

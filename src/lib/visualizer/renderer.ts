@@ -100,23 +100,19 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // Full-frame filter chain gate: transparent backgrounds skip them all so
   // alpha recordings stay clean.
   const transparent = config.background?.mode === 'transparent'
-  // Flip on kick → "Layers stay colored": the moving layers (visualizer,
-  // pulse image, vinyl disc) AND the text overlays render into their own
-  // transparent overlay canvas instead of the main frame, and the overlay
-  // is drawn back right after the halftone filter. The print then only ever
-  // textures the background picture — through every phase of the flip the
-  // layers keep their full color, and the layer order (text above
-  // everything) is preserved because the text rides the same overlay.
-  // While this is on the layers skip the screen/VHS/film passes that run
-  // before the halftone; glitch and anaglyph still see the finished
-  // composite (overlay included).
-  const ht = config.halftoneFilter
-  const flipColorLayers =
-    !transparent && !!ht?.enabled && !!ht.beatFlip && !!ht.flipColorLayers
+  // "Layers stay colored" — the moving layers (visualizer, pulse image,
+  // vinyl disc) AND the text overlays render into their own transparent
+  // overlay canvas instead of the main frame, and the overlay is drawn back
+  // after the ENTIRE full-frame filter chain. Every filter then only ever
+  // textures the background picture — the layers keep their full color on
+  // top of screen, VHS, film, halftone print, glitch and 3D glasses alike —
+  // and the layer order (text above everything) is preserved because the
+  // text rides the same overlay.
+  const stayColored = !transparent && !!config.layers?.stayColored
   let ovCanvas: HTMLCanvasElement | null = null
   let layersRc: RenderContext = rc
-  if (flipColorLayers) {
-    ovCanvas = getWork('ht:flipOv', rc.width, rc.height)
+  if (stayColored) {
+    ovCanvas = getWork('layers:stayColored', rc.width, rc.height)
     const ovCtx = resetWork(ovCanvas.getContext('2d')!)
     ovCtx.clearRect(0, 0, rc.width, rc.height)
     layersRc = { ...rc, ctx: ovCtx }
@@ -167,14 +163,15 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   drawVhsFilter(rc, config.vhsFilter, frame, transparent)
   drawFilmFilter(rc, config.filmFilter, frame, transparent)
   drawHalftoneFilter(rc, config.halftoneFilter, frame, transparent)
+  drawGlitchFilter(rc, config.glitchFilter, frame, transparent)
+  drawAnaglyphFilter(rc, config.anaglyphFilter, frame, transparent)
   // "Layers stay colored": bring the overlay (moving layers + text, full
-  // color) back over the finished print — before glitch/anaglyph so they
-  // corrupt and re-project the whole composite as usual.
+  // color) back on top of the finished filter chain — the very last pass,
+  // so every filter (screen through 3D glasses) only ever textures the
+  // background picture.
   if (ovCanvas) {
     rc.ctx.drawImage(ovCanvas, 0, 0)
   }
-  drawGlitchFilter(rc, config.glitchFilter, frame, transparent)
-  drawAnaglyphFilter(rc, config.anaglyphFilter, frame, transparent)
   rc.ctx.restore()
 }
 

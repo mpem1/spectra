@@ -172,11 +172,7 @@ export function AnaglyphFilterSection() {
           <ToggleRow
             label="Flip on kick"
             checked={filter.beatFlip}
-            onCheckedChange={(beatFlip) =>
-              patchAnaglyphFilter(
-                beatFlip ? { beatFlip, flipSensitivity: 0.1, flipHold: 0.2 } : { beatFlip },
-              )
-            }
+            onCheckedChange={(beatFlip) => patchAnaglyphFilter({ beatFlip })}
           />
           {filter.beatFlip ? (
             <>

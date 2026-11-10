@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import {
   DEFAULT_STUDIO_CONFIG,
   GRADIENT_PRESETS,
+  resolveLayersConfig,
   type BackgroundConfig,
   type DiscConfig,
   type ExportProgress,
@@ -11,6 +12,7 @@ import {
   type ExportSettings,
   type GradientConfig,
   type GradientPresetId,
+  type LayersConfig,
   type LyricsConfig,
   type StudioConfig,
   type TitleConfig,
@@ -101,6 +103,8 @@ type StudioState = {
   patchHalftoneFilter: (partial: Partial<HalftoneFilterConfig>) => void
   patchGlitchFilter: (partial: Partial<GlitchFilterConfig>) => void
   patchAnaglyphFilter: (partial: Partial<AnaglyphFilterConfig>) => void
+  /** Patches config.layers (the layers-vs-filters options) */
+  patchLayers: (partial: Partial<LayersConfig>) => void
   /** Adds an imported font file to the shared lyrics/title library */
   addCustomFont: (font: CustomFontConfig) => void
   /** Removes a font; any text layer using it falls back to Sans */
@@ -237,6 +241,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, anaglyphFilter: { ...s.config.anaglyphFilter, ...partial } },
     })),
 
+  patchLayers: (partial) =>
+    set((s) => ({
+      config: { ...s.config, layers: { ...s.config.layers, ...partial } },
+    })),
+
   addCustomFont: (font) =>
     set((s) => ({ config: { ...s.config, fonts: [...s.config.fonts, font] } })),
 
@@ -312,6 +321,9 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         halftoneFilter: { ...DEFAULT_STUDIO_CONFIG.halftoneFilter, ...config.halftoneFilter },
         glitchFilter: { ...DEFAULT_STUDIO_CONFIG.glitchFilter, ...config.glitchFilter },
         anaglyphFilter: { ...DEFAULT_STUDIO_CONFIG.anaglyphFilter, ...config.anaglyphFilter },
+        // Layers-vs-filters options: new saves carry their own section; old
+        // saves graduate the halftone's flip-gated "Layers stay colored".
+        layers: resolveLayersConfig(config),
         // Imported font library — keep only well-formed entries.
         fonts: Array.isArray(config.fonts)
           ? config.fonts.filter(

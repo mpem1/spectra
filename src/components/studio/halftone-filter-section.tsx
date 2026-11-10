@@ -74,8 +74,7 @@ export function HalftoneFilterSection() {
         breath on the kick, max = the print lifts clean off the page and
         snaps back between kicks. Flip on kick swaps the whole look on every
         kick — you choose which side shows, how hard a kick fires it, how
-        long it stays, and whether the picture stays black & white or the
-        moving layers stay colored.
+        long it stays, and whether the picture stays black &amp; white.
       </p>
 
       {filter.enabled ? (
@@ -152,17 +151,6 @@ export function HalftoneFilterSection() {
                 kick side too — the color never flashes back, only the dots
                 come and go. Needs a picture conditioning turned on (e.g.
                 Black &amp; white) to change anything.
-              </p>
-              <ToggleRow
-                label="Layers stay colored"
-                checked={filter.flipColorLayers}
-                onCheckedChange={(flipColorLayers) => patchHalftoneFilter({ flipColorLayers })}
-              />
-              <p className="text-[10px] leading-snug text-zinc-600">
-                The visualizer, pulse image, vinyl cover and text overlays
-                stay in full color on top of the print — the halftone only
-                textures the background picture. While on, those layers skip
-                the screen, VHS and film passes.
               </p>
             </>
           ) : null}

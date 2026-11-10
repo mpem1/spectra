@@ -506,8 +506,9 @@ export interface HalftoneFilterConfig {
   flipSensitivity: number
   /** Flip on kick hold 0..1 — how long the swap stays FULLY swapped after
    *  a fired kick before it fades back (the dial spans 0–2 s; the release
-   *  itself is a fixed 0.25 s). 0 (default) gives a quick full-strength
-   *  flash per kick. Only matters while beatFlip is on. */
+   *  itself is a fixed 0.25 s). Factory default 0.2 (0.4 s) holds each
+   *  kick about a beat before the fade-back. Only matters while beatFlip
+   *  is on. Old saves without this field load as 0.2. */
   flipHold: number
   /** Stay black & white — the kick side of the Flip on kick swap keeps the
    *  picture conditioning (Grayscale / Contrast) instead of flashing back
@@ -515,16 +516,6 @@ export interface HalftoneFilterConfig {
    *  Meaningful once a conditioning dial is set (e.g. Grayscale on); a
    *  no-op otherwise. Only matters while beatFlip is on. */
   flipMono: boolean
-  /** Layers stay colored — the moving layers (visualizer, pulse image,
-   *  vinyl disc, text overlays and the watermark) render into their own
-   *  overlay and are drawn back in full color ON TOP of the finished
-   *  print, so the halftone only ever textures the background picture and
-   *  those layers never lose their color — through any phase of the flip.
-   *  While on, they skip the screen/VHS/film passes that run before the
-   *  halftone (glitch and anaglyph still see them). Only matters while
-   *  the halftone filter AND Flip on kick are on. Old saves without this
-   *  field load as false. */
-  flipColorLayers: boolean
   /** Black & white — desaturate the whole picture before printing */
   grayscale: boolean
   /** Picture contrast 0..1 — 0.5 is the untouched picture, 0 flattens
@@ -611,11 +602,14 @@ export interface AnaglyphFilterConfig {
   beatFlip: boolean
   /** Flip on kick sensitivity 0..1 — how sharp a low-end hit must land
    *  before the flip fires (same clean sub-band onset detector as the
-   *  halftone print). Old saves without this field load as 0.5. */
+   *  halftone print). Factory default 0.1 sits near the "slams only" end
+   *  so ordinary bass motion never flips the glasses. Old saves without
+   *  this field load as 0.1. */
   flipSensitivity: number
   /** Flip on kick hold 0..1 — how long the stack stays fully mirrored
    *  after a fired kick (0 = one quick flash, 1 = 2 s) before the 0.25 s
-   *  swing back. Old saves without this field load as 0. */
+   *  swing back. Factory default 0.2 (0.4 s on the dial) holds the mirror
+   *  about a beat. Old saves without this field load as 0.2. */
   flipHold: number
   /** Which side of the swap a fired kick reveals: 'around' mirrors the
    *  whole stereo stack (the glasses turn around — the shipped flip),
@@ -634,13 +628,15 @@ export interface AnaglyphFilterConfig {
   depthPop: boolean
   /** Depth pop sensitivity 0..1 — how sharp a low-end hit must land
    *  before the depth pop fires (same clean sub-band onset detector as
-   *  the flip and the halftone print). Old saves without this field
-   *  load as 0.5. */
+   *  the flip and the halftone print). Factory default 0.1 matches the
+   *  flip so both fire on the same kicks. Old saves without this field
+   *  load as 0.1. */
   popSensitivity: number
   /** Depth pop hold 0..1 — how long the picture stays flat at 0% depth
    *  after a fired kick (0 = one quick flatten-and-bloom, 1 = 2 s)
-   *  before blooming back out over the 0.25 s release. Old saves
-   *  without this field load as 0. */
+   *  before blooming back out over the 0.25 s release. Factory default
+   *  0.2 (0.4 s on the dial) matches the flip hold. Old saves without
+   *  this field load as 0.2. */
   popHold: number
   /** Blend 0..1 — full anaglyph (1) vs mixed back toward the original (0) */
   strength: number
@@ -692,8 +688,46 @@ export interface StudioConfig {
   glitchFilter: GlitchFilterConfig
   /** Full-frame anaglyph post-pass (red/cyan 3D-glasses re-projection) */
   anaglyphFilter: AnaglyphFilterConfig
+  /** How the moving layers interact with the full-frame filter chain */
+  layers: LayersConfig
   /** Imported font library — shared by the lyrics and the title card */
   fonts: CustomFontConfig[]
+}
+
+/* ------------------------------ Layers vs filters ----------------------------- */
+
+/**
+ * How the moving layers (visualizer, pulse image, vinyl disc, lyrics, title,
+ * watermark) interact with the full-frame filter chain.
+ */
+export interface LayersConfig {
+  /** Layers stay colored — the moving layers AND the text overlays render
+   *  into their own transparent overlay and are drawn back in full color ON
+   *  TOP of the finished filter chain (screen, VHS, film, halftone print,
+   *  glitch and 3D glasses), so every filter only ever textures the
+   *  background picture and the layers never lose their color. While on,
+   *  the layers skip every full-frame filter pass. No-op on transparent
+   *  backgrounds (those skip the filters anyway). */
+  stayColored: boolean
+}
+
+/**
+ * Resolve the `layers` section for a config arriving from a saved project,
+ * project file or share link. New saves carry their own `layers`; old saves
+ * (from before the global toggle existed) graduate the halftone's flip-gated
+ * "Layers stay colored" — but only where it was actually active (the old
+ * renderer ignored it unless the halftone AND its Flip on kick were both on).
+ * The raw value is read untyped: the legacy `flipColorLayers` key no longer
+ * exists on HalftoneFilterConfig.
+ */
+export function resolveLayersConfig(saved: unknown): LayersConfig {
+  const s = (saved ?? {}) as {
+    layers?: { stayColored?: unknown }
+    halftoneFilter?: { enabled?: unknown; beatFlip?: unknown; flipColorLayers?: unknown }
+  }
+  if (typeof s.layers?.stayColored === 'boolean') return { stayColored: s.layers.stayColored }
+  const ht = s.halftoneFilter
+  return { stayColored: !!(ht?.enabled && ht.beatFlip && ht.flipColorLayers) }
 }
 
 /* --------------------------------- Audio frame -------------------------------- */
@@ -1043,9 +1077,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     beatFlip: false,
     beatFlipTo: 'picture',
     flipSensitivity: 0.5,
-    flipHold: 0,
+    flipHold: 0.2,
     flipMono: false,
-    flipColorLayers: false,
     grayscale: false,
     contrast: 0.5,
     invert: false,
@@ -1068,15 +1101,18 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     reactivity: 0.5,
     beatReactive: false,
     beatFlip: false,
-    flipSensitivity: 0.5,
-    flipHold: 0,
+    flipSensitivity: 0.1,
+    flipHold: 0.2,
     beatFlipTo: 'around',
     depthPop: false,
-    popSensitivity: 0.5,
-    popHold: 0,
+    popSensitivity: 0.1,
+    popHold: 0.2,
     strength: 1,
     leftColors: ['#ff0000'],
     rightColors: ['#00ffff'],
+  },
+  layers: {
+    stayColored: false,
   },
   pulseImage: {
     enabled: false,

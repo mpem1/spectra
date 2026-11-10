@@ -6,6 +6,7 @@ import { FilmFilterSection } from '@/components/studio/film-filter-section'
 import { HalftoneFilterSection } from '@/components/studio/halftone-filter-section'
 import { GlitchFilterSection } from '@/components/studio/glitch-filter-section'
 import { AnaglyphFilterSection } from '@/components/studio/anaglyph-filter-section'
+import { LayersSection } from '@/components/studio/layers-section'
 
 /**
  * Filters tab — finishing looks laid over the ENTIRE composed picture
@@ -40,6 +41,9 @@ export function FiltersTab() {
 
       {/* 3D glasses — red/cyan anaglyph re-projection with beat pop */}
       <AnaglyphFilterSection />
+
+      {/* Layers — keep the moving layers colored above every filter */}
+      <LayersSection />
     </div>
   )
 }

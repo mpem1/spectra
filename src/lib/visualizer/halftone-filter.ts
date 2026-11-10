@@ -515,9 +515,9 @@ export function drawHalftoneFilter(
   // drops it toward "every hit".
   const flipSens = clamp01(cfg.flipSensitivity ?? 0.5)
   // Flip hold — how long the swap stays FULLY swapped after a fired kick
-  // before it fades back over 0.25 s (the dial spans 0–2 s). 0 gives a
-  // quick full-strength flash per kick.
-  const holdSec = clamp01(cfg.flipHold ?? 0) * 2
+  // before it fades back over 0.25 s (the dial spans 0–2 s). The factory
+  // default 0.2 (0.4 s) holds each kick about a beat.
+  const holdSec = clamp01(cfg.flipHold ?? 0.2) * 2
   // The detector listens to the clean sub band, falling back to the (clipped)
   // bass meter for any frame source that predates it.
   const flipBass = clamp01(frame.sub ?? frame.bass)
