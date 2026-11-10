@@ -28,6 +28,12 @@
  *       glasses, 0% covers the chain with the unfiltered snapshot, the fade
  *       sits UNDER the textClear overlay, transparent backgrounds skip it,
  *       legacy configs without the field stay full strength
+ *   S9  visualizer transparency — the Style tab dial fades the ENTIRE bars
+ *       layer uniformly (every fill at exactly 1 − transparency), 100%
+ *       short-circuits the layer, the radial inner ring and grid frontier
+ *       dots (which pin their own absolute globalAlpha) scale with it, the
+ *       text overlays stay untouched, legacy configs without the field stay
+ *       fully solid
  */
 
 import { renderFrame } from '../src/lib/visualizer/renderer'
@@ -116,6 +122,12 @@ const created: HTMLCanvasElement[] = []
     created.push(c)
     return c
   },
+}
+// The grid style batches its dots into a Path2D — a recording stub is all
+// the harness needs (the mock ctx's fill() logs regardless of the path).
+;(globalThis as { Path2D?: unknown }).Path2D = class {
+  moveTo(): void {}
+  arc(): void {}
 }
 
 const logOf = (c: HTMLCanvasElement): OpRec[] => (c as unknown as { __log: OpRec[] }).__log
@@ -530,6 +542,115 @@ console.log('S8 filter alpha — one dial fades the whole filter chain')
     'a raw config without filterAlpha renders the classic path',
     draws(main).length === classicDraws,
     `draws=${draws(main).length} classic=${classicDraws}`,
+  )
+}
+
+/* --------------------- S9 visualizer transparency ------------------------- */
+
+console.log('S9 visualizer transparency — one dial fades the whole bars layer')
+{
+  const cfg = baseConfig()
+  const vizOf = (transparency?: number): typeof cfg.visualizer => {
+    const base = structuredClone(DEFAULT_STUDIO_CONFIG.visualizer)
+    if (transparency === undefined) {
+      // Omit the field entirely for the legacy-config check — the ?? fallback
+      // is what keeps raw old configs fully solid.
+      const { transparency: _omit, ...rest } = base
+      return rest as typeof cfg.visualizer
+    }
+    return { ...base, transparency }
+  }
+  // 'fill' ops on the main frame = the bars (background grain is frect-only,
+  // the filters drawImage-only) — each record carries its globalAlpha.
+  const fillAlphas = (): Set<number> =>
+    new Set(logOf(main).filter((r) => r.kind === 'fill').map((r) => r.alpha))
+
+  // Factory default: fully solid.
+  check(
+    'visualizer transparency defaults to 0 (fully solid)',
+    DEFAULT_STUDIO_CONFIG.visualizer.transparency === 0,
+    `got ${DEFAULT_STUDIO_CONFIG.visualizer.transparency}`,
+  )
+
+  // Classic path: every bar pass at alpha 1, path unchanged.
+  renderOne({ ...cfg, visualizer: vizOf(0) })
+  const classicFills = fills(main)
+  const classicAlphas = fillAlphas()
+  check(
+    'transparency 0 paints the bars at full alpha (classic path)',
+    classicFills >= 24 && classicAlphas.size === 1 && classicAlphas.has(1),
+    `fills=${classicFills} alphas=${[...classicAlphas].join(',')}`,
+  )
+
+  // Half fade: the same passes, every alpha scaled to exactly 0.5.
+  renderOne({ ...cfg, visualizer: vizOf(0.5) })
+  const halfAlphas = fillAlphas()
+  check(
+    'transparency 50% scales every bar pass to exactly half',
+    fills(main) === classicFills && halfAlphas.size === 1 && halfAlphas.has(0.5),
+    `fills=${fills(main)} alphas=${[...halfAlphas].join(',')}`,
+  )
+
+  // Fully transparent: the layer short-circuits (zero bar ops).
+  renderOne({ ...cfg, visualizer: vizOf(1) })
+  check('transparency 100% skips the whole layer (no bar fills)', fills(main) === 0, `fills=${fills(main)}`)
+
+  // The dial only touches the visualizer: the words stay full alpha.
+  const cfgL = {
+    ...cfg,
+    visualizer: vizOf(0.5),
+    lyrics: {
+      ...structuredClone(DEFAULT_STUDIO_CONFIG.lyrics),
+      enabled: true,
+      lines: [{ time: 0, text: 'solid words' }],
+    },
+  }
+  renderOne(cfgL)
+  const textAlphas = new Set(texts(main).map((r) => r.alpha))
+  check(
+    'the dial never touches the text overlays (words stay full alpha)',
+    texts(main).length >= 1 && textAlphas.size === 1 && textAlphas.has(1),
+    `text=${texts(main).length} alphas=${[...textAlphas].join(',')}`,
+  )
+
+  // Radial: the inner ring pass pins its OWN globalAlpha — the center dot
+  // must fill at exactly the layer alpha (0.5), and keep the classic 1 at 0.
+  renderOne({ ...cfg, visualizer: { ...vizOf(0.5), style: 'radial' as const } })
+  check(
+    'radial center dot fills at exactly the layer alpha (0.5)',
+    fillAlphas().has(0.5),
+    `alphas=${[...fillAlphas()].join(',')}`,
+  )
+  renderOne({ ...cfg, visualizer: { ...vizOf(0), style: 'radial' as const } })
+  check(
+    'radial at transparency 0 keeps the classic alpha (dot at 1)',
+    fillAlphas().has(1),
+    `alphas=${[...fillAlphas()].join(',')}`,
+  )
+
+  // Grid: the frontier-dot fade multiplies ITS OWN coverage alpha by the
+  // layer alpha — needs a loud frame (empty columns are skipped).
+  const loud = { ...frameAt(0.5), freq: Float32Array.from({ length: 64 }, (_, i) => 0.5 + (i % 8) / 20) }
+  for (const c of [main, ...created]) logOf(c).length = 0
+  renderFrame(rc, loud, { ...cfg, visualizer: { ...vizOf(0.5), style: 'grid' as const, glow: false } })
+  const gridFills = logOf(main).filter((r) => r.kind === 'fill')
+  const gridAlphas = gridFills.map((r) => r.alpha)
+  check(
+    'grid dots compound coverage × layer alpha (full at 0.5, frontier below)',
+    gridFills.length > 0 &&
+      gridAlphas.every((a) => a <= 0.5 + 1e-9) &&
+      gridAlphas.some((a) => a === 0.5) &&
+      gridAlphas.some((a) => a < 0.5),
+    `n=${gridFills.length} alphas=${[...new Set(gridAlphas)].slice(0, 6).join(',')}`,
+  )
+
+  // A raw config without the field (older save) stays fully solid.
+  renderOne({ ...cfg, visualizer: vizOf(undefined) })
+  const legacyAlphas = fillAlphas()
+  check(
+    'a raw config without the transparency field renders fully solid',
+    fills(main) === classicFills && legacyAlphas.size === 1 && legacyAlphas.has(1),
+    `fills=${fills(main)} alphas=${[...legacyAlphas].join(',')}`,
   )
 }
 

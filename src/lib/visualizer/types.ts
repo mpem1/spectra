@@ -73,6 +73,12 @@ export interface VisualizerConfig {
    *  from the right edge (classic, default) · 'left' = mirrored, bars grow
    *  rightward from the left edge. Only used when orientation = 'vertical'. */
   anchor: 'left' | 'right'
+  /** Layer transparency 0..1 — the Style tab's Transparency dial. 0 (the
+   *  factory value) is the classic fully-solid look, 1 fades the ENTIRE
+   *  visualizer layer (bars, wave, glow backdrop, every pass) into whatever
+   *  sits behind it. Scales uniformly on top of every inner alpha, exactly
+   *  like the lyrics layer's opacity dial does for the words. */
+  transparency: number
 }
 
 /* --------------------------------- Background -------------------------------- */
@@ -945,6 +951,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     layer: 'front',
     orientation: 'horizontal',
     anchor: 'right',
+    transparency: 0,
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 48,

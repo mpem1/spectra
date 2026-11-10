@@ -450,6 +450,16 @@ function drawGrain(rc: RenderContext, grain: number, S: number): void {
 
 /* --------------------------------- Visualizer -------------------------------- */
 
+/** Whole-layer alpha for the visualizer: 1 − the Transparency dial, with
+ *  missing/garbage values (very old raw configs that skipped the store
+ *  merge) reading as 0 transparency — the classic fully-solid look. Shared
+ *  by every style draw so the dial scales even the passes that set their
+ *  own absolute globalAlpha (radial's inner ring, grid's frontier dots). */
+function visualizerLayerAlpha(cfg: VisualizerConfig): number {
+  const t = cfg.transparency
+  return 1 - (typeof t === 'number' && Number.isFinite(t) ? clamp01(t) : 0)
+}
+
 function drawVisualizer(
   rc: RenderContext,
   frame: AudioFrame,
@@ -457,7 +467,16 @@ function drawVisualizer(
   S: number,
 ): void {
   const { ctx, width: W, height: H } = rc
+  // Layer transparency — the Style tab's Transparency dial fades the ENTIRE
+  // visualizer (every style pass, the glow backdrop included) into whatever
+  // sits behind it. Invisible layers skip all the work, like the lyrics
+  // layer does at opacity 0. Setting globalAlpha here (inside save/restore)
+  // also pins the baseline at 1 for the fully-solid path, so every pass
+  // below inherits exactly the layer alpha.
+  const layerAlpha = visualizerLayerAlpha(cfg)
+  if (layerAlpha <= 0.002) return
   ctx.save()
+  ctx.globalAlpha = layerAlpha
   // Layer layout (move + resize): the canvas-center point of the visualizer
   // layer is re-anchored at (positionX%, positionY%) and everything scales
   // away from that anchor — resize in place, then slide. At the defaults
@@ -691,6 +710,9 @@ function drawWave(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
 
 function drawRadial(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
+  // The Transparency dial's layer alpha — scales the inner ring pass below,
+  // which otherwise pins its own absolute globalAlpha.
+  const la = visualizerLayerAlpha(cfg)
   const n = Math.max(1, Math.floor(cfg.barCount))
   const freq = frame.freq
   const cx = W / 2
@@ -758,13 +780,13 @@ function drawRadial(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
     cfg.gradient.cycleColors,
     cfg.gradient.cycleSpeed,
   )
-  ctx.globalAlpha = 0.85
+  ctx.globalAlpha = 0.85 * la
   ctx.lineWidth = Math.max(1, 1.5 * S)
   ctx.strokeStyle = midColor
   ctx.beginPath()
   ctx.arc(cx, cy, baseRadius * 0.82, 0, Math.PI * 2)
   ctx.stroke()
-  ctx.globalAlpha = 1
+  ctx.globalAlpha = la
   ctx.fillStyle = midColor
   ctx.beginPath()
   ctx.arc(cx, cy, Math.max(2, 3.5 * S), 0, Math.PI * 2)
@@ -1001,6 +1023,9 @@ function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
   // Mirror/center axis row: (rows-1) * mirrorOffset (0 = top row, 0.5 = middle).
   const axisRow = (rows - 1) * clamp01(cfg.mirrorOffset ?? 0.5)
   const fill = visualizerFill(rc, frame, cfg)
+  // The Transparency dial's layer alpha — scales the frontier-dot fade
+  // below, which otherwise pins its own absolute globalAlpha.
+  const la = visualizerLayerAlpha(cfg)
 
   ctx.fillStyle = fill
 
@@ -1062,12 +1087,12 @@ function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
 
     ctx.fill(path)
     for (const f of frontier) {
-      ctx.globalAlpha = clamp01(f.alpha)
+      ctx.globalAlpha = clamp01(f.alpha) * la
       ctx.beginPath()
       ctx.arc(f.x, f.y, radius, 0, Math.PI * 2)
       ctx.fill()
     }
-    ctx.globalAlpha = 1
+    ctx.globalAlpha = la
   }
   ctx.shadowBlur = 0
 }

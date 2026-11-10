@@ -98,6 +98,20 @@ export function StyleTab() {
             />
           ))}
         </div>
+        {/* Transparency — fade the whole visualizer layer into the background */}
+        <SliderRow
+          label="Transparency"
+          value={visualizer.transparency}
+          min={0}
+          max={1}
+          step={0.05}
+          onChange={(transparency) => patchVisualizer({ transparency })}
+          format={(v) => `${Math.round(v * 100)}%`}
+        />
+        <p className="text-xs leading-relaxed text-zinc-500">
+          See-through the bars: 0% is the solid classic look, 100% fades the whole
+          visualizer into the background behind it.
+        </p>
       </section>
 
       {/* Gradient */}
