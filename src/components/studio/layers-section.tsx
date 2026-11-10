@@ -14,13 +14,18 @@ import { MicroLabel, sectionShell, SliderRow } from '@/components/studio/control
  * picture. "Text stays legible" is the lighter sibling: only the words
  * (lyrics, titles, watermark) skip the filter chain so they stay crisp and
  * readable, while the visualizer/pulse image/vinyl still take the full
- * filtered look. Neither has anything to do with Flip on kick. "Filter
- * alpha" is the one dial over the whole chain: how strongly the filtered
- * look shows at all, independent of which filters are switched on.
+ * filtered look. Neither has anything to do with Flip on kick. Below the
+ * toggles, two alpha dials: "Lyrics alpha" fades the lyric layer itself
+ * (the same value the Lyrics tab's Opacity dial edits — one state, two
+ * doors), and "Filter alpha" is the one dial over the whole chain: how
+ * strongly the filtered look shows at all, independent of which filters
+ * are switched on.
  */
 export function LayersSection() {
   const layers = useStudioStore((s) => s.config.layers)
   const patchLayers = useStudioStore((s) => s.patchLayers)
+  const lyrics = useStudioStore((s) => s.config.lyrics)
+  const patchLyrics = useStudioStore((s) => s.patchLyrics)
 
   return (
     <section className={sectionShell('teal')} aria-label="Layers">
@@ -78,6 +83,20 @@ export function LayersSection() {
           )}
         </>
       )}
+      <SliderRow
+        label="Lyrics alpha"
+        value={lyrics.opacity ?? 1}
+        min={0}
+        max={1}
+        step={0.05}
+        onChange={(opacity) => patchLyrics({ opacity })}
+        format={(v) => `${Math.round(v * 100)}%`}
+      />
+      <p className="-mt-1 text-[11px] leading-snug text-zinc-600">
+        Transparency for the words themselves: fades the whole lyric layer —
+        glow and outline included — into the picture behind it. The same dial
+        as the Lyrics tab&apos;s Opacity, so the two always agree.
+      </p>
       <SliderRow
         label="Filter alpha"
         value={layers.filterAlpha ?? 1}
