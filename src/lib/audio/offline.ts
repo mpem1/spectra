@@ -17,6 +17,7 @@ import {
   resampleSpectrumLog,
   rmsEnergy,
 } from './fft'
+import { subBandRms } from './subband'
 
 function clamp(v: number, min: number, max: number): number {
   return v < min ? min : v > max ? max : v
@@ -51,6 +52,7 @@ export class OfflineAnalyzer {
     energy: 0,
     bass: 0,
     treble: 0,
+    sub: 0,
   }
 
   constructor(audioBuffer: AudioBuffer, fps: number) {
@@ -151,6 +153,9 @@ export class OfflineAnalyzer {
     const bands = computeBands(frame.freq)
     frame.bass = bands.bass
     frame.treble = bands.treble
+    // Clean kick-listening channel over the same raw slice the waveform uses
+    // (mirrors the live engine's subBandRms call so exports match the preview).
+    frame.sub = subBandRms(this.mono.subarray(start, end), this.rate)
     return frame
   }
 

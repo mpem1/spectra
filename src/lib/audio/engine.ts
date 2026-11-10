@@ -16,6 +16,7 @@ import {
   resampleSpectrumLog,
   rmsEnergy,
 } from './fft'
+import { subBandRms } from './subband'
 
 export interface AudioEngineLoadResult {
   duration: number
@@ -71,6 +72,7 @@ export class AudioEngine {
     energy: 0,
     bass: 0,
     treble: 0,
+    sub: 0,
   }
 
   private endedCallbacks: Array<() => void> = []
@@ -212,6 +214,7 @@ export class AudioEngine {
       frame.energy = 0
       frame.bass = 0
       frame.treble = 0
+      frame.sub = 0
       return frame
     }
 
@@ -229,6 +232,10 @@ export class AudioEngine {
     const bands = computeBands(frame.freq)
     frame.bass = bands.bass
     frame.treble = bands.treble
+    // Clean kick-listening channel: 30–130 Hz RMS straight off the raw
+    // samples — the byte spectrum above is dB-clipped and pins in loud
+    // sections, where a kick would move `bass` by exactly zero.
+    frame.sub = subBandRms(this.floatTime, this.ctx.sampleRate)
     return frame
   }
 

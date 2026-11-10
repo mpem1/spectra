@@ -494,9 +494,12 @@ export interface HalftoneFilterConfig {
    *  without this field load as 'picture'. */
   beatFlipTo: 'picture' | 'print'
   /** Flip on kick sensitivity 0..1 — how sharp a low-end hit must land
-   *  before the swap fires. The detector listens for the HIT, not the
-   *  loudness (it tracks how fast the bass rises), so long bass notes never
-   *  pin the swap open and quiet passages still fire on real kicks. 0.5
+   *  before the swap fires. The detector listens for the HIT on a clean
+   *  sub-bass channel (raw samples, not the dB-clipped spectrum meters,
+   *  which pin at their ceiling in loud sections) and tracks how fast the
+   *  bass rises against a rolling-median bar, so long bass notes never pin
+   *  the swap open, steady kick patterns never raise the bar into missing
+   *  their own kicks, and quiet passages still fire on real kicks. 0.5
    *  (default) is a balanced gate; lower values raise the bar until only a
    *  true slam flips it, higher values drop it to "every hit". Only matters
    *  while beatFlip is on. Old saves without this field load as 0.5. */
@@ -663,6 +666,12 @@ export interface AudioFrame {
   bass: number
   /** Treble energy 0..1 (last ~30% of spectrum) */
   treble: number
+  /**
+   * Clean sub-band energy (≈30–130 Hz RMS of the raw samples — NOT dB-clipped
+   * like `bass`). The kick onset detector listens to this: loud masters pin
+   * `bass` at its clip ceiling, where a kick moves the number by zero.
+   */
+  sub: number
 }
 
 /* ------------------------------- Renderer API -------------------------------- */

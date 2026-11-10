@@ -56,6 +56,9 @@ export function makeIdleFrame(
     energy: 0.4 + 0.12 * Math.sin(styleTime * 1.6 + 1.0),
     bass: 0.5 + 0.18 * Math.sin(styleTime * 2.1),
     treble: 0.3,
+    // No audio loaded → the clean kick channel is silent (the flip detector
+    // correctly never fires in the idle demo).
+    sub: 0,
   }
 }
 

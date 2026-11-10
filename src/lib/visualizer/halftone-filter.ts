@@ -29,16 +29,23 @@
  * flashes the untouched regular picture on a kick — print and negative, if
  * on, dissolve together; 'print' is the mirror image — the regular picture
  * rests between kicks and the print stamps in on the kick, then fades back
- * out. The kick is detected by ONSET, not level: the detector watches how
- * fast the bass RISES over a short window (a kick = sharp rise; a long bass
- * note = high level, flat top, no rise), with an adaptive threshold that
- * follows the track's local punch — so sustained bass never pins the swap
- * open and soft kicks in quiet passages still fire. `flipSensitivity` sets
- * how sharp a hit must be, `flipHold` pins the swap fully open for a
- * dialled time before a short 0.25 s release (a per-canvas envelope driven
- * by SONG time — deterministic, preview and export agree), and `flipMono`
- * keeps the picture conditioning (Grayscale/Contrast) on the kick side so
- * only the dots come and go instead of the color flashing back.
+ * out. The kick is detected by ONSET, not level, on a CLEAN channel: the
+ * detector listens to `frame.sub` — a 30–130 Hz RMS straight off the raw
+ * samples, never the dB-clipped spectrum meters, which pin at their ceiling
+ * in loud masters and flatline exactly where the kicks live. On that channel
+ * it watches how fast the bass RISES over a short window (a kick =
+ * sharp rise; a long bass note = high level, flat top, no rise) against a
+ * self-scaling bar built from the 70th percentile of recent rises — sparse
+ * kicks can't inflate their own bar, busy basslines raise it above their own
+ * notes — so sustained bass never pins the swap open, a steady four-on-the-floor never
+ * raises the bar into missing its own kicks, soft kicks in quiet passages
+ * still fire, and a kick landing ON TOP of a held 808 re-arms as soon as the
+ * rise goes quiet rather than waiting for a level dip that never comes.
+ * `flipSensitivity` sets how sharp a hit must be, `flipHold` pins the swap
+ * fully open for a dialled time before a short 0.25 s release (a per-canvas
+ * envelope driven by SONG time — deterministic, preview and export agree),
+ * and `flipMono` keeps the picture conditioning (Grayscale/Contrast) on the
+ * kick side so only the dots come and go instead of the color flashing back.
  *
  * The ink is black by default but can be any color, or a two-color gradient
  * whose angle drifts slowly with song time and swings with the low end —
@@ -230,48 +237,103 @@ interface FlipGateState {
   holdLeft: number // seconds of fully-swapped time left
   lastT: number // last song time seen (seek / loop detection)
   // --- onset detector ---
-  hist: Float32Array // recent bass samples (ring buffer)
+  hist: Float32Array // recent sub-band samples (rise-window ring)
   histT: Float32Array // their song times
   histLen: number
   histHead: number
-  act: number // slow EMA of the bass rise — the track's recent punch scale
-  lvl: number // slow EMA of the bass level — scales the sensitivity bar
+  riseHist: Float32Array // recent rise values (percentile-window ring)
+  riseHistT: Float32Array // their song times
+  riseLen: number
+  riseHead: number
+  scratch: Float32Array // reusable buffer for the percentile sort
   lastKickT: number // song time of the last fired kick (refractory)
-  armed: boolean // re-arms only after the bass dips — one gesture, one fire
+  armed: boolean // one gesture, one fire
   peakSinceFire: number // loudest bass since the last fire (dip reference)
+  quietT: number // last song time the rise was well below the bar
 }
 const flipStates = new WeakMap<CanvasRenderingContext2D, FlipGateState>()
 /** Seconds the swap takes to fall back once the hold runs out. */
 const FLIP_RELEASE = 0.25
 /**
  * Rise window: the detector compares the bass to its LOWEST sample this many
- * seconds back. Long enough to catch a smoothed kick's whole attack, short
- * enough that a sustained note's flat top slides back to "no rise" — which
- * is exactly what a level gate could never tell apart.
+ * seconds back. Long enough to catch a kick's whole attack, short enough that
+ * a sustained note's flat top slides back to "no rise" — which is exactly
+ * what a level gate could never tell apart.
  */
 const RISE_WINDOW = 0.09
-/** History capacity: 90 ms at 240 fps ≈ 22 samples; 32 is comfortably safe. */
+/** Rise-history capacity: 90 ms at 240 fps ≈ 22 samples; 32 is comfortably safe. */
 const RISE_CAP = 32
-/** Time constants (s) of the adaptive activity (rise) and level EMAs. */
-const ACT_TAU = 1.5
-const LVL_TAU = 2.0
+/**
+ * The trigger bar's relative term is a multiple of this percentile of the
+ * recent rise values. The 70th percentile is the sweet spot between two
+ * failure modes: it sits at the between-kicks baseline when kicks are sparse
+ * (so — unlike a mean/EMA — the kicks themselves can never inflate the bar
+ * into missing their own followers), and it climbs WITH the note density when
+ * the bassline is busy (so a 16th-note bassline raises the bar above its own
+ * note onsets while the bigger kick on top still clears it).
+ */
+const RISE_PCTL = 0.7
+/** Percentile-ring capacity: 0.7 s at 60 fps = 42 samples; 64 is comfortably safe. */
+const RISE_PCTL_CAP = 64
+/** How much recent history the percentile looks at. */
+const PCTL_WINDOW = 0.7
 /** One kick fires once: same-kick re-rises inside this window are ignored. */
 const REFRACTORY = 0.13
+/**
+ * Re-arm (quiet) rule: after a fire the detector also re-arms once the rise
+ * has stayed below this fraction of the bar for REARM_QUIET seconds. A kick
+ * landing on top of a held 808 never produces a level dip, but between kicks
+ * the rise DOES go quiet — this is what keeps kick-over-sustained-bass
+ * patterns firing on every hit instead of just the first.
+ */
+const QUIET_FRAC = 0.35
+const REARM_QUIET = 0.12
 /** Absolute silence floor and cap for the trigger threshold. */
-const NOISE_FLOOR = 0.045
+const NOISE_FLOOR = 0.035
 const THR_CAP = 0.5
 
 /**
- * The flip's drive level 0..1, fired by bass ONSETS. The detector tracks how
- * fast the bass rises over a short lookback window and compares that rise to
- * an adaptive threshold (a multiple of the recent rise activity plus an
- * absolute bar that lowers in quiet passages) — so a kick fires once on the
- * hit, a sustained bass note fires only at its attack (its flat top never
- * re-arms anything), and a slow swell never fires at all. A fired kick pins
- * the level at 1 for the hold dial's time — the swap stays fully swapped
- * whatever the kick's tail does — then falls back over a short linear
- * release. Seeks / loop restarts (song time moving backward) drop the stale
- * envelope AND the stale detector history.
+ * The 70th percentile of the rise values still inside the lookback window
+ * (song-time aware, allocation-free: values are gathered into a reusable
+ * scratch buffer and insertion-sorted — 64 elements max, trivial per frame).
+ */
+function risePctl(st: FlipGateState, time: number): number {
+  const cutoff = time - PCTL_WINDOW
+  let n = 0
+  for (let i = 1; i <= st.riseLen; i++) {
+    const idx = (st.riseHead - i + RISE_PCTL_CAP) % RISE_PCTL_CAP
+    if (st.riseHistT[idx] < cutoff) break
+    st.scratch[n++] = st.riseHist[idx]
+  }
+  if (n === 0) return 0
+  // Insertion sort — n ≤ RISE_PCTL_CAP and the buffer is nearly sorted in
+  // practice (recent values appended in time order), so this is fast.
+  for (let i = 1; i < n; i++) {
+    const v = st.scratch[i]
+    let j = i - 1
+    while (j >= 0 && st.scratch[j] > v) {
+      st.scratch[j + 1] = st.scratch[j]
+      j--
+    }
+    st.scratch[j + 1] = v
+  }
+  return st.scratch[Math.min(n - 1, Math.floor(n * RISE_PCTL))]
+}
+
+/**
+ * The flip's drive level 0..1, fired by bass ONSETS on the clean sub-band
+ * channel (`frame.sub`). The detector tracks how fast the bass rises over a
+ * short lookback window and compares that rise to an adaptive bar: a
+ * MULTIPLE OF THE ROLLING-MEDIAN rise (the track's local baseline activity —
+ * robust, so kicks can't inflate their own bar) plus an absolute bar that
+ * eases down when the baseline is tiny (breakdowns). So: a kick fires once on
+ * the hit, a sustained bass note fires only at its attack (its flat top never
+ * re-fires), a steady kick pattern keeps firing on every kick, and a slow
+ * swell never fires at all. A fired kick pins the level at 1 for the hold
+ * dial's time — the swap stays fully swapped whatever the kick's tail does —
+ * then falls back over a short linear release. Seeks / loop restarts (song
+ * time moving backward) drop the stale envelope AND the stale detector
+ * history.
  */
 export function flipGate(
   ctx: CanvasRenderingContext2D,
@@ -290,11 +352,15 @@ export function flipGate(
       histT: new Float32Array(RISE_CAP),
       histLen: 0,
       histHead: 0,
-      act: 0,
-      lvl: bass, // start the level EMA at the current level (no cold-start)
+      riseHist: new Float32Array(RISE_PCTL_CAP),
+      riseHistT: new Float32Array(RISE_PCTL_CAP),
+      riseLen: 0,
+      riseHead: 0,
+      scratch: new Float32Array(RISE_PCTL_CAP),
       lastKickT: -Infinity,
       armed: true,
       peakSinceFire: 0,
+      quietT: -Infinity,
     }
     flipStates.set(ctx, st)
   }
@@ -303,11 +369,11 @@ export function flipGate(
     st.env = 0
     st.holdLeft = 0
     st.histLen = 0
-    st.act = 0
-    st.lvl = bass
+    st.riseLen = 0
     st.lastKickT = -Infinity
     st.armed = true
     st.peakSinceFire = bass
+    st.quietT = -Infinity
   }
   const dt = Math.min(0.1, Math.max(0, time - st.lastT))
   st.lastT = time
@@ -320,9 +386,8 @@ export function flipGate(
   if (st.histLen < RISE_CAP) st.histLen++
   // The rise over the lookback window: current bass minus the lowest sample
   // still inside the window. A kick lifts this for a few frames as the
-  // window slides over the attack (robust against analyzer smoothing, which
-  // spreads the attack over several frames); a sustained note's flat top
-  // slides back to ~0 — no rise, no fire, no pinning.
+  // window slides over the attack; a sustained note's flat top slides back
+  // to ~0 — no rise, no fire, no pinning.
   const cutoff = time - RISE_WINDOW
   let min = bass
   for (let i = 1; i <= st.histLen; i++) {
@@ -332,28 +397,29 @@ export function flipGate(
     if (v < min) min = v
   }
   const rise = bass - min
-  // Adaptive scale, dt-weighted so any frame rate walks the same envelope:
-  // `act` follows the recent rise activity (how punchy the track is right
-  // now), `lvl` the recent bass level (how loud it is).
-  if (dt > 0) {
-    st.act += (rise - st.act) * (1 - Math.exp(-dt / ACT_TAU))
-    st.lvl += (bass - st.lvl) * (1 - Math.exp(-dt / LVL_TAU))
-  }
-  // Sensitivity dials the trigger bar: a relative multiple of the recent
-  // activity plus an absolute bar that eases down in quiet passages, so
-  // breakdowns still fire on their (smaller) kicks. Lower sensitivity = a
-  // higher bar (only true slams), higher sensitivity = a lower one (every
-  // hit). The cap keeps even a machine-gun low end from demanding the
-  // impossible, the floor keeps digital silence from firing.
-  const relMult = 2.3 - 1.6 * sens
-  const base = (0.26 - 0.19 * sens) * (0.3 + 0.7 * clamp01(st.lvl / 0.5))
-  const thr = Math.min(THR_CAP, Math.max(NOISE_FLOOR, st.act * relMult + base))
-  // One GESTURE fires once: after a fire the detector disarms and only
-  // re-arms once the bass has dipped meaningfully below its loudest level
-  // since that fire — a sustained note (or any long riser) never dips, so it
-  // can never machine-gun the flip; real kicks always dip between hits.
+  // The trigger bar: a multiple of the 70th-percentile rise (the local
+  // groove's own punch — sparse kicks can't inflate it, busy basslines lift
+  // it above their notes) plus an absolute term that eases down in quiet
+  // passages. Lower sensitivity = a higher bar (only true slams), higher
+  // sensitivity = a lower one (every hit).
+  const p70 = risePctl(st, time)
+  const relMult = 2.6 - 1.8 * sens
+  const base = (0.3 - 0.24 * sens) * (0.3 + 0.7 * Math.min(1, Math.max(0, p70 / 0.05)))
+  const thr = Math.min(THR_CAP, Math.max(NOISE_FLOOR, p70 * relMult + base))
+  // Push this frame's rise into the percentile ring (after reading the bar —
+  // the current rise must not dilute its own threshold this frame).
+  st.riseHist[st.riseHead] = rise
+  st.riseHistT[st.riseHead] = time
+  st.riseHead = (st.riseHead + 1) % RISE_PCTL_CAP
+  if (st.riseLen < RISE_PCTL_CAP) st.riseLen++
+  // One GESTURE fires once: after a fire the detector disarms and re-arms
+  // when EITHER the bass dipped meaningfully below its loudest level since
+  // the fire (the classic between-kicks dip) OR the rise went quiet for a
+  // beat (the kick-on-top-of-a-held-808 case, where the level never dips).
   if (bass > st.peakSinceFire) st.peakSinceFire = bass
   else if (bass < st.peakSinceFire * 0.85) st.armed = true
+  if (rise < thr * QUIET_FRAC) st.quietT = time
+  if (!st.armed && time - st.quietT >= REARM_QUIET) st.armed = true
   let fired = false
   if (st.armed && rise > thr && time - st.lastKickT >= REFRACTORY) {
     fired = true
@@ -381,7 +447,7 @@ export function flipGate(
 export function drawHalftoneFilter(
   rc: RenderContext,
   cfg: HalftoneFilterConfig | undefined,
-  frame: Pick<AudioFrame, 'bass' | 'time'>,
+  frame: Pick<AudioFrame, 'bass' | 'sub' | 'time'>,
   transparent: boolean,
 ): void {
   if (!cfg?.enabled || transparent) return
@@ -394,25 +460,31 @@ export function drawHalftoneFilter(
   // on, the negative) dissolves into the untouched regular picture, then
   // settles back as the kick decays. 'print': the mirror image — the
   // regular picture rests between kicks and the print stamps in on the
-  // kick, then fades back out as the kick decays. Driven by the same
-  // smoothed bass field as every other beat reaction, so exports match
-  // the preview frame-exactly. At rest (and with the toggle off) everything
+  // kick, then fades back out as the kick decays. Driven by the clean sub
+  // band (`frame.sub`) + song time, so exports match the preview
+  // frame-exactly. At rest (and with the toggle off) everything
   // below costs exactly what it cost before.
   const bass = clamp01(frame.bass)
   const flipOn = !!cfg.beatFlip
   const flipToPrint = flipOn && cfg.beatFlipTo === 'print'
   // Kick sensitivity — how sharp a low-end hit must land before the flip
-  // fires. The detector listens for the HIT, not the loudness: it tracks how
-  // fast the bass RISES, so a long bass note (high level, no rise) never
-  // pins the swap open, and quiet passages still fire on their real kicks.
-  // 50% (the default) is a balanced gate; lower sensitivity raises the bar
-  // toward "true slams only", higher drops it toward "every hit".
+  // fires. The detector listens for the HIT on the CLEAN sub channel (the
+  // spectrum meters are dB-clipped and pin in loud sections): it tracks how
+  // fast the bass RISES against a rolling-median bar, so a long bass note
+  // (high level, no rise) never pins the swap open, a steady kick pattern
+  // can't raise the bar into missing its own kicks, and quiet passages
+  // still fire on their real kicks. 50% (the default) is a balanced gate;
+  // lower sensitivity raises the bar toward "true slams only", higher
+  // drops it toward "every hit".
   const flipSens = clamp01(cfg.flipSensitivity ?? 0.5)
   // Flip hold — how long the swap stays FULLY swapped after a fired kick
   // before it fades back over 0.25 s (the dial spans 0–2 s). 0 gives a
   // quick full-strength flash per kick.
   const holdSec = clamp01(cfg.flipHold ?? 0) * 2
-  const flipT = flipOn ? flipGate(ctx, bass, frame.time, flipSens, holdSec) : 0
+  // The detector listens to the clean sub band, falling back to the (clipped)
+  // bass meter for any frame source that predates it.
+  const flipBass = clamp01(frame.sub ?? frame.bass)
+  const flipT = flipOn ? flipGate(ctx, flipBass, frame.time, flipSens, holdSec) : 0
   // "Stay black & white" — the kick side of the swap keeps the picture
   // conditioning below instead of flashing back to the untouched color
   // picture, so only the dots come and go. A no-op without conditioning.

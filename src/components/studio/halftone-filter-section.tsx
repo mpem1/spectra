@@ -157,9 +157,11 @@ export function HalftoneFilterSection() {
                 format={(v) => (v < 0.025 ? 'Quick flash' : `${(v * 2).toFixed(1)}s`)}
               />
               <p className="text-[10px] leading-snug text-zinc-600">
-                Sensitivity listens for the HIT, not the loudness — long bass
-                notes and drones hold their fire, only real strikes flip it.
-                Lower = only the hardest slams, higher = every tap. Hold keeps
+                Sensitivity listens for the HIT on a clean sub-bass channel
+                (not the loudness meters, which max out in loud sections) —
+                long bass notes and drones hold their fire, steady kick
+                patterns stay locked, kicks over a held 808 all land. Lower =
+                only the hardest slams, higher = every tap. Hold keeps
                 the swapped side fully swapped for that long before a quick
                 0.25s fade-back — “Quick flash” gives one flash per kick.
               </p>
