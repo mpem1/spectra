@@ -617,6 +617,14 @@ export interface AnaglyphFilterConfig {
    *  after a fired kick (0 = one quick flash, 1 = 2 s) before the 0.25 s
    *  swing back. Old saves without this field load as 0. */
   flipHold: number
+  /** Which side of the swap a fired kick reveals: 'around' mirrors the
+   *  whole stereo stack (the glasses turn around — the shipped flip),
+   *  'picture' lifts the glasses clean off so the untouched picture
+   *  flashes through and settles back, 'print' rests as the untouched
+   *  picture and stamps the glasses in on the kick, then fades them
+   *  back out. Only matters while beatFlip is on. Old saves without
+   *  this field load as 'around'. */
+  beatFlipTo: 'around' | 'picture' | 'print'
   /** Depth pop on kick — on a solid low-end hit the separation snaps to
    *  0% (every copy lands on the center line and the lenses recombine
    *  into the clean full-color picture), holds flat for the pop-hold
@@ -1062,6 +1070,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     beatFlip: false,
     flipSensitivity: 0.5,
     flipHold: 0,
+    beatFlipTo: 'around',
     depthPop: false,
     popSensitivity: 0.5,
     popHold: 0,

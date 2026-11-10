@@ -22,14 +22,18 @@
  *                fixed, steady separation; frame.bass ships in AudioFrame,
  *                so the live preview and the offline exporter pop identically)
  *   strength   — blend of the anaglyph back over the untouched picture
- *   beatFlip   — Flip on kick: on a solid low-end hit the whole stack
- *                mirrors (every copy jumps to the opposite side, like
- *                turning the paper glasses around), holds for flipHold,
- *                then swings back — through the clean recomposed picture
- *                — to rest. Same onset detector as the halftone print's
- *                flip (imported flipGate, clean sub-band drive, per-filter
- *                detector state — dialed the same, both flip on the same
- *                kicks).
+ *   beatFlip   — Flip on kick: on a solid low-end hit the whole look
+ *                swaps, in the direction beatFlipTo chooses — 'around'
+ *                mirrors the whole stack (every copy jumps to the
+ *                opposite side, like turning the paper glasses around),
+ *                'picture' lifts the glasses clean off so the untouched
+ *                frame flashes through and settles back, 'print' rests
+ *                as the untouched frame and stamps the glasses in on
+ *                the kick. Holds for flipHold, then falls back over a
+ *                short release. Same onset detector as the halftone
+ *                print's flip (imported flipGate, clean sub-band drive,
+ *                per-filter detector state — dialed the same, both flip
+ *                on the same kicks).
  *   depthPop   — Depth pop on kick: on the same low-end hits the
  *                separation snaps to 0% (every copy lands on the center
  *                line and the lenses recombine into the clean full-color
@@ -126,14 +130,24 @@ export function drawAnaglyphFilter(
   if (dx < 1) return
 
   // Flip on kick — the same detector the halftone print's flip uses: bass
-  // ONSETS on the clean sub-band channel fire once per hit, pin the flip
-  // fully swapped for the hold dial's time, then fall back over a short
-  // release. The flip multiplies every copy's offset by (1 − 2·env): env 0
-  // is the resting glasses (byte-identical to flip off), env 1 mirrors the
-  // whole stack — left-lens copies land where the right-lens copies sat and
-  // vice versa, like the glasses turned around — and the release swings
-  // back through offset 0, where the lens copies recombine into the clean
-  // full-color picture, so each kick reads as a snap flip and a swing home.
+  // ONSETS on the clean sub-band channel fire once per hit and pin the swap
+  // for the hold dial's time, then it falls back over a short release.
+  // beatFlipTo chooses which side of the swap the kick reveals:
+  //   'around'  — the whole stack mirrors (env drives dir = 1 − 2·env):
+  //               left-lens copies land where the right-lens copies sat and
+  //               vice versa, and the release swings back through offset 0
+  //               — the resting glasses, byte-identical to flip off.
+  //   'picture' — the glasses lift clean off: the untouched frame (the
+  //               snap taken before the recombine) dissolves IN over the
+  //               finished glasses as the kick lands; at the peak the frame
+  //               is exactly as the earlier filters left it.
+  //   'print'   — the untouched picture rests between kicks (early return,
+  //               zero cost — but both detectors still advance) and the
+  //               glasses stamp in on the kick: the untouched frame
+  //               dissolves OUT while the glasses take over.
+  const flipTo = cfg.beatFlipTo ?? 'around'
+  const flipToPicture = !!cfg.beatFlip && flipTo === 'picture'
+  const flipToPrint = !!cfg.beatFlip && flipTo === 'print'
   const flipT = cfg.beatFlip
     ? flipGate(
         ctx,
@@ -144,7 +158,6 @@ export function drawAnaglyphFilter(
         'anaglyph',
       )
     : 0
-  const dir = 1 - 2 * flipT
 
   // Depth pop on kick — the same onset detector that drives the flip, with
   // its own 'anaglyph:pop' state so the pop dials stay independent of the
@@ -153,7 +166,8 @@ export function drawAnaglyphFilter(
   // line, the lenses recombine into the clean full-color picture — holds
   // flat for the pop-hold time, then the 0.25 s release blooms the 3D back
   // out to the dialed-in depth. popT 0 = the resting glasses (byte-
-  // identical to pop off).
+  // identical to pop off). Computed BEFORE the print-direction rest exit
+  // so the pop detector stays warm even while the glasses rest off-frame.
   const popT = cfg.depthPop
     ? flipGate(
         ctx,
@@ -164,6 +178,11 @@ export function drawAnaglyphFilter(
         'anaglyph:pop',
       )
     : 0
+
+  // Print direction at rest: the untouched picture alone — zero cost.
+  if (flipToPrint && flipT <= 0.001) return
+
+  const dir = flipToPicture || flipToPrint ? 1 : 1 - 2 * flipT
   const dxPop = Math.round(dx * (1 - popT))
 
   // One snapshot; every tint copy samples the finished frame from it.
@@ -194,8 +213,21 @@ export function drawAnaglyphFilter(
   oc.globalCompositeOperation = 'source-over'
 
   // Blend over the original — strength 1 is the full glasses look, lower
-  // values mix the untouched picture back in.
+  // values mix the untouched picture back in. The flip's picture/print
+  // directions dissolve the untouched frame (the snap) over/under that
+  // blend as the kick lands and falls back.
   ctx.globalAlpha = strength
   ctx.drawImage(out, 0, 0)
+  if (flipToPicture && flipT > 0.001) {
+    // Picture direction: the untouched frame dissolves in over the glasses.
+    ctx.globalAlpha = flipT
+    ctx.drawImage(snap, 0, 0)
+  }
+  if (flipToPrint && flipT < 0.999) {
+    // Print direction: the untouched frame dissolves out as the glasses
+    // stamp in.
+    ctx.globalAlpha = 1 - flipT
+    ctx.drawImage(snap, 0, 0)
+  }
   ctx.globalAlpha = 1
 }

@@ -22,6 +22,8 @@ import type { AnaglyphFilterConfig, RenderContext } from '../src/lib/visualizer/
 interface DrawRec {
   x: number
   op: string
+  alpha: number
+  src: unknown
 }
 
 function makeCanvas(): HTMLCanvasElement {
@@ -43,8 +45,8 @@ function makeCanvas(): HTMLCanvasElement {
     fillRect: () => {},
     save: () => {},
     restore: () => {},
-    drawImage: (_src: unknown, x?: number) => {
-      log.push({ x: typeof x === 'number' ? x : 0, op: state.op })
+    drawImage: (src: unknown, x?: number) => {
+      log.push({ x: typeof x === 'number' ? x : 0, op: state.op, alpha: state.alpha, src })
     },
   }
   Object.defineProperty(ctx, 'globalCompositeOperation', {
@@ -99,6 +101,7 @@ function baseCfg(): AnaglyphFilterConfig {
     beatFlip: false,
     flipSensitivity: 0.5,
     flipHold: 0,
+    beatFlipTo: 'around',
     depthPop: false,
     popSensitivity: 0.5,
     popHold: 0,
@@ -120,6 +123,29 @@ function runFrames(
     for (const c of created) ((c as unknown as { __log: DrawRec[] }).__log as DrawRec[]).length = 0
     drawAnaglyphFilter(rc, cfg, { bass: 0.9, sub: subAt(t), time: t }, false)
     frames.push(recombineOffsets())
+  }
+  return frames
+}
+
+/** The MAIN canvas's drawImage log of the current frame (final composite). */
+function mainLog(): DrawRec[] {
+  return (main as unknown as { __log: DrawRec[] }).__log as DrawRec[]
+}
+
+/** Drive N seconds keeping both the recombine offsets and the main-canvas
+ *  composite log of every frame (for the picture/print flip-direction checks). */
+function runFramesDetailed(
+  cfg: AnaglyphFilterConfig,
+  subAt: (t: number) => number,
+  sec: number,
+): { offsets: number[]; main: DrawRec[] }[] {
+  const frames: { offsets: number[]; main: DrawRec[] }[] = []
+  for (let i = 1; i <= sec * 60; i++) {
+    const t = i / 60
+    mainLog().length = 0
+    for (const c of created) ((c as unknown as { __log: DrawRec[] }).__log as DrawRec[]).length = 0
+    drawAnaglyphFilter(rc, cfg, { bass: 0.9, sub: subAt(t), time: t }, false)
+    frames.push({ offsets: recombineOffsets(), main: mainLog().map((d) => ({ ...d })) })
   }
   return frames
 }
@@ -221,3 +247,82 @@ console.log('A5 per-filter gate independence on one canvas')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
+
+/* ---------------------- B series: flip-to directions ---------------------- */
+
+// kick pulses on odd seconds, quiet between (same drive as the A scenarios)
+const kicks = (t: number) => (Math.floor(t) % 2 === 1 ? 0.55 : 0.02)
+
+let bPass = 0
+let bFail = 0
+function bcheck(name: string, ok: boolean, detail: string): void {
+  if (ok) {
+    bPass++
+    console.log(`  ok   ${name}`)
+  } else {
+    bFail++
+    console.log(`  FAIL ${name} — ${detail}`)
+  }
+}
+
+console.log('B1 flip-to-PICTURE — glasses rest, untouched frame dissolves in on the kick')
+{
+  const frames = runFramesDetailed({ ...baseCfg(), beatFlip: true, beatFlipTo: 'picture' }, kicks, 3)
+  const snapCanvas = created[0] // 'anaglyph:snap' — first work canvas ever created
+  const rest = frames.slice(6, 55)
+  bcheck(
+    'rest draws the glasses only (no picture overlay yet)',
+    rest.every((f) => f.offsets[0] === -DX && f.offsets[1] === DX && f.main.length === 1),
+    `restMain=${JSON.stringify(rest[0].main.map((d) => d.alpha))}`,
+  )
+  const peaks = frames.slice(58, 80).filter((f) => f.main.length >= 2)
+  bcheck(
+    'kick dissolves the untouched frame IN over the glasses (alpha reaches 1)',
+    peaks.length >= 3 && peaks.some((f) => f.main[f.main.length - 1].src === snapCanvas && f.main[f.main.length - 1].alpha >= 0.999),
+    `peakDraws=${peaks.length}`,
+  )
+  bcheck(
+    'picture direction never mirrors the stack',
+    frames.every((f) => f.offsets.length === 2 && f.offsets[0] === -DX && f.offsets[1] === DX),
+    `sample=${JSON.stringify(frames[70]?.offsets)}`,
+  )
+  const settled = frames.slice(95, 179)
+  bcheck(
+    'glasses settle back after the kick (overlay gone)',
+    settled.every((f) => f.main.length === 1 && f.offsets[0] === -DX),
+    `lateMain=${JSON.stringify(settled[0].main.map((d) => d.alpha))}`,
+  )
+}
+
+console.log('B2 flip-to-PRINT — untouched picture rests, glasses stamp in on the kick')
+{
+  const frames = runFramesDetailed({ ...baseCfg(), beatFlip: true, beatFlipTo: 'print' }, kicks, 3)
+  const outCanvas = created[1] // 'anaglyph:out' — second work canvas ever created
+  const snapCanvas = created[0]
+  const rest = frames.slice(6, 55)
+  bcheck(
+    'rest draws NOTHING (untouched picture, zero cost)',
+    rest.every((f) => f.main.length === 0 && f.offsets.length === 0),
+    `restMain=${JSON.stringify(rest[0].main.length)}`,
+  )
+  const peaks = frames.slice(58, 80).filter((f) => f.main.length >= 1)
+  bcheck(
+    'kick stamps the glasses in at full strength',
+    peaks.length >= 3 && peaks.some((f) => f.main[0].src === outCanvas && f.main[0].alpha >= 0.999),
+    `peakDraws=${peaks.length}`,
+  )
+  const fading = frames.slice(60, 100).filter((f) => f.main.length === 2)
+  bcheck(
+    'release fades the untouched picture back over the glasses',
+    fading.length >= 2 && fading.every((f) => f.main[1].src === snapCanvas && f.main[1].alpha > 0 && f.main[1].alpha < 1),
+    `fadeFrames=${fading.length}`,
+  )
+  bcheck(
+    'print direction never mirrors the stack',
+    frames.every((f) => f.offsets.length === 0 || (f.offsets[0] === -DX && f.offsets[1] === DX)),
+    `sample=${JSON.stringify(frames[70]?.offsets)}`,
+  )
+}
+
+console.log(`\nB: ${bPass} passed, ${bFail} failed`)
+if (bFail > 0) process.exit(1)

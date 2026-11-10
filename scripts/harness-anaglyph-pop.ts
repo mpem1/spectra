@@ -101,6 +101,7 @@ function baseCfg(): AnaglyphFilterConfig {
     beatFlip: false,
     flipSensitivity: 0.5,
     flipHold: 0,
+    beatFlipTo: 'around',
     depthPop: false,
     popSensitivity: 0.5,
     popHold: 0,

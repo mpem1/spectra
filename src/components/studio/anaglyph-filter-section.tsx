@@ -7,10 +7,42 @@ import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { ColorPickerButton } from '@/components/studio/color-picker'
 import { MicroLabel, BeatPunchRow, SliderRow, ToggleRow, sectionShell } from '@/components/studio/controls'
+import { cn } from '@/lib/utils'
 
 /** Hard cap mirroring the renderer's MAX_TINTS — 4 lenses per side is plenty
  *  (each adds a full-frame multiply pass) and keeps the card compact. */
 const MAX_TINTS = 4
+
+/** One side of the Flip on kick chooser — which side of the swap the kick
+ *  reveals. Compact chip, active side picks up the section's rose. */
+function FlipDirButton({
+  label,
+  sub,
+  active,
+  onClick,
+}: {
+  label: string
+  sub: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        'flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border px-1 py-1.5 transition-colors',
+        active
+          ? 'border-rose-400/70 bg-rose-500/15 text-rose-200'
+          : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200',
+      )}
+    >
+      <span className="text-xs font-medium">{label}</span>
+      <span className="text-[9px] leading-none text-zinc-500">{sub}</span>
+    </button>
+  )
+}
 
 /** Factory tints — the classic red/cyan paper glasses. Also the fallback
  *  when a side's list is missing (old saved projects). */
@@ -123,8 +155,8 @@ export function AnaglyphFilterSection() {
         The old-school paper 3D-glasses look — the whole picture is re-projected
         twice, once through each lens&apos;s colors, shifted apart so every edge
         wears color fringes. Tint 1 is the base layer; extra tints stack
-        outward like a tracer trail instead of blending in. Flip on kick turns
-        the glasses around on every hit; Depth pop flattens the 3D to zero on
+        outward like a tracer trail instead of blending in. Flip on kick
+        swaps the look on every hit; Depth pop flattens the 3D to zero on
         every hit and lets it bloom back out. Baked into every export.
       </p>
 
@@ -140,10 +172,41 @@ export function AnaglyphFilterSection() {
           <ToggleRow
             label="Flip on kick"
             checked={filter.beatFlip}
-            onCheckedChange={(beatFlip) => patchAnaglyphFilter({ beatFlip })}
+            onCheckedChange={(beatFlip) =>
+              patchAnaglyphFilter(
+                beatFlip ? { beatFlip, flipSensitivity: 0.1, flipHold: 0.2 } : { beatFlip },
+              )
+            }
           />
           {filter.beatFlip ? (
             <>
+              <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="What the kick shows">
+                <FlipDirButton
+                  label="Around"
+                  sub="stack mirrors"
+                  active={filter.beatFlipTo === 'around'}
+                  onClick={() => patchAnaglyphFilter({ beatFlipTo: 'around' })}
+                />
+                <FlipDirButton
+                  label="The picture"
+                  sub="glasses between kicks"
+                  active={filter.beatFlipTo === 'picture'}
+                  onClick={() => patchAnaglyphFilter({ beatFlipTo: 'picture' })}
+                />
+                <FlipDirButton
+                  label="The print"
+                  sub="picture between kicks"
+                  active={filter.beatFlipTo === 'print'}
+                  onClick={() => patchAnaglyphFilter({ beatFlipTo: 'print' })}
+                />
+              </div>
+              <p className="text-[10px] leading-snug text-zinc-600">
+                {filter.beatFlipTo === 'picture'
+                  ? 'The glasses rest on the frame between kicks; on a kick they lift clean off so the untouched picture flashes through, then settles back.'
+                  : filter.beatFlipTo === 'print'
+                    ? 'The untouched picture rests on the frame between kicks; on a kick the 3D glasses stamp in, hold, then fade back out.'
+                    : 'The glasses rest on the frame between kicks; on a kick the whole stereo stack mirrors — like the glasses turned around — holds, then swings back through the clean recomposed picture.'}
+              </p>
               <SliderRow
                 label="Kick sensitivity"
                 value={filter.flipSensitivity}
@@ -165,14 +228,12 @@ export function AnaglyphFilterSection() {
                 format={(v) => (v < 0.025 ? 'Quick flash' : `${(v * 2).toFixed(1)}s`)}
               />
               <p className="text-[10px] leading-snug text-zinc-600">
-                On a kick the whole stereo stack mirrors — the left lens&apos;s
-                copies jump to the right side and the right lens&apos;s to the
-                left, like the glasses turned around — holds for Flip hold,
-                then swings back through the clean full-color picture to rest.
                 Sensitivity listens for the HIT on a clean sub-bass channel
                 (the same detector as the halftone print&apos;s flip — each
                 card keeps its own dials, so dialed the same they fire
-                together): lower = only the hardest slams, higher = every tap.
+                together): lower = only the hardest slams, higher = every
+                tap. Hold keeps the swapped side fully swapped that long
+                before the quick 0.25s fade-back.
               </p>
             </>
           ) : null}
