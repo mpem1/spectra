@@ -153,6 +153,10 @@ function makeCanvas(): HTMLCanvasElement {
           p && typeof p === 'object' && Array.isArray((p as { __rects?: unknown }).__rects)
             ? (p as { __rects: Rect[] }).__rects.slice()
             : path.slice(),
+        // The tracked polyline rides along too — spline/arc geometry
+        // (ribbon's curves, the dot styles' arc centers) so mode diffs like
+        // Mirror vs Center can see SHAPE, not just op counts.
+        pts: poly.slice(),
       }),
     // Text passes (lyrics, titles, watermark, disc labels) — the alpha on
     // each record is what the opacity assertions read.
@@ -196,6 +200,16 @@ function makeCanvas(): HTMLCanvasElement {
   ;(base as Record<string, unknown>).lineTo = (x?: number, y?: number) => {
     poly.push({ x: typeof x === 'number' ? x : 0, y: typeof y === 'number' ? y : 0 })
   }
+  // Splines and circles join the tracker: both control + end points for the
+  // quadratics (blob/ribbon/wave curves), the center for arcs (particles'
+  // mirror twins, sphere's dots) — so fill records carry real geometry.
+  ;(base as Record<string, unknown>).quadraticCurveTo = (cpx?: number, cpy?: number, x?: number, y?: number) => {
+    poly.push({ x: typeof cpx === 'number' ? cpx : 0, y: typeof cpy === 'number' ? cpy : 0 })
+    poly.push({ x: typeof x === 'number' ? x : 0, y: typeof y === 'number' ? y : 0 })
+  }
+  ;(base as Record<string, unknown>).arc = (x?: number, y?: number) => {
+    poly.push({ x: typeof x === 'number' ? x : 0, y: typeof y === 'number' ? y : 0 })
+  }
   ;(base as Record<string, unknown>).stroke = () => {
     rec({ kind: 'stroke', op: state.op, alpha: state.alpha, style: base.strokeStyle, pts: poly.slice() })
   }
@@ -225,7 +239,10 @@ const baseOf = new WeakMap<object, Record<string, unknown>>()
 ;(globalThis as { Path2D?: unknown }).Path2D = class {
   __rects: Array<{ x: number; y: number; w: number; h: number }> = []
   moveTo(): void {}
+  lineTo(): void {}
   arc(): void {}
+  closePath(): void {}
+  quadraticCurveTo(): void {}
   rect(x: number, y: number, w: number, h: number): void {
     this.__rects.push({ x, y, w, h })
   }
@@ -1848,6 +1865,48 @@ console.log('S15 sphere — the 3D dot-matrix planet')
     vOps === hOps && vFinite && JSON.stringify(quillsOf()) !== hQuills,
     `hOps=${hOps} vOps=${vOps} finite=${vFinite} moved=${JSON.stringify(quillsOf()) !== hQuills}`,
   )
+}
+
+/* ----------------- S16 the Mirror family across every style ----------------- */
+
+console.log('S16 the Mirror family — every style answers Mirror and Center differently')
+{
+  // A loud frame so every style has something to draw (silence would hide
+  // the wave's envelope and the grid's lit columns).
+  const loud = {
+    ...frameAt(0.5),
+    freq: Float32Array.from({ length: 64 }, (_, i) => 0.15 + 0.85 * Math.exp(-i / 14)),
+    wave: Float32Array.from(
+      { length: 2048 },
+      (_, i) => Math.sin(i / 9) * Math.exp(-((i % 512) / 512) * 2) * 0.9,
+    ),
+    bass: 0.7,
+    energy: 0.6,
+  }
+  const styleWithMirror = (style: string, mirror: 'none' | 'mirror' | 'center'): StudioConfig => {
+    const cfg = structuredClone(DEFAULT_STUDIO_CONFIG)
+    cfg.visualizer = { ...structuredClone(DEFAULT_STUDIO_CONFIG.visualizer), glow: false, barCount: 48 }
+    cfg.visualizer.style = style as typeof cfg.visualizer.style
+    cfg.visualizer.mirror = mirror
+    return cfg
+  }
+  /** One measured frame from an explicit AudioFrame (renderOne pins its own
+   *  silent frame, and these modes only diverge when there's audio to show). */
+  const opsJSON = (frame: AudioFrame, cfg: StudioConfig): string => {
+    for (const c of [main, ...created]) logOf(c).length = 0
+    renderFrame(rc, frame, cfg)
+    return JSON.stringify(logOf(main))
+  }
+  for (const style of ['bars', 'wave', 'radial', 'particles', 'blob', 'grid', 'ribbon', 'terrain', 'sphere']) {
+    const noneOps = opsJSON(loud, styleWithMirror(style, 'none'))
+    const mirrorOps = opsJSON(loud, styleWithMirror(style, 'mirror'))
+    const centerOps = opsJSON(loud, styleWithMirror(style, 'center'))
+    check(
+      `${style}: Mirror and Center paint different frames (both differ from None)`,
+      mirrorOps !== centerOps && mirrorOps !== noneOps && centerOps !== noneOps,
+      `mirror≠center=${mirrorOps !== centerOps} mirror≠none=${mirrorOps !== noneOps} center≠none=${centerOps !== noneOps}`,
+    )
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

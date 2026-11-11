@@ -710,10 +710,30 @@ function drawWave(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
 
   tracePath(1)
   ctx.stroke()
-  if (cfg.mirror !== 'none') {
-    // Vertically mirrored copy for a symmetric envelope.
+  if (cfg.mirror === 'mirror') {
+    // Mirror: the trace plus its vertical reflection — two mirrored lines
+    // sharing the offset axis (a symmetric envelope of strokes).
     tracePath(-1)
     ctx.stroke()
+  } else if (cfg.mirror === 'center') {
+    // Center: the wave grows BOTH ways from the axis — the band between
+    // the up-trace and the down-trace fills solid, one symmetric body
+    // around the offset line (the bars' double-sided center look, for the
+    // wave). Mirror keeps the two-line look, so the two modes read
+    // completely differently.
+    ctx.beginPath()
+    for (let i = 0; i < count; i++) {
+      const x = (i / (count - 1)) * W
+      const y = centerY + wave[i] * amp
+      if (i === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    }
+    for (let i = count - 1; i >= 0; i--) {
+      ctx.lineTo((i / (count - 1)) * W, centerY - wave[i] * amp)
+    }
+    ctx.closePath()
+    ctx.fillStyle = stroke
+    ctx.fill()
   }
   ctx.shadowBlur = 0
 }
@@ -815,10 +835,24 @@ function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConf
   const sens = clamp(cfg.sensitivity, 0, 3)
   const energy = clamp01(frame.energy)
   const bass = clamp01(frame.bass)
+  // Mirror family: 'mirror' gives every particle a left/right twin across
+  // the canvas' vertical axis (a two-fold kaleidoscope); 'center' gives it
+  // a point-reflected twin through the canvas center (the 180° opposite).
+  // Pure math — deterministic in exports.
+  const reflect = (cfg.mirror ?? 'none') === 'mirror'
+  const pointSym = (cfg.mirror ?? 'none') === 'center'
   // Angle-aware canvas gradient — particle colors follow their position.
   const fill = visualizerFill(rc, frame, cfg)
   const midColor = sampleGradient(g.stops, 0.5, frame.styleTime, g.cycleColors, g.cycleSpeed)
   ctx.fillStyle = fill
+
+  const dot = (dx: number, dy: number, ds: number): void => {
+    ctx.shadowColor = midColor
+    ctx.shadowBlur = cfg.glow ? 12 * S : 0
+    ctx.beginPath()
+    ctx.arc(dx, dy, ds, 0, Math.PI * 2)
+    ctx.fill()
+  }
 
   for (let i = 0; i < PARTICLE_COUNT; i++) {
     // Seeded constants per particle — identical every frame.
@@ -833,11 +867,9 @@ function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConf
     const x = cx + Math.cos(angle) * r
     const y = cy + Math.sin(angle) * r
 
-    ctx.shadowColor = midColor
-    ctx.shadowBlur = cfg.glow ? 12 * S : 0
-    ctx.beginPath()
-    ctx.arc(x, y, size, 0, Math.PI * 2)
-    ctx.fill()
+    dot(x, y, size)
+    if (reflect) dot(2 * cx - x, y, size)
+    else if (pointSym) dot(2 * cx - x, 2 * cy - y, size)
   }
 
   // Soft center glow reacting to overall energy.
@@ -861,7 +893,10 @@ function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConf
  * an idle wobble keeps it alive in silence, and the whole shape rotates
  * gently. The body carries the full palette as a linear sweep (angle-aware)
  * or a radial center-out fade, finished with a soft aura, one halo echo, rim
- * shading, a specular highlight and a rim light. Fully deterministic — every
+ * shading, a specular highlight and a rim light. Mirror family: 'mirror'
+ * redraws the whole body flipped across the vertical axis (a two-lobed
+ * symmetric form), 'center' grows an inner concentric core inside the body.
+ * Fully deterministic — every
  * phase derives from frame.styleTime (song time in exports, wall clock in
  * preview).
  */
@@ -938,7 +973,8 @@ function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
   const cMid = sampleGradient(g.stops, 0.5, t, g.cycleColors, g.cycleSpeed)
   const cHigh = sampleGradient(g.stops, 0.9, t, g.cycleColors, g.cycleSpeed)
 
-  /* ---- soft aura behind everything ---- */
+  /* ---- soft aura behind everything (painted ONCE — it's symmetric, so
+   *  the Mirror twin must never double it) ---- */
   const auraR = baseR * 2.1
   const aura = ctx.createRadialGradient(cx, cy, baseR * 0.35, cx, cy, auraR)
   aura.addColorStop(0, withAlpha(cMid, 0.2))
@@ -947,67 +983,123 @@ function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
   ctx.fillStyle = aura
   ctx.fillRect(cx - auraR, cy - auraR, auraR * 2, auraR * 2)
 
-  /* ---- single halo echo — clean depth without a blurry mess ---- */
-  ctx.fillStyle = withAlpha(cMid, 0.1)
-  ctx.fill(buildPath(1.16))
+  // Mirror family: 'mirror' = the blob and its left/right mirror image —
+  // the whole body pass redraws flipped across the vertical axis (a
+  // two-lobed symmetric form); 'center' = the blob grows from its own
+  // middle — an inner concentric core rides inside the body (the family's
+  // grow-from-the-axis semantic). Deterministic either way.
+  const mirrorMode = cfg.mirror ?? 'none'
+  const reflect = mirrorMode === 'mirror'
 
-  /* ---- main body: the full palette across the blob — LINEAR sweeps it at
-   * the configured angle (gradient line spans the body's bounding square) so
-   * the Angle slider rotates the colors; RADIAL radiates from the blob's
-   * center out to its rim (stop 0 = core, stop 100 = edge). ---- */
-  const mainPath = buildPath(1)
-  const span = Math.min(baseR * 1.35, H * 0.44)
-  if (cfg.glow) {
-    ctx.shadowColor = withAlpha(cMid, 0.8)
-    ctx.shadowBlur = 30 * S
-  } else {
+  /* ---- the body passes: halo echo, palette fill, rim depth, sheen and
+   *  rim light. Pure local math, so it can simply run twice for Mirror. ---- */
+  const paintBody = (): void => {
+    /* ---- single halo echo — clean depth without a blurry mess ---- */
+    ctx.fillStyle = withAlpha(cMid, 0.1)
+    ctx.fill(buildPath(1.16))
+
+    /* ---- main body: the full palette across the blob — LINEAR sweeps it at
+     * the configured angle (gradient line spans the body's bounding square) so
+     * the Angle slider rotates the colors; RADIAL radiates from the blob's
+     * center out to its rim (stop 0 = core, stop 100 = edge). ---- */
+    const bodyPath = buildPath(1)
+    const bodySpan = Math.min(baseR * 1.35, H * 0.44)
+    if (cfg.glow) {
+      ctx.shadowColor = withAlpha(cMid, 0.8)
+      ctx.shadowBlur = 30 * S
+    } else {
+      ctx.shadowBlur = 0
+    }
+    if (g.shape === 'radial') {
+      ctx.fillStyle = buildRadialGradient(ctx, cx, cy, bodySpan, g.stops, t, g.cycleColors, g.cycleSpeed)
+    } else {
+      const line = gradientLine(g.angle, bodySpan * 2, bodySpan * 2)
+      ctx.fillStyle = buildGradient(
+        ctx,
+        cx - bodySpan + line.x0,
+        cy - bodySpan + line.y0,
+        cx - bodySpan + line.x1,
+        cy - bodySpan + line.y1,
+        g.stops,
+        t,
+        g.cycleColors,
+        g.cycleSpeed,
+      )
+    }
+    ctx.fill(bodyPath)
     ctx.shadowBlur = 0
-  }
-  if (g.shape === 'radial') {
-    ctx.fillStyle = buildRadialGradient(ctx, cx, cy, span, g.stops, t, g.cycleColors, g.cycleSpeed)
-  } else {
-    const line = gradientLine(g.angle, span * 2, span * 2)
-    ctx.fillStyle = buildGradient(
-      ctx,
-      cx - span + line.x0,
-      cy - span + line.y0,
-      cx - span + line.x1,
-      cy - span + line.y1,
-      g.stops,
-      t,
-      g.cycleColors,
-      g.cycleSpeed,
+
+    /* ---- rim shading for sphere-like depth ---- */
+    const depth = ctx.createRadialGradient(cx, cy, baseR * 0.2, cx, cy, baseR * 1.02)
+    depth.addColorStop(0.6, 'rgba(0, 0, 0, 0)')
+    depth.addColorStop(1, withAlpha(cHigh, 0.4))
+    ctx.fillStyle = depth
+    ctx.fill(bodyPath)
+
+    /* ---- specular highlight ---- */
+    const sheen = ctx.createRadialGradient(
+      cx - baseR * 0.22,
+      cy - baseR * 0.28,
+      0,
+      cx,
+      cy,
+      baseR * 1.1,
     )
+    sheen.addColorStop(0, 'rgba(255, 255, 255, 0.26)')
+    sheen.addColorStop(0.45, 'rgba(255, 255, 255, 0.07)')
+    sheen.addColorStop(1, 'rgba(255, 255, 255, 0)')
+    ctx.fillStyle = sheen
+    ctx.fill(bodyPath)
+
+    /* ---- rim light ---- */
+    ctx.lineWidth = Math.max(1, 1.8 * S)
+    ctx.strokeStyle = withAlpha(cHigh, 0.8)
+    ctx.stroke(bodyPath)
   }
-  ctx.fill(mainPath)
-  ctx.shadowBlur = 0
 
-  /* ---- rim shading for sphere-like depth ---- */
-  const depth = ctx.createRadialGradient(cx, cy, baseR * 0.2, cx, cy, baseR * 1.02)
-  depth.addColorStop(0.6, 'rgba(0, 0, 0, 0)')
-  depth.addColorStop(1, withAlpha(cHigh, 0.4))
-  ctx.fillStyle = depth
-  ctx.fill(mainPath)
-
-  /* ---- specular highlight ---- */
-  const sheen = ctx.createRadialGradient(
-    cx - baseR * 0.22,
-    cy - baseR * 0.28,
-    0,
-    cx,
-    cy,
-    baseR * 1.1,
-  )
-  sheen.addColorStop(0, 'rgba(255, 255, 255, 0.26)')
-  sheen.addColorStop(0.45, 'rgba(255, 255, 255, 0.07)')
-  sheen.addColorStop(1, 'rgba(255, 255, 255, 0)')
-  ctx.fillStyle = sheen
-  ctx.fill(mainPath)
-
-  /* ---- rim light ---- */
-  ctx.lineWidth = Math.max(1, 1.8 * S)
-  ctx.strokeStyle = withAlpha(cHigh, 0.8)
-  ctx.stroke(mainPath)
+  paintBody()
+  if (reflect) {
+    // The mirrored twin: the identical scene under a horizontal flip
+    // around the blob's center — gradients and highlights flip with it.
+    ctx.save()
+    ctx.translate(2 * cx, 0)
+    ctx.scale(-1, 1)
+    paintBody()
+    ctx.restore()
+  } else if (mirrorMode === 'center') {
+    // The inner core: the same deformation field scaled into the middle,
+    // with its own halo, palette fill and rim — a nucleus the body grows
+    // around (Center's grow-from-the-middle look).
+    const coreScale = 0.55
+    const coreSpan = Math.min(baseR * 1.35, H * 0.44) * coreScale
+    ctx.fillStyle = withAlpha(cMid, 0.1)
+    ctx.fill(buildPath(coreScale * 1.16))
+    if (g.shape === 'radial') {
+      ctx.fillStyle = buildRadialGradient(ctx, cx, cy, coreSpan, g.stops, t, g.cycleColors, g.cycleSpeed)
+    } else {
+      const line = gradientLine(g.angle, coreSpan * 2, coreSpan * 2)
+      ctx.fillStyle = buildGradient(
+        ctx,
+        cx - coreSpan + line.x0,
+        cy - coreSpan + line.y0,
+        cx - coreSpan + line.x1,
+        cy - coreSpan + line.y1,
+        g.stops,
+        t,
+        g.cycleColors,
+        g.cycleSpeed,
+      )
+    }
+    if (cfg.glow) {
+      ctx.shadowColor = withAlpha(cMid, 0.8)
+      ctx.shadowBlur = 16 * S
+    }
+    ctx.fill(buildPath(coreScale))
+    ctx.shadowBlur = 0
+    ctx.lineWidth = Math.max(1, 1.4 * S)
+    ctx.strokeStyle = withAlpha(cHigh, 0.8)
+    ctx.stroke(buildPath(coreScale))
+  }
 }
 
 /* ---------------------------------- ribbon ----------------------------------- */
