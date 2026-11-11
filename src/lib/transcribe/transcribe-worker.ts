@@ -17,12 +17,16 @@
  *   out → { type: 'error', message }
  *
  * Segments carry absolute song times (seconds) so the caller can drop them
- * straight into LyricLine[].
+ * straight into LyricLine[]. Results pass through the pure post-filters in
+ * ./segments: canonical hallucinations drop, stuck-loop duplicate lines
+ * collapse, and timestamp-less chunks recover their start from the previous
+ * chunk's end instead of being thrown away.
  */
 
 import { env, pipeline } from '@huggingface/transformers'
 import type { AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers'
 import { TRANSCRIBE_WINDOW_SECONDS } from './transcribe-shared'
+import { filterSegments, recoverNullStarts } from './segments'
 
 /** Never resolve models from local paths — they live on the HF CDN. */
 env.allowLocalModels = false
@@ -129,8 +133,11 @@ async function run(audio: Float32Array, overlap: number): Promise<void> {
     })) as { text: string; chunks: WhisperChunk[] | null }
 
     const segments: TranscribedSegment[] = []
-    for (const chunk of out.chunks ?? []) {
-      const start = chunk.timestamp?.[0]
+    // Null-start chunks are recovered from the previous chunk's end (see
+    // ./segments) — their words are real, only the timestamp token was
+    // missing. Unplaceable chunks (time still null) are skipped here.
+    for (const chunk of recoverNullStarts(out.chunks ?? [])) {
+      const start = chunk.time
       const text = (chunk.text ?? '').trim()
       if (start == null || !text) continue
       // Overlap zone (windows after the first): this audio moment was also
@@ -139,11 +146,16 @@ async function run(audio: Float32Array, overlap: number): Promise<void> {
       segments.push({ time: startSec + start, text })
     }
 
-    collected.push(...segments)
-    post({ type: 'window', index: i + 1, total, segments })
+    // Stream the FILTERED batch: the caller's "lines so far" progress
+    // readout then matches what the final list will actually contain.
+    const filtered = filterSegments(segments)
+    collected.push(...filtered)
+    post({ type: 'window', index: i + 1, total, segments: filtered })
   }
 
-  post({ type: 'done', segments: collected })
+  // One final pass over the whole song: collapses the duplicate pair that
+  // can straddle two consecutive windows' boundary.
+  post({ type: 'done', segments: filterSegments(collected) })
 }
 
 self.onmessage = (event: MessageEvent<TranscribeInMessage>): void => {

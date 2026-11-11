@@ -1,10 +1,13 @@
 /**
  * "Auto-detect lyrics" orchestrator (main thread).
  *
- * Takes the decoded AudioBuffer from the audio engine, mixes it down to mono,
- * resamples to 16 kHz (Whisper's input rate), and hands the samples to the
- * transcription worker. Resolves with time-stamped LyricLine[] ready for
- * patchLyrics().
+ * Takes the decoded AudioBuffer from the audio engine and runs it through
+ * the vocal-focus preprocessor (center extraction + rumble cut + loudness
+ * normalize — see ./vocal-focus: Whisper is a speech model listening to a
+ * music mix, and emphasis measurably recovers words the plain mixdown
+ * loses, especially early-song lines buried under the intro), resamples to
+ * 16 kHz (Whisper's input rate), and hands the samples to the transcription
+ * worker. Resolves with time-stamped LyricLine[] ready for patchLyrics().
  *
  * The returned handle exposes cancel() — the worker is terminated and the
  * promise rejects with a DetectCancelled error the caller can recognize.
@@ -13,6 +16,7 @@
 import type { LyricLine } from '@/lib/visualizer/types'
 import type { TranscribeOutMessage } from './transcribe-worker'
 import { TRANSCRIBE_WINDOW_SECONDS } from './transcribe-shared'
+import { vocalFocus } from './vocal-focus'
 
 const TARGET_RATE = 16000
 /** Seconds of overlap between consecutive windows (dedupe zone). */
@@ -41,19 +45,6 @@ export interface DetectProgress {
 export interface DetectHandle {
   promise: Promise<LyricLine[]>
   cancel: () => void
-}
-
-/** Average all channels into one mono Float32Array. */
-function mixdownMono(buffer: AudioBuffer): Float32Array {
-  const out = new Float32Array(buffer.length)
-  for (let c = 0; c < buffer.numberOfChannels; c++) {
-    const data = buffer.getChannelData(c)
-    for (let i = 0; i < out.length; i++) out[i] += data[i]
-  }
-  if (buffer.numberOfChannels > 1) {
-    for (let i = 0; i < out.length; i++) out[i] /= buffer.numberOfChannels
-  }
-  return out
 }
 
 /**
@@ -158,7 +149,15 @@ export function detectLyricsFromBuffer(
       fail(new Error('Transcription worker message failed to deserialize'))
     })
 
-    void resampleTo16k(mixdownMono(audioBuffer), audioBuffer.sampleRate)
+    void resampleTo16k(
+      vocalFocus(
+        // Channel views into the engine's buffer — vocalFocus only reads
+        // them and returns its own array, so no copies needed here.
+        Array.from({ length: audioBuffer.numberOfChannels }, (_, c) => audioBuffer.getChannelData(c)),
+        audioBuffer.sampleRate,
+      ),
+      audioBuffer.sampleRate,
+    )
       .then((mono16k) => {
         if (cancelled || settled) return
         const copy = new Float32Array(mono16k) // transferable copy
