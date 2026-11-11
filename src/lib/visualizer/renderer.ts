@@ -530,6 +530,9 @@ function drawVisualizer(
     case 'horizon':
       drawHorizon(rc, frame, cfg, S)
       break
+    case 'perspective':
+      drawPerspective(rc, frame, cfg, S)
+      break
     case 'particles':
       drawParticles(rc, frame, cfg, S)
       break
@@ -1411,6 +1414,198 @@ function drawHorizon(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
     const blur = w * 1.1 + 2 * S
     pill(x, w, h, -1, up, la, blur)
     pill(x, w, h, 1, down, la, blur)
+  }
+  ctx.shadowBlur = 0
+  ctx.globalAlpha = la
+}
+
+/* -------------------------------- perspective -------------------------------- */
+
+/**
+ * Perspective equalizer — the "sound waveform, seamlessly looped audio
+ * equalizer isolated on black solid, moving red and blue" reference look.
+ * Shares the horizon style's real-perspective road geometry (x, width and
+ * height all ∝ 1/depth, bars stream from the vanishing point at the right
+ * edge toward the camera, bass owns the near field, treble the far texture,
+ * flow phase derives purely from frame.styleTime so exports stay
+ * frame-exact) but renders the reference's own visual language:
+ *
+ * - STRICT two-color split at every depth — the up side is always the
+ *   Up color (hot red), the down side always the Down color (electric
+ *   blue). No palette sweep, no converging middle hue; only a mild depth
+ *   dim so the far texture sinks into the black.
+ * - Echo trails: a dimmer ghost extends past each pill's cap — filling
+ *   exactly where the bar stood a moment ago (up side: vertical rib
+ *   combs, down side: a dot matrix, like the reference's LED trails).
+ *   Fully deterministic: the ghost's length rides a traveling wave over
+ *   (styleTime, depth, slot), so identical inputs still give identical
+ *   pixels.
+ * - LED segment texture: fine vertical ribs inside the solid pills (near
+ *   slots only — the far texture is thinner than a rib pitch), selling the
+ *   LED-matrix read of the reference.
+ * - Fully-rounded capsules with soft bloom, a faint idle traveling wave in
+ *   silence, and a bass swell that pushes the whole road up on a hit.
+ *
+ * Shared dials: Bar count (road density), Gap, Roundness, Glow, Horizon
+ * (the up/down meeting line), Flow speed, Sensitivity, Smoothing,
+ * Transparency, Position/Size, Layer.
+ */
+function drawPerspective(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+  const { ctx, width: W, height: H } = rc
+  const t = frame.styleTime
+  const freq = frame.freq
+  const len = Math.max(1, freq.length)
+  const sens = clamp(cfg.sensitivity, 0, 3)
+  const bass = clamp01(frame.bass)
+  const la = visualizerLayerAlpha(cfg)
+  const cy = H * clamp01(cfg.mirrorOffset ?? 0.5)
+  const round = clamp01(cfg.roundness)
+  const gap = clamp01(cfg.gap)
+  // Strict two-color split — flat colors, depth only dims them.
+  const upColor = typeof cfg.perspUp === 'string' && cfg.perspUp ? cfg.perspUp : '#ff1f1f'
+  const downColor = typeof cfg.perspDown === 'string' && cfg.perspDown ? cfg.perspDown : '#1e6bff'
+  const texture = clamp01(cfg.perspTexture ?? 0.45)
+  const echo = clamp01(cfg.perspEcho ?? 0.55)
+
+  /* ---- road geometry: identical math to the horizon style ---- */
+  const M = Math.round(clamp(cfg.barCount, 16, 192))
+  const flow = clamp(cfg.flowSpeed ?? 0.5, 0, 1)
+  const d0 = -0.16
+  const R = 24
+  const XV = W * 1.04
+  const A = (XV - W * 0.93) * R
+  const HNEAR = H * 2.05
+  const WNEAR = W * 0.16
+  const phase = (t * flow * 2) % 1
+
+  const depthAt = (p: number): number => d0 + (1 - d0) * p
+  const xAt = (d: number): number => XV - A * Math.pow(R, -d)
+
+  const xs = new Float64Array(M)
+  const ws = new Float64Array(M)
+  const hs = new Float64Array(M)
+  const dNs = new Float64Array(M)
+  const ps = new Float64Array(M)
+  for (let j = 0; j < M; j++) {
+    const p = ((((j - phase) % M) + M) % M) / M
+    const d = depthAt(p)
+    ps[j] = p
+    dNs[j] = (d - d0) / (1 - d0)
+    xs[j] = xAt(d)
+    // Frequency bin — bass near, treble far (same mapping as the horizon
+    // road), plus the shared idle traveling wave for total silence.
+    const bin = Math.min(len - 1, Math.floor(Math.pow(dNs[j], 1.12) * len))
+    const amp0 = clamp01((freq[bin] ?? 0) * sens)
+    const idle = 0.05 + 0.04 * Math.sin(dNs[j] * 16.5 - t * 1.9) + 0.025 * Math.sin(dNs[j] * 27.3 + t * 1.25)
+    const amp = Math.max(amp0, idle)
+    hs[j] = HNEAR * Math.pow(R, -d) * (0.085 + 0.915 * amp) * (1 + bass * 0.22)
+    const dxFar = xs[(j + 1) % M] - xs[j]
+    const dxNear = xs[j] - xs[(j - 1 + M) % M]
+    const spacing = dxFar > 0 ? dxFar : dxNear
+    ws[j] = Math.min(WNEAR * Math.pow(R, -d), spacing * (1 - gap * 0.85))
+  }
+
+  /** Solid capsule pass, shared by both sides (same contract as horizon). */
+  const pill = (x: number, w: number, h: number, sign: number, color: string, alpha: number): void => {
+    if (w <= 0.05 || h <= 0.05) return
+    ctx.globalAlpha = alpha
+    ctx.fillStyle = color
+    if (cfg.glow) {
+      ctx.shadowColor = color
+      ctx.shadowBlur = w * 1.1 + 2 * S
+    } else {
+      ctx.shadowBlur = 0
+    }
+    const r = (w / 2) * (0.25 + 0.75 * round)
+    fillRoundRect(ctx, x - w / 2, sign < 0 ? cy - h : cy, w, h, r)
+    ctx.fill()
+    ctx.shadowBlur = 0
+  }
+
+  /**
+   * Echo ghost — the extension region beyond the pill's cap (up: from the
+   * cap upward, down: from the cap downward), i.e. where the bar stood a
+   * moment ago. Length rides a deterministic traveling wave, so the trails
+   * breathe and slide as the road streams, like the reference's looping
+   * history. Up side draws vertical rib combs; down side draws the LED dot
+   * matrix. Both fade to nothing at their far end.
+   */
+  const drawEcho = (x: number, w: number, h: number, j: number, sign: number, color: string, fade: number): void => {
+    if (echo <= 0.01 || w < 1.5) return
+    // Where the bar "stood a moment ago": 0..1.35× beyond the current cap.
+    const wave01 = 0.5 + 0.5 * Math.sin(t * 2.2 + dNs[j] * 13.0 + ps[j] * Math.PI * 4)
+    const extra = h * echo * (0.25 + 1.1 * wave01)
+    if (extra < 0.5) return
+    const alpha = 0.32 * echo * fade
+    const capY = sign < 0 ? cy - h : cy + h // pill's outer edge
+    const farY = sign < 0 ? capY - extra : capY + extra
+    // Clip the trail to what's on screen (near bars can overflow hard).
+    const fromY = capY
+    const toY = sign < 0 ? Math.max(farY, -2) : Math.min(farY, H + 2)
+    if (Math.abs(toY - fromY) < 0.5) return
+    if (sign < 0) {
+      // Up side — vertical rib combs: 4 thin stripes in the bar color.
+      const n = 4
+      const sw = (w / n) * 0.55
+      const grad = ctx.createLinearGradient(0, fromY, 0, toY)
+      grad.addColorStop(0, color)
+      grad.addColorStop(1, withAlpha(color, 0))
+      ctx.globalAlpha = alpha * la
+      ctx.fillStyle = grad
+      for (let k = 0; k < n; k++) {
+        const xr = x - w / 2 + (w * (k + 0.5)) / n - sw / 2
+        ctx.fillRect(xr, Math.min(fromY, toY), sw, Math.abs(toY - fromY))
+      }
+    } else {
+      // Down side — LED dot matrix: chunky cells fading toward the tip.
+      const cell = Math.max(2.5 * S, w / 3.2)
+      const cols = Math.max(1, Math.floor(w / cell))
+      const rows = Math.min(160, Math.ceil(Math.abs(toY - fromY) / cell))
+      const x0 = x - (cols * cell) / 2
+      const y0 = Math.min(fromY, toY)
+      for (let r = 0; r < rows; r++) {
+        const ry = y0 + r * cell
+        const k = 1 - r / rows // fade toward the tip
+        ctx.globalAlpha = alpha * la * (0.35 + 0.65 * k)
+        ctx.fillStyle = color
+        for (let c = 0; c < cols; c++) {
+          ctx.fillRect(x0 + c * cell + cell * 0.2, ry + cell * 0.2, cell * 0.6, cell * 0.6)
+        }
+      }
+    }
+  }
+
+  /** LED segment ribs inside a solid pill (near slots only). */
+  const drawRibs = (x: number, w: number, h: number, sign: number): void => {
+    if (texture <= 0.03 || w < 5) return
+    ctx.globalAlpha = 0.22 * texture * la
+    ctx.fillStyle = '#000000'
+    const n = 4 // ~4 LED segments across a near pill
+    const sw = Math.max(1, w * 0.07)
+    for (let k = 1; k < n; k++) {
+      const xr = x - w / 2 + (w * k) / n - sw / 2
+      const yTop = sign < 0 ? cy - h : cy
+      ctx.fillRect(xr, yTop + h * 0.08, sw, h * 0.84)
+    }
+  }
+
+  // Painter's order: far first, near last (near pills overlap the far
+  // texture, exactly like the reference).
+  const order = Array.from({ length: M }, (_, j) => j).sort((a, b) => dNs[b] - dNs[a])
+  for (const j of order) {
+    const x = xs[j]
+    const w = ws[j]
+    if (x + w < -2 || x - w > W + 2) continue
+    const h = hs[j]
+    const dN = dNs[j]
+    const fade = 1 - 0.38 * dN // far texture sinks gently into the black
+    // Echo first (it lives behind the solid pill, beyond its cap).
+    drawEcho(x, w, h, j, -1, upColor, fade)
+    drawEcho(x, w, h, j, 1, downColor, fade)
+    pill(x, w, h, -1, upColor, la * fade)
+    drawRibs(x, w, h, -1)
+    pill(x, w, h, 1, downColor, la * fade)
+    drawRibs(x, w, h, 1)
   }
   ctx.shadowBlur = 0
   ctx.globalAlpha = la

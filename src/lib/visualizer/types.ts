@@ -33,7 +33,7 @@ export type GradientPresetId = 'sunset' | 'aurora' | 'ember' | 'neon' | 'mono'
 
 /* --------------------------------- Visualizer -------------------------------- */
 
-export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'horizon'
+export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'horizon' | 'perspective'
 export type MirrorMode = 'none' | 'mirror' | 'center'
 
 export interface VisualizerConfig {
@@ -81,8 +81,26 @@ export interface VisualizerConfig {
   transparency: number
   /** Horizon road flow speed 0..1 — how fast the perspective equalizer's
    *  bars stream past the camera (0 = the road stands still, 1 = rush).
-   *  Only the horizon style reads it; every other style ignores it. */
+   *  The horizon and perspective styles read it; every other style ignores
+   *  it. */
   flowSpeed: number
+  /** Perspective style — the up-side (above the horizon) bar color. The
+   *  reference look is a hot red. Flat hex/8-digit color, not the palette:
+   *  this style keeps a strict two-color split at every depth instead of
+   *  sweeping the gradient. */
+  perspUp: string
+  /** Perspective style — the down-side (below the horizon) bar color.
+   *  Reference look: electric blue. */
+  perspDown: string
+  /** Perspective style — LED segment texture 0..1. Fine vertical ribs inside
+   *  the solid pills (and it gates how crisp the echo combs read). 0 = flat
+   *  solid capsules. */
+  perspTexture: number
+  /** Perspective style — echo trails 0..1. A dimmer ribbed/dotted ghost
+   *  extends past each pill's cap, filling where the bar stood a moment
+   *  ago (up side gets rib combs, down side a dot matrix, like the
+   *  reference). 0 = clean pills with no history. */
+  perspEcho: number
 }
 
 /* --------------------------------- Background -------------------------------- */
@@ -995,6 +1013,10 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     anchor: 'right',
     transparency: 0,
     flowSpeed: 0.5,
+    perspUp: '#ff1f1f',
+    perspDown: '#1e6bff',
+    perspTexture: 0.45,
+    perspEcho: 0.55,
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 48,

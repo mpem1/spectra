@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { AudioWaveform, BarChart3, Droplet, Grid3x3, Radar, Sparkles, Sunrise, Wand2, Waves, Loader2 } from 'lucide-react'
+import { AudioWaveform, BarChart3, Droplet, Grid3x3, Move3d, Radar, Sparkles, Sunrise, Wand2, Waves, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { VisualizerStyle } from '@/lib/visualizer/types'
 import { extractPaletteFromArt } from '@/lib/visualizer/palette'
@@ -15,6 +15,7 @@ import { VinylSection } from '@/components/studio/vinyl-section'
 import { WatermarkSection } from '@/components/studio/watermark-section'
 import { PulseImageSection } from '@/components/studio/pulse-image-section'
 import { MicroLabel, OptionCard, SECTION_ACCENT, SliderRow, sectionShell, type SectionAccent } from '@/components/studio/controls'
+import { ColorPickerButton } from '@/components/studio/color-picker'
 
 const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] = [
   { id: 'bars', label: 'Bars', icon: BarChart3 },
@@ -25,6 +26,7 @@ const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] =
   { id: 'grid', label: 'Grid', icon: Grid3x3 },
   { id: 'ribbon', label: 'Ribbon', icon: Waves },
   { id: 'horizon', label: 'Horizon', icon: Sunrise },
+  { id: 'perspective', label: 'Perspective', icon: Move3d },
 ]
 
 /** Plain uppercase section label (VISUALIZER / GRADIENT / …) like the reference UI. */
@@ -116,14 +118,18 @@ export function StyleTab() {
         </p>
       </section>
 
-      {/* Gradient */}
-      <section className={sectionShell('violet', 'space-y-2')}>
-        <div className="flex items-center justify-between">
-          <SectionLabel accent="violet">GRADIENT</SectionLabel>
-          <AutoPaletteButton />
-        </div>
-        <GradientEditor value={visualizer.gradient} onChange={patchGradient} />
-      </section>
+      {/* Gradient — the perspective style keeps its own strict two-color
+          split (Up / Down pickers above), so the palette editor would sit
+          there doing nothing. */}
+      {visualizer.style !== 'perspective' ? (
+        <section className={sectionShell('violet', 'space-y-2')}>
+          <div className="flex items-center justify-between">
+            <SectionLabel accent="violet">GRADIENT</SectionLabel>
+            <AutoPaletteButton />
+          </div>
+          <GradientEditor value={visualizer.gradient} onChange={patchGradient} />
+        </section>
+      ) : null}
 
       {/* Shape & motion */}
       <section className={sectionShell('amber')}>
@@ -208,7 +214,7 @@ export function StyleTab() {
           onChange={(smoothing) => patchVisualizer({ smoothing })}
           format={(v) => v.toFixed(2)}
         />
-        {visualizer.style === 'horizon' ? (
+        {visualizer.style === 'horizon' || visualizer.style === 'perspective' ? (
           <>
             {/* Horizon line height — where the road's up/down halves meet */}
             <SliderRow
@@ -229,6 +235,59 @@ export function StyleTab() {
               onChange={(flowSpeed) => patchVisualizer({ flowSpeed })}
               format={(v) => v.toFixed(2)}
             />
+          </>
+        ) : null}
+
+        {/* Perspective — the reference look's own colors & LED dressing */}
+        {visualizer.style === 'perspective' ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <MicroLabel>Up color</MicroLabel>
+                <div className="flex h-8 items-center">
+                  <ColorPickerButton
+                    value={visualizer.perspUp}
+                    onChange={(perspUp) => patchVisualizer({ perspUp })}
+                    ariaLabel="Up side color"
+                  />
+                  <span className="ml-2 truncate text-xs text-zinc-500">above the line</span>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <MicroLabel>Down color</MicroLabel>
+                <div className="flex h-8 items-center">
+                  <ColorPickerButton
+                    value={visualizer.perspDown}
+                    onChange={(perspDown) => patchVisualizer({ perspDown })}
+                    ariaLabel="Down side color"
+                  />
+                  <span className="ml-2 truncate text-xs text-zinc-500">below the line</span>
+                </div>
+              </div>
+            </div>
+            <SliderRow
+              label="LED texture"
+              value={visualizer.perspTexture}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={(perspTexture) => patchVisualizer({ perspTexture })}
+              format={(v) => v.toFixed(2)}
+            />
+            <SliderRow
+              label="Echo trails"
+              value={visualizer.perspEcho}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={(perspEcho) => patchVisualizer({ perspEcho })}
+              format={(v) => v.toFixed(2)}
+            />
+            <p className="text-xs leading-relaxed text-zinc-500">
+              The reference look: red bars above the line, blue below, streaming
+              out of a vanishing point on the right while heights ride the music.
+              Echo trails redraw where each bar stood a moment ago.
+            </p>
           </>
         ) : null}
         <SliderRow
@@ -263,9 +322,9 @@ export function StyleTab() {
           />
         ) : null}
 
-        {visualizer.style === 'horizon' ? (
-          // The road is always two-sided (up + its mirror), so there is no
-          // Mirror choice on this style — just the glow switch.
+        {visualizer.style === 'horizon' || visualizer.style === 'perspective' ? (
+          // The road styles are always two-sided (up + its mirror), so there
+          // is no Mirror choice — just the glow switch.
           <div className="space-y-1.5 pt-1">
             <MicroLabel>Glow</MicroLabel>
             <div className="flex h-8 items-center justify-end">
