@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { AudioWaveform, BarChart3, Droplet, Grid3x3, Move3d, Radar, Sparkles, Sunrise, Wand2, Waves, Loader2 } from 'lucide-react'
+import { AudioWaveform, BarChart3, Droplet, Grid3x3, Move3d, Radar, Sparkles, Wand2, Waves, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { VisualizerStyle } from '@/lib/visualizer/types'
 import { extractPaletteFromArt } from '@/lib/visualizer/palette'
@@ -25,7 +25,6 @@ const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] =
   { id: 'blob', label: 'Blob', icon: Droplet },
   { id: 'grid', label: 'Grid', icon: Grid3x3 },
   { id: 'ribbon', label: 'Ribbon', icon: Waves },
-  { id: 'horizon', label: 'Horizon', icon: Sunrise },
   { id: 'perspective', label: 'Perspective', icon: Move3d },
 ]
 
@@ -135,11 +134,14 @@ export function StyleTab() {
       <section className={sectionShell('amber')}>
         <SectionLabel accent="amber">SHAPE &amp; MOTION</SectionLabel>
 
-        {/* Orientation — the strip styles can run left→right or top→bottom */}
+        {/* Orientation — the long strip styles can run left→right or top→bottom
+            (the perspective road rotates with them: vertical points its
+            vanishing at the top edge, near pills at the bottom) */}
         {visualizer.style === 'bars' ||
         visualizer.style === 'wave' ||
         visualizer.style === 'grid' ||
-        visualizer.style === 'ribbon' ? (
+        visualizer.style === 'ribbon' ||
+        visualizer.style === 'perspective' ? (
           <div className="space-y-1.5">
             <MicroLabel>Orientation</MicroLabel>
             <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
@@ -214,7 +216,7 @@ export function StyleTab() {
           onChange={(smoothing) => patchVisualizer({ smoothing })}
           format={(v) => v.toFixed(2)}
         />
-        {visualizer.style === 'horizon' || visualizer.style === 'perspective' ? (
+        {visualizer.style === 'perspective' ? (
           <>
             {/* Horizon line height — where the road's up/down halves meet */}
             <SliderRow
@@ -322,9 +324,9 @@ export function StyleTab() {
           />
         ) : null}
 
-        {visualizer.style === 'horizon' || visualizer.style === 'perspective' ? (
-          // The road styles are always two-sided (up + its mirror), so there
-          // is no Mirror choice — just the glow switch.
+        {visualizer.style === 'perspective' ? (
+          // The road is always two-sided (up + its mirror), so there is no
+          // Mirror choice — just the glow switch.
           <div className="space-y-1.5 pt-1">
             <MicroLabel>Glow</MicroLabel>
             <div className="flex h-8 items-center justify-end">

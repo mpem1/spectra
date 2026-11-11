@@ -81,7 +81,7 @@ function makeCanvas(): HTMLCanvasElement {
   const log: OpRec[] = []
   const rec = (r: OpRec) => log.push(r)
   // Path tracking: beginPath clears, roundRect/rect record — so fill()
-  // captures the geometry of path-based passes (bars, horizon pills).
+  // captures the geometry of path-based passes (bars, perspective pills).
   type Rect = { x: number; y: number; w: number; h: number }
   let path: Rect[] = []
   const pushRect = (x?: number, y?: number, w?: number, h?: number) =>
@@ -1243,11 +1243,10 @@ console.log('S12 ribbon — the layered glow-wave visualizer')
   check('bars render unchanged (24 fills at full alpha)', fills(main) === 24 && fillAlphas().size === 1 && fillAlphas().has(1), `fills=${fills(main)} alphas=${[...fillAlphas()].join(',')}`)
 }
 
-/* --------------------- S13 horizon visualizer ------------------------------- */
+/* --------------------- S13 perspective visualizer --------------------------- */
 
-console.log('S13 horizon — the perspective equalizer road')
+console.log('S13 perspective — the 3D equalizer road')
 {
-  const frects = (c: HTMLCanvasElement): OpRec[] => logOf(c).filter((r) => r.kind === 'frect')
   const fillAlphas = (): Set<number> =>
     new Set(logOf(main).filter((r) => r.kind === 'fill').map((r) => r.alpha))
   /** Pills are path fills (fillRoundRect → one roundRect each), so the
@@ -1261,18 +1260,20 @@ console.log('S13 horizon — the perspective equalizer road')
     return out
   }
 
-  // A clean config: factory defaults, horizon selected, glow off so the
-  // fill census stays pure.
+  // A clean config: factory defaults, perspective selected, glow + LED
+  // texture + echo off so the fill census stays pure solid pills.
   const cfgH = structuredClone(DEFAULT_STUDIO_CONFIG)
   cfgH.visualizer = {
     ...structuredClone(DEFAULT_STUDIO_CONFIG.visualizer),
-    style: 'horizon' as const,
+    style: 'perspective' as const,
     glow: false,
-    barCount: 48,
+    barCount: 96, // the road eats slots at half weight → a 48-slot road
+    perspEcho: 0,
+    perspTexture: 0,
   }
 
   // Warm-up: settle the recording stub's alpha state (same reason as S12;
-  // drawHorizon pins globalAlpha back to la at its end).
+  // drawPerspective pins globalAlpha back to la at its end).
   renderOne(structuredClone(cfgH), 1.25)
 
   // 1) Deterministic: the same frozen frame renders the identical op stream.
@@ -1281,19 +1282,22 @@ console.log('S13 horizon — the perspective equalizer road')
   renderOne(structuredClone(cfgH), 1.25)
   const logB = JSON.stringify(logOf(main))
   check(
-    'horizon renders deterministically (same frame → identical op stream)',
+    'perspective renders deterministically (same frame → identical op stream)',
     logA === logB,
     `match=${logA === logB} lenA=${logA.length} lenB=${logB.length}`,
   )
 
-  // 2) Two-sided pills at full layer alpha, plus trail ghosts at 0.15.
+  // 2) The road paints a deep stack of pills, every alpha inside (0,1]:
+  //    the near field close to full layer alpha, the far texture dimmed by
+  //    the perspective depth fade — and plenty of both ends.
   const roadFills = logOf(main).filter((r) => r.kind === 'fill')
-  const roadAlphas = new Set(roadFills.map((r) => r.alpha))
-  const solid = roadFills.filter((r) => r.alpha === 1).length
+  const roadAlphas = [...new Set(roadFills.map((r) => r.alpha))]
+  const bright = roadFills.filter((r) => r.alpha >= 0.8).length
+  const dim = roadFills.filter((r) => r.alpha <= 0.68).length
   check(
-    'the road paints two-sided pills plus faint trail ghosts',
-    solid >= 24 && roadAlphas.size === 2 && roadAlphas.has(1) && roadAlphas.has(0.15),
-    `solid=${solid} alphas=${[...roadAlphas].join(',')}`,
+    'the road paints near pills bright and far pills depth-dimmed',
+    bright >= 8 && dim >= 8 && roadAlphas.every((a) => a > 0 && a <= 1),
+    `bright=${bright} dim=${dim} distinct=${roadAlphas.length}`,
   )
 
   // 3) Real perspective: the widest visible pill dwarfs the thinnest.
@@ -1318,8 +1322,8 @@ console.log('S13 horizon — the perspective equalizer road')
   const silent = { ...frameAt(0.5), freq: new Float32Array(64), energy: 0, bass: 0, treble: 0, sub: 0 }
   for (const c of [main, ...created]) logOf(c).length = 0
   renderFrame(rc, silent, structuredClone(cfgH))
-  const silentSolid = logOf(main).filter((r) => r.kind === 'fill' && r.alpha === 1).length
-  check('a silent frame still paints the full road (idle wave)', silentSolid >= 24, `solid=${silentSolid}`)
+  const silentBright = logOf(main).filter((r) => r.kind === 'fill' && r.alpha >= 0.8).length
+  check('a silent frame still paints the near road (idle wave)', silentBright >= 8, `bright=${silentBright}`)
 
   // 6) The flow dial moves the road: same frozen frame, flow 0.5 vs 0 —
   //    the phase shift lands the pills somewhere else entirely.
@@ -1329,21 +1333,23 @@ console.log('S13 horizon — the perspective equalizer road')
   const still = JSON.stringify(logOf(main))
   check('flow speed moves the pills along the road', flowing !== still, `moved=${flowing !== still}`)
 
-  // 7) The Transparency dial scales every pass exactly (main 1 → 0.5,
-  //    ghost 0.15 → 0.075) — the S9 contract extends to the road.
+  // 7) The Transparency dial scales every pill pass to exactly half — the
+  //    S9 contract extends to the road's depth-faded alpha stack.
+  renderOne(structuredClone(cfgH), 0.5)
+  const baseAlphas = fillAlphas()
   renderOne({ ...structuredClone(cfgH), visualizer: { ...cfgH.visualizer, transparency: 0.5 } })
   const half = fillAlphas()
   check(
     'transparency 50% scales every road pass to exactly half',
-    half.size === 2 && half.has(0.5) && half.has(0.075),
-    `alphas=${[...half].join(',')}`,
+    half.size === baseAlphas.size && [...half].every((a) => baseAlphas.has(a * 2)),
+    `base=${baseAlphas.size} half=${half.size}`,
   )
 
-  // 8) Bar count densifies the road.
-  renderOne({ ...structuredClone(cfgH), visualizer: { ...cfgH.visualizer, barCount: 16 } })
-  const few = logOf(main).filter((r) => r.kind === 'fill' && r.alpha === 1).length
-  renderOne({ ...structuredClone(cfgH), visualizer: { ...cfgH.visualizer, barCount: 96 } })
-  const many = logOf(main).filter((r) => r.kind === 'fill' && r.alpha === 1).length
+  // 8) Bar count densifies the road (the dial feeds it at half weight).
+  renderOne({ ...structuredClone(cfgH), visualizer: { ...cfgH.visualizer, barCount: 64 } })
+  const few = logOf(main).filter((r) => r.kind === 'fill' && r.alpha >= 0.8).length
+  renderOne({ ...structuredClone(cfgH), visualizer: { ...cfgH.visualizer, barCount: 192 } })
+  const many = logOf(main).filter((r) => r.kind === 'fill' && r.alpha >= 0.8).length
   check('bar count densifies the road', many > few && few >= 8, `few=${few} many=${many}`)
 
   // 9) The other styles stay untouched: bars still paints its classic
@@ -1352,10 +1358,8 @@ console.log('S13 horizon — the perspective equalizer road')
   cfgBars.visualizer = { ...structuredClone(DEFAULT_STUDIO_CONFIG.visualizer), style: 'bars' as const, glow: false }
   cfgBars.visualizer.barCount = 24
   renderOne(structuredClone(cfgBars))
-  check('bars render unchanged after the horizon addition (24 fills at full alpha)', fills(main) === 24 && fillAlphas().size === 1 && fillAlphas().has(1), `fills=${fills(main)} alphas=${[...fillAlphas()].join(',')}`)
+  check('bars render unchanged after the perspective retune (24 fills at full alpha)', fills(main) === 24 && fillAlphas().size === 1 && fillAlphas().has(1), `fills=${fills(main)} alphas=${[...fillAlphas()].join(',')}`)
 }
-
-/* --------------------------------- verdict -------------------------------- */
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

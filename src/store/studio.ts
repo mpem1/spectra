@@ -308,7 +308,19 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       // Merge over the factory defaults so configs saved by older versions
       // (missing newer fields like background.imageSrc / shade) still load.
       config: {
-        visualizer: { ...DEFAULT_STUDIO_CONFIG.visualizer, ...config.visualizer },
+        visualizer: {
+          ...DEFAULT_STUDIO_CONFIG.visualizer,
+          ...config.visualizer,
+          // The retired 'horizon' road style lives on as 'perspective' (same
+          // geometry family) — remap old saves so nothing renders blank. The
+          // string cast is deliberate: old saves may carry any style string.
+          style:
+            (config.visualizer as VisualizerConfig | undefined)?.style ===
+            ('horizon' as VisualizerConfig['style'])
+              ? 'perspective'
+              : ((config.visualizer as VisualizerConfig | undefined)?.style ??
+                DEFAULT_STUDIO_CONFIG.visualizer.style),
+        },
         background: { ...DEFAULT_STUDIO_CONFIG.background, ...config.background },
         lyrics: { ...DEFAULT_STUDIO_CONFIG.lyrics, ...config.lyrics },
         title: { ...DEFAULT_STUDIO_CONFIG.title, ...config.title },

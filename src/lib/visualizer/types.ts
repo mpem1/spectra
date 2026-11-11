@@ -33,7 +33,7 @@ export type GradientPresetId = 'sunset' | 'aurora' | 'ember' | 'neon' | 'mono'
 
 /* --------------------------------- Visualizer -------------------------------- */
 
-export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'horizon' | 'perspective'
+export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'perspective'
 export type MirrorMode = 'none' | 'mirror' | 'center'
 
 export interface VisualizerConfig {
@@ -79,15 +79,14 @@ export interface VisualizerConfig {
    *  sits behind it. Scales uniformly on top of every inner alpha, exactly
    *  like the lyrics layer's opacity dial does for the words. */
   transparency: number
-  /** Horizon road flow speed 0..1 — how fast the perspective equalizer's
-   *  bars stream past the camera (0 = the road stands still, 1 = rush).
-   *  The horizon and perspective styles read it; every other style ignores
-   *  it. */
+  /** Perspective road flow speed 0..1 — how fast the 3D equalizer's bars
+   *  stream past the camera (0 = the road stands still, 1 = rush). Only the
+   *  perspective style reads it; every other style ignores it. */
   flowSpeed: number
-  /** Perspective style — the up-side (above the horizon) bar color. The
-   *  reference look is a hot red. Flat hex/8-digit color, not the palette:
-   *  this style keeps a strict two-color split at every depth instead of
-   *  sweeping the gradient. */
+  /** Perspective style — the up-side (above the horizon line) bar color.
+   *  The reference look is a hot red. Flat hex/8-digit color, not the
+   *  palette: this style keeps a strict two-color split at every depth
+   *  instead of sweeping the gradient. */
   perspUp: string
   /** Perspective style — the down-side (below the horizon) bar color.
    *  Reference look: electric blue. */
