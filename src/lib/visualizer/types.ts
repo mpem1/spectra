@@ -561,6 +561,30 @@ export interface HalftoneFilterConfig {
    *  slow constant drift and the swing driven by the song's low end
    *  (0 = static gradient) */
   gradientMotion: number
+  /** Print only — poster mode: the picture is wiped off the frame entirely
+   *  and only the halftone print remains, sitting on the Backdrop below (a
+   *  solid color, or a two-color gradient you dial in). The dots still
+   *  follow the hidden picture — the screen samples the composed frame
+   *  BEFORE it is hidden — so the print keeps dancing with the music, and
+   *  Flip on kick becomes "lift the print clean off": a kick reveals the
+   *  bare backdrop, never the hidden picture. Old saves without this field
+   *  load as off (the classic print over the picture). */
+  printOnly: boolean
+  /** Poster backdrop color as '#rrggbb' — the "paper" the print sits on
+   *  while Print only is on (factory white = classic print on paper).
+   *  Ignored while Print only is off. */
+  backdropColor: string
+  /** Two-color gradient backdrop instead of one flat color (only matters
+   *  while Print only is on) */
+  backdropGradient: boolean
+  /** Backdrop gradient's second color as '#rrggbb' (only matters while
+   *  Print only AND the backdrop gradient are on) */
+  backdropColor2: string
+  /** How much the backdrop gradient moves with the sound 0..1 — the same
+   *  motion engine as the ink gradient (slow drift + kick swing, 0 =
+   *  static). Only matters while Print only AND the backdrop gradient are
+   *  on. */
+  backdropMotion: number
 }
 
 /**
@@ -1146,6 +1170,11 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     gradient: false,
     inkColor2: '#f59e0b',
     gradientMotion: 0.5,
+    printOnly: false,
+    backdropColor: '#ffffff',
+    backdropGradient: false,
+    backdropColor2: '#fbbf24',
+    backdropMotion: 0.5,
   },
   glitchFilter: {
     enabled: false,

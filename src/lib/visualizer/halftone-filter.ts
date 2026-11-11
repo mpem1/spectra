@@ -51,6 +51,17 @@
  * whose angle drifts slowly with song time and swings with the low end —
  * recoloring happens on the ink canvas with one 'source-in' fill (paints the
  * new color into the dots' coverage silhouette), never per-pixel.
+ *
+ * `printOnly` (Print only, poster mode) wipes the picture off the frame:
+ * the composed picture is snapshotted FIRST (it stays the screen's source,
+ * so the dots keep dancing with the music), the frame is then flooded with
+ * the backdrop — a flat color or a two-color gradient with the same drift +
+ * kick-swing motion engine as the ink gradient — and only the ink lands on
+ * top. Picture conditioning runs on the snapshot, never on the visible
+ * frame, and Flip on kick becomes "lift the print clean off": the swap's
+ * raw side is the bare backdrop (a kick reveals the gradient, never the
+ * hidden picture). With Print only off the frame is touched exactly as
+ * before, byte for byte.
  * How it stays fast & deterministic (pure canvas ops, one tiny getImageData):
  *   1. The LIVE frame is drawn rotated -45° straight into a TINY n×n canvas
  *      (one pixel per grid cell) — the browser's downscale smoothing does the
@@ -541,14 +552,45 @@ export function drawHalftoneFilter(
   if (grayscale) preF.push('grayscale(1)')
   if (Math.abs(contrast - 0.5) > 1e-3)
     preF.push(`contrast(${(contrast * 2).toFixed(4)})`) // 0.5 → 1.0 = untouched
-  const applyConditioning = () => {
+  const applyConditioning = (read: HTMLCanvasElement, out: CanvasRenderingContext2D) => {
     if (!preF.length) return
     const cond = getWork('ht:cond', W, H)
     const cctx = resetWork(cond.getContext('2d')!)
     cctx.filter = preF.join(' ')
-    cctx.drawImage(ctx.canvas, 0, 0, W, H)
+    cctx.drawImage(read, 0, 0, W, H)
     cctx.filter = 'none'
-    ctx.drawImage(cond, 0, 0, W, H)
+    out.drawImage(cond, 0, 0, W, H)
+  }
+
+  // Print only (poster mode) — the dials. The backdrop can be one flat
+  // color or a two-color gradient; the gradient shares the ink gradient's
+  // motion engine (a slow constant drift plus a swing driven by the song's
+  // low end, both scaled by the motion dial — 0 = static). All inputs are
+  // song time / audio fields, so exports match the preview frame-exactly.
+  const solo = !!cfg.printOnly
+  const bgMotion = clamp01(cfg.backdropMotion ?? 0.5)
+  const paintBackdrop = () => {
+    ctx.save()
+    ctx.globalAlpha = 1
+    ctx.globalCompositeOperation = 'source-over'
+    const bg1 = cfg.backdropColor ?? '#ffffff'
+    if (cfg.backdropGradient) {
+      const ang = bgMotion * 2 * Math.PI * (0.05 * (frame.time ?? 0) + 0.75 * bass)
+      const R = Math.ceil(Math.hypot(W, H)) / 2
+      const grad = ctx.createLinearGradient(
+        W / 2 - Math.cos(ang) * R,
+        H / 2 - Math.sin(ang) * R,
+        W / 2 + Math.cos(ang) * R,
+        H / 2 + Math.sin(ang) * R,
+      )
+      grad.addColorStop(0, bg1)
+      grad.addColorStop(1, cfg.backdropColor2 ?? '#fbbf24')
+      ctx.fillStyle = grad
+    } else {
+      ctx.fillStyle = bg1
+    }
+    ctx.fillRect(0, 0, W, H)
+    ctx.restore()
   }
 
   if (!flipToPrint && flipT >= 0.999) {
@@ -556,14 +598,26 @@ export function drawHalftoneFilter(
     // picture conditioning is skipped, so the flash shows the frame exactly
     // as the earlier filters left it (with Stay black & white on, the
     // conditioning IS applied first so the flash keeps the mono look).
-    if (flipMono) applyConditioning()
+    // Print only: the flash side is the bare backdrop — a kick lifts the
+    // print clean off and the gradient shows, never the hidden picture.
+    if (solo) {
+      paintBackdrop()
+      return
+    }
+    if (flipMono) applyConditioning(ctx.canvas, ctx)
     return
   }
   if (flipToPrint && flipT <= 0.001) {
     // Rest, print direction: the regular picture alone — zero cost, the
     // frame is exactly as the earlier filters left it (with Stay black &
     // white on, the conditioning runs so the rest keeps the mono look).
-    if (flipMono) applyConditioning()
+    // Print only: the rest is the bare backdrop — the print only exists
+    // while a kick holds it stamped in.
+    if (solo) {
+      paintBackdrop()
+      return
+    }
+    if (flipMono) applyConditioning(ctx.canvas, ctx)
     return
   }
   let raw: HTMLCanvasElement | null = null
@@ -571,19 +625,39 @@ export function drawHalftoneFilter(
   // direction it dissolves IN over the finished print as the kick lands;
   // in the print direction it dissolves OUT as the print stamps in.
   const rawA = flipToPrint ? 1 - flipT : flipT
-  if (flipMono) {
+
+  // Print only: snapshot the composed picture as the screen's source,
+  // condition the SNAPSHOT (never the visible frame), then flood the frame
+  // with the backdrop BEFORE anything else lands on it. From here on the
+  // visible canvas carries only the backdrop and the ink — the picture
+  // itself never shows again this frame.
+  let src: HTMLCanvasElement | null = null
+  if (solo) {
+    src = getWork('ht:solo', W, H)
+    const sctx = resetWork(src.getContext('2d')!)
+    sctx.drawImage(ctx.canvas, 0, 0, W, H)
+    applyConditioning(src, sctx)
+    paintBackdrop()
+  }
+
+  if (flipMono && !solo) {
     // "Stay black & white" conditions BEFORE the raw snapshot so the
     // dissolving picture is the mono one too — the whole swap then happens
     // inside the mono look, with no color popping through mid-crossfade
     // (conditioning after the snapshot would leave the dissolving side
     // full-color while the peak/rest sides are mono — a visible jump at
     // the swap's edges). The pass below is skipped when this ran.
-    applyConditioning()
+    // (Print only already conditioned its snapshot up above — and the
+    // visible frame is the backdrop, which must never be conditioned.)
+    applyConditioning(ctx.canvas, ctx)
   }
   if (flipOn && rawA > 0.001) {
     // Keep the untouched frame around so the swap can dissolve between
     // the print state and the regular picture (one full-frame GPU copy,
-    // and only while a kick is landing or fading).
+    // and only while a kick is landing or fading). Print only: the canvas
+    // at this moment IS the bare backdrop (painted above), so the swap's
+    // raw side is the gradient — exactly the "lift the print clean off"
+    // behavior.
     raw = getWork('ht:raw', W, H)
     resetWork(raw.getContext('2d')!).drawImage(ctx.canvas, 0, 0, W, H)
   }
@@ -604,8 +678,10 @@ export function drawHalftoneFilter(
   // 0) Picture conditioning — run the pass defined above (one GPU pass;
   //    the defaults skip it inside). Shapes the picture AND the print.
   //    "Stay black & white" already conditioned up above (before the raw
-  //    snapshot), and running it twice would double the contrast.
-  if (!flipMono) applyConditioning()
+  //    snapshot), and running it twice would double the contrast. Print
+  //    only conditioned its hidden snapshot instead — the visible frame is
+  //    the backdrop and must never run through the picture conditioning.
+  if (!flipMono && !solo) applyConditioning(ctx.canvas, ctx)
 
   // The negative flip — one GPU pass that inverts whatever is currently on
   // the frame. Runs at the very END (after the ink is laid down) so picture
@@ -690,7 +766,9 @@ export function drawHalftoneFilter(
   smCtx.scale(1 / cellS, 1 / cellS)
   smCtx.rotate(-Math.PI / 4)
   smCtx.translate(-W / 2, -H / 2)
-  smCtx.drawImage(ctx.canvas, 0, 0, W, H)
+  // Print only reads the hidden snapshot (the picture as it was before the
+  // backdrop flooded the frame); the classic path reads the live frame.
+  smCtx.drawImage(src ?? ctx.canvas, 0, 0, W, H)
 
   // 2) One read of the tiny grid; stamp every dark cell's dot into the ink
   //    buffer. Grid coords g live in ROTATED space (origin = frame center) —

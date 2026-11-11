@@ -34,6 +34,15 @@
  *       dots (which pin their own absolute globalAlpha) scale with it, the
  *       text overlays stay untouched, legacy configs without the field stay
  *       fully solid
+ *   S10 halftone Print only (poster mode) — the picture is snapshotted as
+ *       the screen's source and hidden behind the backdrop: the classic
+ *       path still samples the live frame (byte parity), Print only floods
+ *       the frame with one full-alpha backdrop fill (white paper by
+ *       default, gradient object when dialed) under the ink, the screen
+ *       reads the hidden snapshot (dots keep following the picture),
+ *       grayscale conditions the snapshot instead of the visible frame,
+ *       the print-direction rest shows the bare backdrop, and raw configs
+ *       without the new fields stay classic
  */
 
 import { renderFrame } from '../src/lib/visualizer/renderer'
@@ -49,6 +58,7 @@ interface OpRec {
   x?: number
   op: string
   alpha: number
+  style?: unknown
 }
 
 function makeCanvas(): HTMLCanvasElement {
@@ -72,13 +82,18 @@ function makeCanvas(): HTMLCanvasElement {
     lineJoin: 'round',
     lineCap: 'round',
     measureText: () => ({ width: 10 }),
-    createLinearGradient: () => ({ addColorStop: () => {} }),
+    createLinearGradient: () => {
+      // Record the stops so assertions can read a gradient's colors back.
+      const stops: Array<[number, string]> = []
+      return { addColorStop: (offset: number, color: string) => stops.push([offset, color]), stops }
+    },
     createRadialGradient: () => ({ addColorStop: () => {} }),
     createConicGradient: () => ({ addColorStop: () => {} }),
     createPattern: () => null,
     drawImage: (src: unknown, x?: number) =>
       rec({ kind: 'draw', src, x: typeof x === 'number' ? x : 0, op: state.op, alpha: state.alpha }),
-    fillRect: () => rec({ kind: 'frect', op: state.op, alpha: state.alpha }),
+    fillRect: () =>
+      rec({ kind: 'frect', op: state.op, alpha: state.alpha, style: base.fillStyle }),
     fill: () => rec({ kind: 'fill', op: state.op, alpha: state.alpha }),
     // Text passes (lyrics, titles, watermark, disc labels) — the alpha on
     // each record is what the opacity assertions read.
@@ -128,6 +143,19 @@ const created: HTMLCanvasElement[] = []
 ;(globalThis as { Path2D?: unknown }).Path2D = class {
   moveTo(): void {}
   arc(): void {}
+}
+// The halftone's ink buffer wraps its bytes in an ImageData — bun has no
+// ImageData global, so a minimal stand-in is all the harness needs (the
+// mock ctx's putImageData is an unrecorded no-op anyway).
+;(globalThis as { ImageData?: unknown }).ImageData = class {
+  width: number
+  height: number
+  data: Uint8ClampedArray
+  constructor(data: Uint8ClampedArray, width: number, height: number) {
+    this.data = data
+    this.width = width
+    this.height = height
+  }
 }
 
 const logOf = (c: HTMLCanvasElement): OpRec[] => (c as unknown as { __log: OpRec[] }).__log
@@ -203,6 +231,9 @@ console.log('S1 factory defaults — kick dials + layers')
   check('layers.filterAlpha defaults to full strength', d.layers.filterAlpha === 1, `got ${d.layers.filterAlpha}`)
   check('lyrics opacity defaults to fully opaque', d.lyrics.opacity === 1, `got ${d.lyrics.opacity}`)
   check('background shade defaults to 0% (images show at full brightness)', d.background.shade === 0, `got ${d.background.shade}`)
+  check('halftone Print only defaults to off (classic print)', d.halftoneFilter.printOnly === false, `got ${d.halftoneFilter.printOnly}`)
+  check('halftone backdrop defaults to white paper', d.halftoneFilter.backdropColor === '#ffffff', `got ${d.halftoneFilter.backdropColor}`)
+  check('halftone backdrop gradient defaults to off', d.halftoneFilter.backdropGradient === false, `got ${d.halftoneFilter.backdropGradient}`)
   check('halftone config no longer carries flipColorLayers', !('flipColorLayers' in d.halftoneFilter), 'legacy key still present')
 }
 
@@ -652,6 +683,160 @@ console.log('S9 visualizer transparency — one dial fades the whole bars layer'
     'a raw config without the transparency field renders fully solid',
     fills(main) === classicFills && legacyAlphas.size === 1 && legacyAlphas.has(1),
     `fills=${fills(main)} alphas=${[...legacyAlphas].join(',')}`,
+  )
+}
+
+/* --------------------- S10 halftone Print only (poster) ------------------- */
+
+console.log('S10 halftone Print only — the picture hides, the print stays')
+{
+  // Print-only rig: halftone ON, everything else factory. The 3D glasses
+  // stay off so the created-canvas scans below only ever see halftone works.
+  const cfg10 = baseConfig()
+  cfg10.anaglyphFilter = { ...cfg10.anaglyphFilter, enabled: false }
+  cfg10.halftoneFilter = { ...cfg10.halftoneFilter, enabled: true, strength: 0.9 }
+
+  const frects = (c: HTMLCanvasElement): OpRec[] => logOf(c).filter((r) => r.kind === 'frect')
+  const lastOf = (ops: OpRec[]): OpRec | undefined => ops[ops.length - 1]
+
+  // Classic print (Print only off): the screen samples the LIVE frame and
+  // main carries the baseline op counts everything below is measured against.
+  const markClassic = created.length
+  renderOne({ ...cfg10 })
+  const sampleCanvas = created
+    .slice(markClassic)
+    .find((c) => draws(c).length === 1 && draws(c)[0].src === main)
+  const classicFrects = frects(main).length
+  const classicDraws = draws(main).length
+  check(
+    'classic print samples the live frame',
+    !!sampleCanvas,
+    'no work canvas drew the live frame',
+  )
+  check(
+    'classic print paints no backdrop (baseline counts captured)',
+    classicFrects > 0 && classicDraws > 0 && lastOf(draws(main))?.alpha === 0.9,
+    `frects=${classicFrects} draws=${classicDraws} lastα=${lastOf(draws(main))?.alpha}`,
+  )
+
+  // Print only: the picture is snapshotted BEFORE the backdrop floods the
+  // frame, and the screen now reads that snapshot — the dots keep following
+  // the hidden picture.
+  const markSolo = created.length
+  renderOne({ ...cfg10, halftoneFilter: { ...cfg10.halftoneFilter, printOnly: true } })
+  const soloCanvas = created
+    .slice(markSolo)
+    .find((c) => draws(c).length === 1 && draws(c)[0].src === main)
+  check(
+    'print only snapshots the picture before hiding it',
+    !!soloCanvas,
+    'no snapshot canvas drew the live frame',
+  )
+  check(
+    'the screen reads the hidden snapshot (dots still follow the picture)',
+    !!soloCanvas && !!sampleCanvas && draws(sampleCanvas).length === 1 && draws(sampleCanvas)[0].src === soloCanvas,
+    `sample drew ${draws(sampleCanvas ?? main).length} op(s), src=${String(draws(sampleCanvas ?? main)[0]?.src)}`,
+  )
+
+  // The backdrop: exactly one extra full-frame fill on main, at full alpha,
+  // in the default white paper color — with the ink landing on top of it.
+  check(
+    'print only floods the frame with one backdrop fill at full alpha',
+    frects(main).length === classicFrects + 1 && lastOf(frects(main))?.alpha === 1,
+    `frects=${frects(main).length} vs ${classicFrects} lastα=${lastOf(frects(main))?.alpha}`,
+  )
+  check(
+    'the default backdrop fill is the white paper color',
+    lastOf(frects(main))?.style === '#ffffff',
+    `style=${String(lastOf(frects(main))?.style)}`,
+  )
+  check(
+    'the ink still lands on top of the backdrop',
+    draws(main).length === classicDraws && lastOf(draws(main))?.alpha === 0.9,
+    `draws=${draws(main).length} vs ${classicDraws} lastα=${lastOf(draws(main))?.alpha}`,
+  )
+
+  // Gradient backdrop: the fill's style is a gradient carrying BOTH colors.
+  renderOne({
+    ...cfg10,
+    halftoneFilter: {
+      ...cfg10.halftoneFilter,
+      printOnly: true,
+      backdropGradient: true,
+      backdropColor: '#ff0044',
+      backdropColor2: '#ffcc00',
+    },
+  })
+  const gradStyle = lastOf(frects(main))?.style as { stops?: Array<[number, string]> } | undefined
+  check(
+    'the backdrop gradient paints with both dialed colors',
+    frects(main).length === classicFrects + 1 &&
+      !!gradStyle &&
+      typeof gradStyle === 'object' &&
+      JSON.stringify(gradStyle.stops) === JSON.stringify([[0, '#ff0044'], [1, '#ffcc00']]),
+    `stops=${JSON.stringify(gradStyle?.stops)}`,
+  )
+
+  // Grayscale + print only: the conditioning shapes the HIDDEN snapshot
+  // (what the screen reads), never the visible backdrop frame.
+  const markCond = created.length
+  renderOne({
+    ...cfg10,
+    halftoneFilter: { ...cfg10.halftoneFilter, printOnly: true, grayscale: true },
+  })
+  const condCanvas = created
+    .slice(markCond)
+    .find((c) => draws(c).length === 1 && draws(c)[0].src === soloCanvas)
+  check(
+    'grayscale conditions the hidden snapshot, not the visible frame',
+    !!condCanvas &&
+      !!soloCanvas &&
+      draws(soloCanvas).length === 2 &&
+      draws(soloCanvas)[1].src === condCanvas &&
+      draws(main).length === classicDraws,
+    `cond=${!!condCanvas} soloOps=${soloCanvas ? draws(soloCanvas).length : 'n/a'} mainDraws=${draws(main).length}`,
+  )
+
+  // Flip on kick, print direction, at rest (no kick fired): the bare
+  // backdrop IS the frame — the print only exists while a kick holds it.
+  renderOne({
+    ...cfg10,
+    halftoneFilter: {
+      ...cfg10.halftoneFilter,
+      printOnly: true,
+      beatFlip: true,
+      beatFlipTo: 'print',
+    },
+  })
+  check(
+    'print-direction rest shows the bare backdrop (no ink draw)',
+    frects(main).length === classicFrects + 1 &&
+      lastOf(frects(main))?.style === '#ffffff' &&
+      draws(main).length === classicDraws - 1,
+    `frects=${frects(main).length} draws=${draws(main).length} vs ${classicFrects}/${classicDraws}`,
+  )
+
+  // A raw config from before Print only existed prints over the picture
+  // exactly like the classic path (no snapshot, no backdrop, live screen).
+  const legacyCfg = structuredClone(cfg10) as StudioConfig
+  const lf = legacyCfg.halftoneFilter as unknown as Record<string, unknown>
+  delete lf.printOnly
+  delete lf.backdropColor
+  delete lf.backdropGradient
+  delete lf.backdropColor2
+  delete lf.backdropMotion
+  renderOne(legacyCfg)
+  check(
+    'a raw config without the printOnly fields prints over the picture (classic)',
+    frects(main).length === classicFrects &&
+      draws(main).length === classicDraws &&
+      lastOf(draws(main))?.alpha === 0.9,
+    `frects=${frects(main).length} draws=${draws(main).length}`,
+  )
+  check(
+    'the legacy screen samples the live frame again',
+    !!sampleCanvas && draws(sampleCanvas).length === 1 && draws(sampleCanvas)[0].src === main,
+    `sample src=${String(draws(sampleCanvas ?? main)[0]?.src)}`,
   )
 }
 

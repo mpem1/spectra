@@ -43,8 +43,10 @@ function FlipDirButton({
  * Halftone filter card — newspaper print: darker tones turn into halftone
  * dots on a 45° grid while lighter areas stay untouched. The Shadow range
  * slider is the "only the darker colors" control. The picture can be
- * printed from black & white / contrast-punched / negative source, and the
- * ink can be any color or a two-color gradient that moves with the song.
+ * printed from black & white / contrast-punched / negative source, the
+ * ink can be any color or a two-color gradient that moves with the song,
+ * and Print only wipes the picture away entirely — just the dots dancing
+ * on a backdrop you choose.
  */
 export function HalftoneFilterSection() {
   const filter = useStudioStore((s) => s.config.halftoneFilter)
@@ -75,10 +77,71 @@ export function HalftoneFilterSection() {
         snaps back between kicks. Flip on kick swaps the whole look on every
         kick — you choose which side shows, how hard a kick fires it, how
         long it stays, and whether the picture stays black &amp; white.
+        Print only wipes the picture away: just the dots on a backdrop.
       </p>
 
       {filter.enabled ? (
         <>
+          <ToggleRow
+            label="Print only"
+            checked={filter.printOnly}
+            onCheckedChange={(printOnly) => patchHalftoneFilter({ printOnly })}
+          />
+          {filter.printOnly ? (
+            <>
+              <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5">
+                <MicroLabel className="text-zinc-400">Backdrop</MicroLabel>
+                <div className="flex h-5 items-center justify-between">
+                  <MicroLabel>Color</MicroLabel>
+                  <ColorPickerButton
+                    ariaLabel="Backdrop color"
+                    value={filter.backdropColor}
+                    onChange={(backdropColor) => patchHalftoneFilter({ backdropColor })}
+                  />
+                </div>
+                <ToggleRow
+                  label="Gradient"
+                  checked={filter.backdropGradient}
+                  onCheckedChange={(backdropGradient) => patchHalftoneFilter({ backdropGradient })}
+                />
+                {filter.backdropGradient ? (
+                  <>
+                    <div className="flex h-5 items-center justify-between">
+                      <MicroLabel>Second color</MicroLabel>
+                      <ColorPickerButton
+                        ariaLabel="Second backdrop color"
+                        value={filter.backdropColor2}
+                        onChange={(backdropColor2) => patchHalftoneFilter({ backdropColor2 })}
+                      />
+                    </div>
+                    <SliderRow
+                      label="Gradient motion"
+                      value={filter.backdropMotion}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      onChange={set('backdropMotion')}
+                      format={(v) => (v < 0.025 ? 'Static' : `${Math.round(v * 100)}%`)}
+                    />
+                  </>
+                ) : null}
+              </div>
+              <p className="text-[10px] leading-snug text-zinc-600">
+                The picture disappears — only the print remains, still sampled
+                from the hidden picture so the dots keep dancing with the music.
+                The backdrop is the paper: a solid color for the classic poster
+                look, or two blended colors with the same drift-and-kick motion
+                as the ink gradient. Flip on kick now lifts the print clean off,
+                flashing the bare backdrop.
+              </p>
+            </>
+          ) : (
+            <p className="text-[10px] leading-snug text-zinc-600">
+              Turn on Print only to wipe the picture away: just the halftone
+              dots on a solid backdrop you choose — white paper for the classic
+              look, or any color / gradient for posters.
+            </p>
+          )}
           <BeatPunchRow
             on={filter.beatReactive}
             strength={filter.beatStrength}
