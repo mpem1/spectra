@@ -1581,6 +1581,65 @@ console.log('S14 terrain — the 3D wireframe landscape')
     centerSegs >= baseSegs * 2 && centerCurtains === baseCurtains * 2,
     `segs ${baseSegs}→${centerSegs} curtains ${baseCurtains}→${centerCurtains}`,
   )
+
+  // 15) The Mirror offset dial: pass 4 paints each ridge segment and its
+  //     reflection back-to-back, so the 2-pt strokes alternate original /
+  //     reflection. The dial must leave the landscape's own segments
+  //     BIT-IDENTICAL while every reflection drops by exactly
+  //     2 · drop · H/2 (the fold line slides drop · H/2 below the ground).
+  renderOne(
+    { ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const } },
+    0.5,
+  )
+  const orig0 = segs2().filter((_, i) => i % 2 === 0)
+  const refl0 = segs2().filter((_, i) => i % 2 === 1)
+  const meanYOf = (rs: OpRec[]): number =>
+    rs.reduce((s, r) => s + meanY(r), 0) / Math.max(1, rs.length)
+  renderOne(
+    {
+      ...structuredClone(cfgT),
+      visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const, terrainMirrorDrop: 0.3 },
+    },
+    0.5,
+  )
+  const orig1 = segs2().filter((_, i) => i % 2 === 0)
+  const refl1 = segs2().filter((_, i) => i % 2 === 1)
+  const reflShift = meanYOf(refl1) - meanYOf(refl0)
+  check(
+    'mirror offset slides the reflection, the landscape stays put',
+    orig0.length > 200 &&
+      orig0.length === orig1.length &&
+      JSON.stringify(orig0) === JSON.stringify(orig1) &&
+      Math.abs(reflShift - 0.3 * H) < 1,
+    `orig ${orig0.length}→${orig1.length} same=${JSON.stringify(orig0) === JSON.stringify(orig1)} shift=${reflShift.toFixed(1)} want=${(0.3 * H).toFixed(1)}`,
+  )
+
+  // 16) Center mode honors the dial too: the lower symmetric curtain copies
+  //     drop by the same exact shift while the upper halves stay.
+  renderOne(
+    { ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'center' as const } },
+    0.5,
+  )
+  const curtUp0 = curtainStrokes().filter((_, i) => i % 2 === 0)
+  const curtLo0 = curtainStrokes().filter((_, i) => i % 2 === 1)
+  renderOne(
+    {
+      ...structuredClone(cfgT),
+      visualizer: { ...cfgT.visualizer, mirror: 'center' as const, terrainMirrorDrop: 0.3 },
+    },
+    0.5,
+  )
+  const curtUp1 = curtainStrokes().filter((_, i) => i % 2 === 0)
+  const curtLo1 = curtainStrokes().filter((_, i) => i % 2 === 1)
+  const loShift = meanYOf(curtLo1) - meanYOf(curtLo0)
+  check(
+    'center mode drops the lower range with the dial, uppers unchanged',
+    curtUp0.length === curtUp1.length &&
+      curtUp0.length > 0 &&
+      JSON.stringify(curtUp0) === JSON.stringify(curtUp1) &&
+      Math.abs(loShift - 0.3 * H) < 1,
+    `uppers ${curtUp0.length}→${curtUp1.length} same=${JSON.stringify(curtUp0) === JSON.stringify(curtUp1)} shift=${loShift.toFixed(1)} want=${(0.3 * H).toFixed(1)}`,
+  )
 }
 
 /* ----------------------- S15 sphere visualizer ------------------------------ */

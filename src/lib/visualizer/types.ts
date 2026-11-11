@@ -106,6 +106,12 @@ export interface VisualizerConfig {
    *  near, so nearer bands overlap farther ones like real hills). 0 = the
    *  pure glowing wireframe. */
   terrainFill: number
+  /** Terrain style — lake-reflection offset 0..1. With Mirror on, the
+   *  reflection normally folds exactly at each row's ground line (a perfect
+   *  mirror lake). This dial slides the fold line LOWER — the mirrored hills
+   *  detach and drop down the screen like a raised water line. 0 = the
+   *  classic hugging reflection (the factory look). */
+  terrainMirrorDrop: number
   /** Sphere style — spin speed 0..1. How fast the dot-matrix planet turns
    *  around its tilted axis (0 = a slow drift, 1 = a fast whirl). */
   sphereSpin: number
@@ -1030,6 +1036,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     perspTexture: 0.45,
     perspEcho: 0.55,
     terrainFill: 0.4,
+    terrainMirrorDrop: 0,
     sphereSpin: 0.35,
     sphereQuills: 0.6,
     gradient: {

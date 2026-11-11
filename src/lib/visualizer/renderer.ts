@@ -1620,6 +1620,15 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
     }
   }
 
+  // Mirror offset (the Style tab's dial): the reflection normally folds
+  // exactly at each row's ground line — a perfect mirror lake hugging the
+  // hills. The dial slides the fold line LOWER by up to half the canvas, so
+  // the mirrored landscape detaches and drops like a raised water line.
+  // 0 (factory) keeps the fold exactly on the ground: the classic look,
+  // bit-identical to before the dial existed. Pure math → deterministic.
+  const drop = clamp01(cfg.terrainMirrorDrop ?? 0) * H * 0.5
+  const foldY = (r: number): number => gy[r] + drop
+
   const rowPath = (r: number): void => {
     ctx.beginPath()
     for (let c = 0; c < COLS; c++) {
@@ -1641,7 +1650,7 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
       if (centerSym) {
         for (let c = COLS - 1; c >= 0; c--) {
           const idx = r * COLS + c
-          ctx.lineTo(px[idx], 2 * gy[r] - py[idx])
+          ctx.lineTo(px[idx], 2 * foldY(r) - py[idx])
         }
       } else {
         ctx.lineTo(px[r * COLS + COLS - 1], gy[r])
@@ -1673,8 +1682,8 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
       ctx.beginPath()
       for (let r = 0; r <= ROWS; r++) {
         const idx = r * COLS + c
-        if (r === 0) ctx.moveTo(px[idx], 2 * gy[r] - py[idx])
-        else ctx.lineTo(px[idx], 2 * gy[r] - py[idx])
+        if (r === 0) ctx.moveTo(px[idx], 2 * foldY(r) - py[idx])
+        else ctx.lineTo(px[idx], 2 * foldY(r) - py[idx])
       }
       ctx.stroke()
     }
@@ -1713,8 +1722,8 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
       ctx.stroke()
       if (centerSym || reflect) {
         ctx.beginPath()
-        ctx.moveTo(px[i0], 2 * gy[r] - py[i0])
-        ctx.lineTo(px[i0 + 1], 2 * gy[r] - py[i0 + 1])
+        ctx.moveTo(px[i0], 2 * foldY(r) - py[i0])
+        ctx.lineTo(px[i0 + 1], 2 * foldY(r) - py[i0 + 1])
         ctx.stroke()
       }
     }

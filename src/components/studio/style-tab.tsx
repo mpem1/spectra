@@ -320,8 +320,8 @@ export function StyleTab() {
               rows bunch at the horizon, bass lifts the near hills, and the
               surface streams forward with Flow speed. The palette sweeps
               across the columns; Fill 0 is the pure glowing wireframe;
-              Mirror adds the lake reflection, Center grows the range
-              symmetrically around the ground.
+              Mirror adds the lake reflection (Mirror offset slides its line
+              lower), Center grows the range symmetrically around the ground.
             </p>
           </>
         ) : null}
@@ -449,6 +449,21 @@ export function StyleTab() {
             max={1}
             step={0.01}
             onChange={(mirrorOffset) => patchVisualizer({ mirrorOffset })}
+            format={(v) => `${Math.round(v * 100)}%`}
+          />
+        ) : null}
+
+        {/* Terrain's mirror line: the lake reflection folds at the ground
+            line by default (a perfect mirror lake); this dial slides the
+            fold lower, detaching the mirrored hills down the screen. */}
+        {visualizer.mirror !== 'none' && visualizer.style === 'terrain' ? (
+          <SliderRow
+            label="Mirror offset"
+            value={visualizer.terrainMirrorDrop}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(terrainMirrorDrop) => patchVisualizer({ terrainMirrorDrop })}
             format={(v) => `${Math.round(v * 100)}%`}
           />
         ) : null}
