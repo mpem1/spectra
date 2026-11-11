@@ -495,10 +495,12 @@ function drawVisualizer(
     case 'wave':
     case 'grid':
     case 'ribbon':
-    case 'perspective': {
+    case 'perspective':
+    case 'terrain': {
       // These styles draw a classic left→right strip (the perspective road
-      // included — its vanishing point then sits past the right edge).
-      // Vertical orientation rotates that strip 90° counter-clockwise into a
+      // included — its vanishing point then sits past the right edge, and
+      // the terrain landscape's horizon runs through the middle). Vertical
+      // orientation rotates that strip 90° counter-clockwise into a
       // top→bottom column: bass stays at the bottom, bars/wave grow sideways
       // from the layer's right edge (the perspective road points its
       // vanishing point at the bottom edge). The style code keeps drawing in
@@ -525,6 +527,7 @@ function drawVisualizer(
       else if (cfg.style === 'wave') drawWave(styleRc, frame, cfg, S)
       else if (cfg.style === 'ribbon') drawRibbon(styleRc, frame, cfg, S)
       else if (cfg.style === 'perspective') drawPerspective(styleRc, frame, cfg, S)
+      else if (cfg.style === 'terrain') drawTerrain(styleRc, frame, cfg, S)
       else drawGrid(styleRc, frame, cfg, S)
       break
     }
@@ -1483,4 +1486,201 @@ function drawPerspective(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
   }
   ctx.shadowBlur = 0
   ctx.globalAlpha = la
+}
+
+/* ---------------------------------- Terrain ---------------------------------- */
+
+/**
+ * Terrain — the 3D wireframe landscape. A perspective ground-plane mesh of
+ * spectrum ridges rolling toward the camera: real pinhole projection with
+ * geometric depth steps (u = focal / z, so the rows bunch at the horizon
+ * exactly like a receding ground plane), columns converging on the
+ * vanishing point, and row heights riding the music with bass near the
+ * camera and treble far — the same bin mapping the road uses. The whole
+ * surface streams toward the viewer with the Flow speed dial, the palette
+ * sweeps left→right across the columns, and depth fog sinks the far rows
+ * into the black. Deterministic: every height is a pure function of
+ * (column, depth-row, styleTime) — smooth value noise + traveling phases,
+ * no stored history — so exports render frame-exact pixels.
+ *
+ * Visual language:
+ * - Solid earth: each depth row fills the band between its ridge line and
+ *   the flat ground below it (the Fill dial; 0 = the pure wireframe).
+ *   Painter's order far → near makes the fills double as the occlusion.
+ * - Glow underlay: the near rows get one soft shadowed stroke behind the
+ *   crisp lines (a single stroke per row — cheap, unlike per-segment blur).
+ * - Wireframe: ridge lines stroked with the per-column palette color; faint
+ *   column curtains run into the depth and sell the 3D grid.
+ * - Idle: in total silence a slow rolling-hills wave keeps it alive.
+ *
+ * Shared dials: Bar count (feeds the columns at 3/4 weight), Orientation +
+ * Side, Horizon (the vanishing line), Flow speed, Glow, Sensitivity,
+ * Smoothing, Transparency, Position/Size, Layer — plus the full Gradient
+ * palette (this style sweeps it across the columns, unlike the road's
+ * strict two-color split).
+ */
+function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+  const { ctx, width: W, height: H } = rc
+  const t = frame.styleTime
+  const freq = frame.freq
+  const len = Math.max(1, freq.length)
+  const sens = clamp(cfg.sensitivity, 0, 3)
+  const bass = clamp01(frame.bass)
+  const la = visualizerLayerAlpha(cfg)
+  const hy = H * clamp01(cfg.mirrorOffset ?? 0.5) // the vanishing line (Horizon dial)
+  const flow = clamp(cfg.flowSpeed ?? 0.5, 0, 1)
+  const fill = clamp01(cfg.terrainFill ?? 0.4)
+
+  // Mesh density — columns ride Bar count at 3/4 weight (a near edge denser
+  // than ~128 lines turns to mush); rows are fixed at a good depth read.
+  const COLS = Math.round(clamp(cfg.barCount * 0.75, 24, 128))
+  const ROWS = 22
+
+  /* ---- pinhole projection ----
+   * u = focal / z with GEOMETRIC depth steps (each row sits a constant
+   * world-ratio deeper: the road's spacing family). u decays from 1 at the
+   * near edge to uFar at the horizon, so screen gaps shrink toward the
+   * horizon — real receding-ground bunching. The camera rides at world
+   * height CAM above the ground so the near edge lands just past the bottom
+   * edge; world peaks reach HPEAK (screen height at u = 1). */
+  const uFar = 1 / 9
+  const uAt = (r: number): number => Math.pow(uFar, 1 - r / ROWS) // r: 0 far → ROWS near
+  const CAM = H * 1.12 - hy
+  const XW = W * 0.78 // world half-width — the near edge overflows the sides
+  const HPEAK = H * 0.3
+
+  // Smooth value noise over a hashed integer lattice — pure, so identical
+  // (column, v) always yields the same hill. Two octaves for ridge character.
+  const hash2 = (ix: number, iy: number): number => {
+    const s = Math.sin(ix * 127.1 + iy * 311.7) * 43758.5453
+    return s - Math.floor(s)
+  }
+  const noise2 = (x: number, y: number): number => {
+    const ix = Math.floor(x)
+    const iy = Math.floor(y)
+    const fx = x - ix
+    const fy = y - iy
+    const sx = fx * fx * (3 - 2 * fx)
+    const sy = fy * fy * (3 - 2 * fy)
+    const a = hash2(ix, iy)
+    const b = hash2(ix + 1, iy)
+    const c = hash2(ix, iy + 1)
+    const d = hash2(ix + 1, iy + 1)
+    return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy
+  }
+
+  // Palette swept left→right across the columns (the Gradient section shows
+  // for this style — same sampler the bars use).
+  const colColor = (c: number): string => barColorAt(cfg, frame, c, COLS)
+
+  // Per-row audio: bass near the camera, treble far (the road's bin map).
+  // The idle wave varies with column AND depth so silent hills still roll.
+  const rowAmp = (r: number, c: number): number => {
+    const dN = 1 - r / ROWS
+    const bin = Math.min(len - 1, Math.floor(Math.pow(dN, 1.12) * len))
+    const amp0 = clamp01((freq[bin] ?? 0) * sens)
+    const idle =
+      0.06 +
+      0.05 * Math.sin(c * 0.31 + (ROWS - r) * 0.42 - t * 1.35) +
+      0.03 * Math.sin(c * 0.13 - (ROWS - r) * 0.71 + t * 0.85)
+    return Math.max(amp0, idle)
+  }
+
+  /** World-space elevation at (depth row, column). The noise field flows:
+   *  v = distance-from-camera minus a flow phase, so as t advances the same
+   *  hill lands on nearer rows — the terrain streams toward the viewer. */
+  const worldH = (r: number, c: number): number => {
+    const v = (ROWS - r) * 0.42 - t * flow * 2.2
+    const n = noise2(c * 0.33, v) * 0.72 + noise2(c * 0.71 + 37.2, v * 1.9 + 11.4) * 0.28
+    return HPEAK * (0.12 + 0.88 * rowAmp(r, c)) * (0.22 + 0.78 * n) * (1 + bass * 0.25)
+  }
+
+  // Precompute the mesh's screen positions (world height × u = screen rise).
+  const px = new Float64Array((ROWS + 1) * COLS)
+  const py = new Float64Array((ROWS + 1) * COLS)
+  const gy = new Float64Array(ROWS + 1)
+  for (let r = 0; r <= ROWS; r++) {
+    const u = uAt(r)
+    gy[r] = hy + CAM * u
+    for (let c = 0; c < COLS; c++) {
+      const xw = (c / (COLS - 1) - 0.5) * 2 * XW
+      const idx = r * COLS + c
+      px[idx] = W / 2 + xw * u
+      py[idx] = gy[r] - worldH(r, c) * u
+    }
+  }
+
+  const rowPath = (r: number): void => {
+    ctx.beginPath()
+    for (let c = 0; c < COLS; c++) {
+      const idx = r * COLS + c
+      if (c === 0) ctx.moveTo(px[idx], py[idx])
+      else ctx.lineTo(px[idx], py[idx])
+    }
+  }
+
+  // Pass 1 — solid earth: each row fills its ridge-to-ground band, far →
+  // near, so nearer bands overlap farther ones like real hills.
+  if (fill > 0.01) {
+    for (let r = 0; r <= ROWS; r++) {
+      const dN = 1 - r / ROWS
+      const fade = 1 - 0.68 * dN
+      rowPath(r)
+      ctx.lineTo(px[r * COLS + COLS - 1], gy[r])
+      ctx.lineTo(px[r * COLS], gy[r])
+      ctx.closePath()
+      ctx.globalAlpha = la * fill * fade
+      ctx.fillStyle = withAlpha(colColor(COLS >> 1), 0.24)
+      ctx.fill()
+    }
+  }
+
+  // Pass 2 — column curtains: faint lines running into the depth at every
+  // few columns; they converge on the vanishing point and sell the grid.
+  const colStep = Math.max(1, Math.round(COLS / 18))
+  ctx.lineWidth = Math.max(1, 1.05 * S)
+  ctx.globalAlpha = la * 0.15
+  for (let c = 0; c < COLS; c += colStep) {
+    ctx.beginPath()
+    for (let r = 0; r <= ROWS; r++) {
+      const idx = r * COLS + c
+      if (r === 0) ctx.moveTo(px[idx], py[idx])
+      else ctx.lineTo(px[idx], py[idx])
+    }
+    ctx.strokeStyle = colColor(c)
+    ctx.stroke()
+  }
+
+  // Pass 3 — glow underlay: one soft shadowed stroke per near row (cheap —
+  // ~14 shadowed strokes), sitting behind the crisp ridge lines.
+  if (cfg.glow) {
+    const mid = colColor(COLS >> 1)
+    ctx.strokeStyle = mid
+    ctx.shadowColor = mid
+    ctx.shadowBlur = 13 * S
+    ctx.lineWidth = 3 * S
+    ctx.globalAlpha = la * 0.42
+    for (let r = Math.floor(ROWS * 0.35); r <= ROWS; r++) {
+      rowPath(r)
+      ctx.stroke()
+    }
+    ctx.shadowBlur = 0
+  }
+
+  // Pass 4 — the crisp ridge lines: per-segment palette colors, fog-dimmed
+  // with depth, thinner as they recede.
+  for (let r = 0; r <= ROWS; r++) {
+    const dN = 1 - r / ROWS
+    const fade = 1 - 0.62 * dN
+    ctx.lineWidth = Math.max(1, (1.7 - 0.95 * dN) * S)
+    ctx.globalAlpha = la * fade
+    for (let c = 0; c < COLS - 1; c++) {
+      const i0 = r * COLS + c
+      ctx.beginPath()
+      ctx.moveTo(px[i0], py[i0])
+      ctx.lineTo(px[i0 + 1], py[i0 + 1])
+      ctx.strokeStyle = colColor(c)
+      ctx.stroke()
+    }
+  }
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { AudioWaveform, BarChart3, Droplet, Grid3x3, Move3d, Radar, Sparkles, Wand2, Waves, Loader2 } from 'lucide-react'
+import { AudioWaveform, BarChart3, Droplet, Grid3x3, Mountain, Move3d, Radar, Sparkles, Wand2, Waves, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { VisualizerStyle } from '@/lib/visualizer/types'
 import { extractPaletteFromArt } from '@/lib/visualizer/palette'
@@ -26,6 +26,7 @@ const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] =
   { id: 'grid', label: 'Grid', icon: Grid3x3 },
   { id: 'ribbon', label: 'Ribbon', icon: Waves },
   { id: 'perspective', label: 'Perspective', icon: Move3d },
+  { id: 'terrain', label: 'Terrain', icon: Mountain },
 ]
 
 /** Plain uppercase section label (VISUALIZER / GRADIENT / …) like the reference UI. */
@@ -119,7 +120,8 @@ export function StyleTab() {
 
       {/* Gradient — the perspective style keeps its own strict two-color
           split (Up / Down pickers above), so the palette editor would sit
-          there doing nothing. */}
+          there doing nothing. Terrain DOES use the palette — it sweeps it
+          across the landscape's columns. */}
       {visualizer.style !== 'perspective' ? (
         <section className={sectionShell('violet', 'space-y-2')}>
           <div className="flex items-center justify-between">
@@ -136,12 +138,14 @@ export function StyleTab() {
 
         {/* Orientation — the long strip styles can run left→right or top→bottom
             (the perspective road rotates with them: vertical points its
-            vanishing at the top edge, near pills at the bottom) */}
+            vanishing at the top edge, near pills at the bottom — and the
+            terrain landscape rotates the same way, horizon turning vertical) */}
         {visualizer.style === 'bars' ||
         visualizer.style === 'wave' ||
         visualizer.style === 'grid' ||
         visualizer.style === 'ribbon' ||
-        visualizer.style === 'perspective' ? (
+        visualizer.style === 'perspective' ||
+        visualizer.style === 'terrain' ? (
           <div className="space-y-1.5">
             <MicroLabel>Orientation</MicroLabel>
             <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
@@ -216,9 +220,11 @@ export function StyleTab() {
           onChange={(smoothing) => patchVisualizer({ smoothing })}
           format={(v) => v.toFixed(2)}
         />
-        {visualizer.style === 'perspective' ? (
+        {(visualizer.style === 'perspective' || visualizer.style === 'terrain') ? (
           <>
-            {/* Horizon line height — where the road's up/down halves meet */}
+            {/* Horizon line height — where the road's up/down halves meet
+                (perspective) or where the terrain's vanishing line sits
+                (terrain) */}
             <SliderRow
               label="Horizon"
               value={visualizer.mirrorOffset}
@@ -292,6 +298,27 @@ export function StyleTab() {
             </p>
           </>
         ) : null}
+
+        {/* Terrain — the 3D landscape's own dressing */}
+        {visualizer.style === 'terrain' ? (
+          <>
+            <SliderRow
+              label="Fill"
+              value={visualizer.terrainFill}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={(terrainFill) => patchVisualizer({ terrainFill })}
+              format={(v) => v.toFixed(2)}
+            />
+            <p className="text-xs leading-relaxed text-zinc-500">
+              A 3D landscape of spectrum ridges rolling toward the camera —
+              rows bunch at the horizon, bass lifts the near hills, and the
+              surface streams forward with Flow speed. The palette sweeps
+              across the columns; Fill 0 is the pure glowing wireframe.
+            </p>
+          </>
+        ) : null}
         <SliderRow
           label="Sensitivity"
           value={visualizer.sensitivity}
@@ -301,7 +328,7 @@ export function StyleTab() {
           onChange={(sensitivity) => patchVisualizer({ sensitivity })}
           format={(v) => v.toFixed(1)}
         />
-        {visualizer.style !== 'ribbon' ? (
+        {(visualizer.style !== 'ribbon' && visualizer.style !== 'terrain') ? (
           <SliderRow
             label="Roundness"
             value={visualizer.roundness}
@@ -312,7 +339,7 @@ export function StyleTab() {
             format={(v) => v.toFixed(2)}
           />
         ) : null}
-        {visualizer.style !== 'ribbon' ? (
+        {(visualizer.style !== 'ribbon' && visualizer.style !== 'terrain') ? (
           <SliderRow
             label="Gap"
             value={visualizer.gap}
@@ -324,9 +351,10 @@ export function StyleTab() {
           />
         ) : null}
 
-        {visualizer.style === 'perspective' ? (
-          // The road is always two-sided (up + its mirror), so there is no
-          // Mirror choice — just the glow switch.
+        {(visualizer.style === 'perspective' || visualizer.style === 'terrain') ? (
+          // The road and the landscape are horizon scenes (up is the sky,
+          // down is the ground) — mirroring makes no sense for them, so
+          // there is no Mirror choice — just the glow switch.
           <div className="space-y-1.5 pt-1">
             <MicroLabel>Glow</MicroLabel>
             <div className="flex h-8 items-center justify-end">

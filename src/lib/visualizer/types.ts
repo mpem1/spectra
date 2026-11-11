@@ -33,7 +33,7 @@ export type GradientPresetId = 'sunset' | 'aurora' | 'ember' | 'neon' | 'mono'
 
 /* --------------------------------- Visualizer -------------------------------- */
 
-export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'perspective'
+export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'perspective' | 'terrain'
 export type MirrorMode = 'none' | 'mirror' | 'center'
 
 export interface VisualizerConfig {
@@ -80,8 +80,9 @@ export interface VisualizerConfig {
    *  like the lyrics layer's opacity dial does for the words. */
   transparency: number
   /** Perspective road flow speed 0..1 — how fast the 3D equalizer's bars
-   *  stream past the camera (0 = the road stands still, 1 = rush). Only the
-   *  perspective style reads it; every other style ignores it. */
+   *  stream past the camera (0 = the road stands still, 1 = rush). The
+   *  terrain landscape reads it too (its hills roll toward the camera);
+   *  every other style ignores it. */
   flowSpeed: number
   /** Perspective style — the up-side (above the horizon line) bar color.
    *  The reference look is a hot red. Flat hex/8-digit color, not the
@@ -100,6 +101,11 @@ export interface VisualizerConfig {
    *  ago (up side gets rib combs, down side a dot matrix, like the
    *  reference). 0 = clean pills with no history. */
   perspEcho: number
+  /** Terrain style — solid-earth band fill 0..1. Each depth row fills the
+   *  band between its ridge line and the flat ground below it (drawn far →
+   *  near, so nearer bands overlap farther ones like real hills). 0 = the
+   *  pure glowing wireframe. */
+  terrainFill: number
 }
 
 /* --------------------------------- Background -------------------------------- */
@@ -1016,6 +1022,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     perspDown: '#1e6bff',
     perspTexture: 0.45,
     perspEcho: 0.55,
+    terrainFill: 0.4,
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 48,

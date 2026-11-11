@@ -63,13 +63,16 @@ import type { AudioFrame, RenderContext, StudioConfig } from '../src/lib/visuali
 /* ------------------------------ mock canvas ------------------------------ */
 
 interface OpRec {
-  kind: 'draw' | 'fill' | 'frect' | 'text' | 'pimg'
+  kind: 'draw' | 'fill' | 'frect' | 'text' | 'pimg' | 'stroke'
   src?: unknown
   x?: number
   y?: number
   w?: number
   h?: number
   rects?: Array<{ x: number; y: number; w: number; h: number }>
+  /** Polyline points of the current path at stroke time (moveTo/lineTo
+   *  tracking) — lets assertions read wireframe geometry back. */
+  pts?: Array<{ x: number; y: number }>
   op: string
   alpha: number
   style?: unknown
@@ -84,6 +87,9 @@ function makeCanvas(): HTMLCanvasElement {
   // captures the geometry of path-based passes (bars, perspective pills).
   type Rect = { x: number; y: number; w: number; h: number }
   let path: Rect[] = []
+  // Polyline tracking for stroke() — the terrain wireframe (and any other
+  // stroked pass) records its points so geometry assertions can read them.
+  let poly: Array<{ x: number; y: number }> = []
   const pushRect = (x?: number, y?: number, w?: number, h?: number) =>
     path.push({
       x: typeof x === 'number' ? x : 0,
@@ -182,6 +188,16 @@ function makeCanvas(): HTMLCanvasElement {
   // explicit members keep the mock honest).
   ;(base as Record<string, unknown>).beginPath = () => {
     path = []
+    poly = []
+  }
+  ;(base as Record<string, unknown>).moveTo = (x?: number, y?: number) => {
+    poly = [{ x: typeof x === 'number' ? x : 0, y: typeof y === 'number' ? y : 0 }]
+  }
+  ;(base as Record<string, unknown>).lineTo = (x?: number, y?: number) => {
+    poly.push({ x: typeof x === 'number' ? x : 0, y: typeof y === 'number' ? y : 0 })
+  }
+  ;(base as Record<string, unknown>).stroke = () => {
+    rec({ kind: 'stroke', op: state.op, alpha: state.alpha, style: base.strokeStyle, pts: poly.slice() })
   }
   ;(base as Record<string, unknown>).roundRect = pushRect
   ;(base as Record<string, unknown>).rect = pushRect
@@ -1359,6 +1375,186 @@ console.log('S13 perspective — the 3D equalizer road')
   cfgBars.visualizer.barCount = 24
   renderOne(structuredClone(cfgBars))
   check('bars render unchanged after the perspective retune (24 fills at full alpha)', fills(main) === 24 && fillAlphas().size === 1 && fillAlphas().has(1), `fills=${fills(main)} alphas=${[...fillAlphas()].join(',')}`)
+}
+
+/* ----------------------- S14 terrain visualizer ----------------------------- */
+
+console.log('S14 terrain — the 3D wireframe landscape')
+{
+  const strokesOf = (): OpRec[] => logOf(main).filter((r) => r.kind === 'stroke')
+  const fillsOf = (): OpRec[] => logOf(main).filter((r) => r.kind === 'fill')
+  const fillAlphaSet = (): Set<number> => new Set(fillsOf().map((r) => r.alpha))
+  /** Full-row polylines: the glow underlays span COLS points, the column
+   *  curtains ROWS+1; the crisp ridge lines stroke per 2-point segment. */
+  const rowStrokes = (n: number): OpRec[] => strokesOf().filter((r) => (r.pts?.length ?? 0) === n)
+  const meanY = (r: OpRec): number => {
+    const pts = r.pts ?? []
+    return pts.reduce((s, p) => s + p.y, 0) / Math.max(1, pts.length)
+  }
+
+  const cfgT = structuredClone(DEFAULT_STUDIO_CONFIG)
+  cfgT.visualizer = {
+    ...structuredClone(DEFAULT_STUDIO_CONFIG.visualizer),
+    style: 'terrain' as const,
+    barCount: 64, // the mesh eats slots at 3/4 weight → a 48-column near edge
+  }
+  const COLS = 48
+  const ROWS = 22
+
+  // Warm-up: settle the recording stub's alpha state (same reason as S12/
+  // S13; drawTerrain pins globalAlpha back to la at its end).
+  renderOne(structuredClone(cfgT), 1.25)
+
+  // 1) Deterministic: the same frozen frame renders the identical op stream
+  //    (fills AND stroke polylines — the value-noise field is pure).
+  renderOne(structuredClone(cfgT), 1.25)
+  const logA = JSON.stringify(logOf(main))
+  renderOne(structuredClone(cfgT), 1.25)
+  const logB = JSON.stringify(logOf(main))
+  check(
+    'terrain renders deterministically (same frame → identical op stream)',
+    logA === logB,
+    `match=${logA === logB} lenA=${logA.length} lenB=${logB.length}`,
+  )
+
+  // 2) The solid earth: a deep stack of depth bands, every alpha inside
+  //    (0,1], the far bands fog-dimmed to well under the near alpha.
+  const bandFills = fillsOf()
+  const bandAlphas = bandFills.map((r) => r.alpha)
+  check(
+    'the earth paints a deep stack of depth bands, fog dims the far ones',
+    bandFills.length >= ROWS + 1 &&
+      bandAlphas.every((a) => a > 0 && a <= 1) &&
+      Math.min(...bandAlphas) < 0.6 * Math.max(...bandAlphas),
+    `fills=${bandFills.length} min=${Math.min(...bandAlphas).toFixed(2)} max=${Math.max(...bandAlphas).toFixed(2)}`,
+  )
+
+  // 3) True perspective: the curtains' near endpoints overflow the canvas
+  //    edges while their far endpoints hug the vanishing corridor.
+  const curtains = rowStrokes(ROWS + 1)
+  const nearX = curtains.map((r) => Math.abs((r.pts ?? [])[(r.pts?.length ?? 1) - 1].x - W / 2))
+  const farX = curtains.map((r) => Math.abs((r.pts ?? [])[0].x - W / 2))
+  const converge = Math.max(...nearX) / Math.max(0.5, Math.max(...farX))
+  check(
+    'columns converge on the vanishing point (near edge dwarfs the far corridor)',
+    curtains.length >= 12 && converge > 6,
+    `curtains=${curtains.length} converge=${converge.toFixed(1)}`,
+  )
+
+  // 4) The rows bunch at the horizon: the last depth step on a curtain is
+  //    many times the first one (geometric u steps).
+  const bunches = curtains.map((r) => {
+    const pts = r.pts ?? []
+    const farGap = Math.abs(pts[1].y - pts[0].y)
+    const nearGap = Math.abs(pts[pts.length - 1].y - pts[pts.length - 2].y)
+    return nearGap / Math.max(0.05, farGap)
+  })
+  check(
+    'depth rows bunch at the horizon (near gaps dwarf the far ones)',
+    bunches.length >= 12 && Math.min(...bunches) > 4,
+    `curtains=${bunches.length} minBunch=${Math.min(...bunches).toFixed(1)}`,
+  )
+
+  // 5) Alive in silence: the idle rolling wave keeps the wireframe drawing.
+  const silent = { ...frameAt(0.5), freq: new Float32Array(64), energy: 0, bass: 0, treble: 0, sub: 0 }
+  for (const c of [main, ...created]) logOf(c).length = 0
+  renderFrame(rc, silent, structuredClone(cfgT))
+  const silentRows = rowStrokes(COLS).length
+  check('a silent frame still paints the near ridges (idle wave)', silentRows >= 10, `rowStrokes=${silentRows}`)
+
+  // 6) Bass lifts the near hills: the nearest ridge row sits measurably
+  //    higher with a loud low end than in silence (same frozen t).
+  const loud = {
+    ...frameAt(0.5),
+    freq: Float32Array.from({ length: 64 }, (_, i) => (i < 8 ? 1 : 0.1)),
+    bass: 0.9,
+  }
+  const silentNear = Math.max(...rowStrokes(COLS).map(meanY))
+  for (const c of [main, ...created]) logOf(c).length = 0
+  renderFrame(rc, loud, structuredClone(cfgT))
+  const loudNear = Math.max(...rowStrokes(COLS).map(meanY))
+  check(
+    'a loud bass frame lifts the near ridge well above the silent one',
+    loudNear < silentNear - 15,
+    `loud=${loudNear.toFixed(1)} silent=${silentNear.toFixed(1)}`,
+  )
+
+  // 7) The flow dial rolls the terrain: same frozen frame, flow 0.8 vs 0 —
+  //    the ridges land somewhere else entirely.
+  renderOne({ ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, flowSpeed: 0.8 } }, 0.5)
+  const flowing = JSON.stringify(strokesOf())
+  renderOne({ ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, flowSpeed: 0 } }, 0.5)
+  const still = JSON.stringify(strokesOf())
+  check('flow speed rolls the hills toward the camera', flowing !== still, `moved=${flowing !== still}`)
+
+  // 8) The Fill dial: 0 = pure wireframe (no earth bands at all), the
+  //    default 0.4 paints the full depth stack.
+  renderOne({ ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, terrainFill: 0 } }, 0.5)
+  const wireframe = fillsOf().length
+  renderOne(structuredClone(cfgT), 0.5)
+  const earth = fillsOf().length
+  check(
+    'fill 0 is the pure wireframe; the default paints the earth bands',
+    wireframe === 0 && earth >= ROWS + 1,
+    `wireframe=${wireframe} earth=${earth}`,
+  )
+
+  // 9) The Transparency dial scales every terrain pass to exactly half —
+  //    the S9 contract extends to fills, curtains, glow and ridges alike.
+  renderOne(structuredClone(cfgT), 0.5)
+  const baseAlphas = new Set([...fillsOf(), ...strokesOf()].map((r) => r.alpha))
+  renderOne({ ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, transparency: 0.5 } }, 0.5)
+  const halfSet = new Set([...fillsOf(), ...strokesOf()].map((r) => r.alpha))
+  check(
+    'transparency 50% scales every terrain pass to exactly half',
+    halfSet.size === baseAlphas.size && [...halfSet].every((a) => baseAlphas.has(a * 2)),
+    `base=${baseAlphas.size} half=${halfSet.size}`,
+  )
+
+  // 10) Bar count densifies the mesh (the dial feeds the columns at 3/4
+  //     weight — the ridge segment count scales with it).
+  renderOne({ ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, barCount: 64 } }, 0.5)
+  const few = strokesOf().length
+  renderOne({ ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, barCount: 192 } }, 0.5)
+  const many = strokesOf().length
+  check('bar count densifies the wireframe', many > few && few > 500, `few=${few} many=${many}`)
+
+  // 11) The palette sweeps across the columns: the ridge segments carry the
+  //     gradient's colors (sunset: orange → pink → violet).
+  renderOne(structuredClone(cfgT), 0.5)
+  const ridgeColors = new Set(
+    strokesOf()
+      .filter((r) => (r.pts?.length ?? 0) === 2)
+      .map((r) => String(r.style)),
+  )
+  check('the palette sweeps across the ridge columns', ridgeColors.size >= 3, `colors=${ridgeColors.size}`)
+
+  // 12) Vertical orientation: the whole landscape rotates into a column —
+  //     same op count, every point finite (no NaN leaks from the rotation).
+  renderOne(
+    { ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, orientation: 'vertical' as const } },
+    0.5,
+  )
+  const vStrokes = strokesOf()
+  const finite = vStrokes.every((r) => (r.pts ?? []).every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)))
+  check(
+    'vertical orientation rotates the landscape cleanly',
+    vStrokes.length > 500 && finite,
+    `strokes=${vStrokes.length} finite=${finite}`,
+  )
+
+  // 13) The other styles stay untouched: bars still paints its classic
+  //     24-bar fill stack at alpha 1 (the stub now logs strokes too, so
+  //     this also guards the shared mock against regressions).
+  const cfgBars = structuredClone(DEFAULT_STUDIO_CONFIG)
+  cfgBars.visualizer = { ...structuredClone(DEFAULT_STUDIO_CONFIG.visualizer), style: 'bars' as const, glow: false }
+  cfgBars.visualizer.barCount = 24
+  renderOne(structuredClone(cfgBars))
+  check(
+    'bars render unchanged after adding terrain (24 fills at full alpha)',
+    fills(main) === 24 && fillAlphaSet().size === 1 && fillAlphaSet().has(1),
+    `fills=${fills(main)} alphas=${[...fillAlphaSet()].join(',')}`,
+  )
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)
