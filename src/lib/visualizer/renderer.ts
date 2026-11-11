@@ -531,6 +531,9 @@ function drawVisualizer(
       else drawGrid(styleRc, frame, cfg, S)
       break
     }
+    case 'sphere':
+      drawSphere(rc, frame, cfg, S)
+      break
     case 'radial':
       drawRadial(rc, frame, cfg, S)
       break
@@ -1683,4 +1686,172 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
       ctx.stroke()
     }
   }
+}
+
+/* ---------------------------------- sphere ----------------------------------- */
+
+/**
+ * Sphere — a 3D dot-matrix planet. A latitude/longitude grid of dots on a
+ * sphere that spins around a tilted axis; every latitude ring rides its own
+ * frequency band (bass at the equator, treble toward the poles), and each
+ * dot grows an audio "quill" outward with its band's energy. A pinhole
+ * projection plus depth shading (the back hemisphere prints dimmer, smaller
+ * and behind the front dots) sells the 3D; a palette halo breathes with the
+ * bass behind it. Pure styleTime math → deterministic exports.
+ */
+function drawSphere(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+  const { ctx, width: W, height: H } = rc
+  const t = frame.styleTime
+  const freq = frame.freq
+  const len = Math.max(1, freq.length)
+  const sens = clamp(cfg.sensitivity, 0, 3)
+  const bass = clamp01(frame.bass)
+  const la = visualizerLayerAlpha(cfg)
+  const spin = clamp01(cfg.sphereSpin ?? 0.35)
+  const quills = clamp01(cfg.sphereQuills ?? 0.6)
+
+  // Mesh density — rings ride Bar count at 1/5 weight (poles would mush
+  // past ~26 rings), dots-per-ring at 4/5. Bar count 64 → a 13 × 54 planet.
+  const LAT = Math.round(clamp(cfg.barCount * 0.2, 10, 26))
+  const LON = Math.round(clamp(cfg.barCount * 0.85, 24, 88))
+
+  const cx = W / 2
+  const cy = H / 2
+  const R = Math.min(W, H) * 0.3
+  const CAM = R * 3.4 // pinhole distance — p = CAM / (CAM + z), z ∈ [-1.6R .. R]
+
+  // Spin around the Y axis + a gentle axial wobble, both pure styleTime.
+  // The fixed tilt leans the north pole toward the camera so the top of the
+  // planet reads as a ball, not a flat disc.
+  const ang = t * (0.2 + spin * 1.3)
+  const ca = Math.cos(ang)
+  const sa = Math.sin(ang)
+  const tilt = -0.42 + 0.05 * Math.sin(t * 0.45)
+  const ct = Math.cos(tilt)
+  const st = Math.sin(tilt)
+
+  const shell = 1 + bass * 0.16 // the whole planet breathes with the low end
+
+  // Per-ring constants: trig, the ring's frequency bin (equator = bass,
+  // poles = treble) and its palette color (swept south pole → north pole).
+  const sinT = new Float64Array(LAT)
+  const cosT = new Float64Array(LAT)
+  const bins = new Int32Array(LAT)
+  const colors: string[] = new Array(LAT)
+  for (let i = 0; i < LAT; i++) {
+    const theta = (Math.PI * (i + 0.5)) / LAT // mid-ring, avoids the exact poles
+    sinT[i] = Math.sin(theta)
+    cosT[i] = Math.cos(theta)
+    const latN = Math.abs(theta / Math.PI - 0.5) * 2
+    bins[i] = Math.min(len - 1, Math.floor(Math.pow(latN, 1.15) * len))
+    colors[i] = barColorAt(cfg, frame, i, LAT)
+  }
+
+  const total = LAT * LON
+  // Screen-space point records — collected unsorted, painted far → near.
+  const px = new Float64Array(total) // dot (quill tip) position
+  const py = new Float64Array(total)
+  const pa = new Float64Array(total) // depth-shaded alpha
+  const pr = new Float64Array(total) // dot radius (px)
+  const qx0 = new Float64Array(total) // quill root, on the shell
+  const qy0 = new Float64Array(total)
+  const qx1 = new Float64Array(total) // quill tip
+  const qy1 = new Float64Array(total)
+  const pc: string[] = new Array(total)
+  const zs = new Float64Array(total) // view depth for the painter's sort
+
+  let n = 0
+  for (let i = 0; i < LAT; i++) {
+    const ringPhase = i * 0.35 // stagger rings so longitude columns don't line up
+    for (let j = 0; j < LON; j++, n++) {
+      const phi = (2 * Math.PI * j) / LON + ringPhase
+      // This dot's band energy + the idle shimmer (alive in silence).
+      const amp0 = clamp01((freq[bins[i]] ?? 0) * sens)
+      const idle = 0.05 + 0.05 * Math.sin(phi * 3 + t * 1.2 + i * 0.7)
+      const amp = Math.max(amp0, idle)
+
+      // Unit-sphere point → spin → tilt. Rotation preserves the length, so
+      // (x1, y2, z2) is still the radial direction for the displacement.
+      const x0 = sinT[i] * Math.cos(phi)
+      const y0 = cosT[i]
+      const z0 = sinT[i] * Math.sin(phi)
+      const x1 = x0 * ca + z0 * sa
+      const z1 = -x0 * sa + z0 * ca
+      const y2 = y0 * ct - z1 * st
+      const z2 = y0 * st + z1 * ct
+
+      const surface = R * shell
+      const tip = surface * (1 + amp * 0.5 * quills)
+
+      // Pinhole projection of the quill root (on the shell) and tip.
+      const pR = CAM / (CAM + z2 * surface)
+      const pT = CAM / (CAM + z2 * tip)
+      qx0[n] = cx + x1 * surface * pR
+      qy0[n] = cy - y2 * surface * pR
+      qx1[n] = cx + x1 * tip * pT
+      qy1[n] = cy - y2 * tip * pT
+      px[n] = qx1[n]
+      py[n] = qy1[n]
+
+      // Depth shading: 1 at the near pole, fading to a dim print on the
+      // back hemisphere — the see-through far side is the 3D read.
+      const front = clamp01((R - z2 * surface) / (2 * R))
+      pa[n] = 0.2 + 0.8 * Math.pow(front, 1.35)
+      pr[n] = (0.9 + 1.5 * front + amp * 1.2) * S
+      pc[n] = colors[i]
+      zs[n] = z2 * surface
+    }
+  }
+
+  // Painter's order: the far hemisphere first, the near hemisphere last, so
+  // front dots overlap the dim back print. Stable sort → deterministic.
+  const order = Array.from({ length: total }, (_, k) => k)
+  order.sort((a, b) => zs[b] - zs[a])
+
+  // Pass 1 — the atmosphere: a soft palette halo that swells with the bass
+  // (the Glow switch) + a faint core disc so the planet has body behind the
+  // dot shell even where the far side thins out.
+  const mid = colors[LAT >> 1]
+  ctx.globalAlpha = la
+  const halo = ctx.createRadialGradient(cx, cy, R * 0.4, cx, cy, R * 1.55)
+  halo.addColorStop(0, withAlpha(mid, 0))
+  halo.addColorStop(0.55, withAlpha(mid, 0.02 + bass * 0.05))
+  halo.addColorStop(0.8, withAlpha(mid, 0.1 + bass * 0.13))
+  halo.addColorStop(1, withAlpha(mid, 0))
+  if (cfg.glow) {
+    ctx.fillStyle = halo
+    ctx.beginPath()
+    ctx.arc(cx, cy, R * 1.55, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.02)
+  core.addColorStop(0, withAlpha(mid, 0.14 + bass * 0.1))
+  core.addColorStop(1, withAlpha(mid, 0))
+  ctx.fillStyle = core
+  ctx.beginPath()
+  ctx.arc(cx, cy, R * 1.02, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Pass 2 — the dot shell: quill stroke (root → tip) + the tip dot, far →
+  // near. Quills skip when they'd be sub-pixel (quills at 0 / a still shell).
+  ctx.lineWidth = Math.max(0.75, 1.1 * S)
+  for (let k = 0; k < total; k++) {
+    const idx = order[k]
+    const dx = qx1[idx] - qx0[idx]
+    const dy = qy1[idx] - qy0[idx]
+    if (dx * dx + dy * dy > 0.64) {
+      ctx.globalAlpha = la * pa[idx] * 0.85
+      ctx.strokeStyle = pc[idx]
+      ctx.beginPath()
+      ctx.moveTo(qx0[idx], qy0[idx])
+      ctx.lineTo(qx1[idx], qy1[idx])
+      ctx.stroke()
+    }
+    ctx.globalAlpha = la * pa[idx]
+    ctx.fillStyle = pc[idx]
+    ctx.beginPath()
+    ctx.arc(px[idx], py[idx], pr[idx], 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.globalAlpha = la
 }

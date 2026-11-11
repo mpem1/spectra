@@ -33,7 +33,7 @@ export type GradientPresetId = 'sunset' | 'aurora' | 'ember' | 'neon' | 'mono'
 
 /* --------------------------------- Visualizer -------------------------------- */
 
-export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'perspective' | 'terrain'
+export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'perspective' | 'terrain' | 'sphere'
 export type MirrorMode = 'none' | 'mirror' | 'center'
 
 export interface VisualizerConfig {
@@ -106,6 +106,13 @@ export interface VisualizerConfig {
    *  near, so nearer bands overlap farther ones like real hills). 0 = the
    *  pure glowing wireframe. */
   terrainFill: number
+  /** Sphere style — spin speed 0..1. How fast the dot-matrix planet turns
+   *  around its tilted axis (0 = a slow drift, 1 = a fast whirl). */
+  sphereSpin: number
+  /** Sphere style — audio quills 0..1. Every dot grows a spike outward with
+   *  its own frequency band's energy (the bass equator surges, the treble
+   *  poles crackle). 0 = the smooth pulsing shell, dots glued to the surface. */
+  sphereQuills: number
 }
 
 /* --------------------------------- Background -------------------------------- */
@@ -1023,6 +1030,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     perspTexture: 0.45,
     perspEcho: 0.55,
     terrainFill: 0.4,
+    sphereSpin: 0.35,
+    sphereQuills: 0.6,
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 48,

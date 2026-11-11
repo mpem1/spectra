@@ -1557,5 +1557,161 @@ console.log('S14 terrain — the 3D wireframe landscape')
   )
 }
 
+/* ----------------------- S15 sphere visualizer ------------------------------ */
+
+console.log('S15 sphere — the 3D dot-matrix planet')
+{
+  const strokesOf = (): OpRec[] => logOf(main).filter((r) => r.kind === 'stroke')
+  const fillsOf = (): OpRec[] => logOf(main).filter((r) => r.kind === 'fill')
+  /** Dot fills carry string fillStyles; the two atmosphere passes fill with
+   *  gradient objects, so filtering on the style type isolates the shell. */
+  const dotsOf = (): OpRec[] => fillsOf().filter((r) => typeof r.style === 'string')
+  const gradientFills = (): OpRec[] => fillsOf().filter((r) => typeof r.style !== 'string')
+  const quillsOf = (): OpRec[] => strokesOf().filter((r) => (r.pts?.length ?? 0) === 2)
+  const meanDist = (recs: OpRec[]): number => {
+    let s = 0
+    let c = 0
+    for (const r of recs) for (const p of r.pts ?? []) { s += Math.hypot(p.x - W / 2, p.y - H / 2); c++ }
+    return c > 0 ? s / c : 0
+  }
+
+  const cfgS = structuredClone(DEFAULT_STUDIO_CONFIG)
+  cfgS.visualizer = {
+    ...structuredClone(DEFAULT_STUDIO_CONFIG.visualizer),
+    style: 'sphere' as const,
+    barCount: 64, // → a 13-ring × 54-dot planet (812 dots)
+  }
+  const LAT = 13
+  const LON = 54
+
+  // Warm-up: settle the recording stub's alpha state (same reason as S12–
+  // S14; drawSphere pins globalAlpha back to la at its end).
+  renderOne(structuredClone(cfgS), 1.25)
+
+  // 1) Deterministic: the same frozen frame renders the identical op stream
+  //    (the spin, tilt wobble, shimmer and painter's sort are all pure).
+  renderOne(structuredClone(cfgS), 1.25)
+  const logA = JSON.stringify(logOf(main))
+  renderOne(structuredClone(cfgS), 1.25)
+  const logB = JSON.stringify(logOf(main))
+  check(
+    'sphere renders deterministically (same frame → identical op stream)',
+    logA === logB,
+    `match=${logA === logB} lenA=${logA.length} lenB=${logB.length}`,
+  )
+
+  // 2) The full dot shell: every ring × longitude dot paints its quill +
+  //    tip dot when the band is loud (a singing frame, all bins hot).
+  const singing = { ...frameAt(0.5), freq: Float32Array.from({ length: 64 }, () => 0.8), bass: 0.4 }
+  for (const c of [main, ...created]) logOf(c).length = 0
+  renderFrame(rc, singing, structuredClone(cfgS))
+  check(
+    'the planet paints its full lat/lon dot shell + quills',
+    dotsOf().length >= LAT * LON && quillsOf().length >= LAT * LON * 0.95,
+    `dots=${dotsOf().length} expect>=${LAT * LON} quills=${quillsOf().length}`,
+  )
+
+  // 3) Depth shading: the back hemisphere prints well dimmer than the front.
+  const dotAlphas = dotsOf().map((r) => r.alpha)
+  check(
+    'the back hemisphere prints dimmer than the front (depth shading)',
+    dotAlphas.every((a) => a > 0 && a <= 1) &&
+      Math.min(...dotAlphas) < 0.45 * Math.max(...dotAlphas),
+    `min=${Math.min(...dotAlphas).toFixed(2)} max=${Math.max(...dotAlphas).toFixed(2)}`,
+  )
+
+  // 4) The palette sweeps pole to pole: the dots carry the gradient's colors
+  //    (sunset: orange → pink → violet across the latitude rings).
+  const dotColors = new Set(dotsOf().map((r) => String(r.style)))
+  check('the palette sweeps across the latitude rings', dotColors.size >= 3, `colors=${dotColors.size}`)
+
+  // 5) Alive in silence: the idle shimmer keeps the shell drawn and quilled.
+  const silent = { ...frameAt(0.5), freq: new Float32Array(64), energy: 0, bass: 0, treble: 0, sub: 0 }
+  for (const c of [main, ...created]) logOf(c).length = 0
+  renderFrame(rc, silent, structuredClone(cfgS))
+  check(
+    'a silent frame still paints the dot shell + idle quills',
+    dotsOf().length >= LAT * LON && quillsOf().length > 100,
+    `dots=${dotsOf().length} quills=${quillsOf().length}`,
+  )
+
+  // 6) Bass swells the whole shell: the quill geometry rides a measurably
+  //    bigger radius with a loud low end than in silence (same frozen t).
+  const loud = {
+    ...frameAt(0.5),
+    freq: Float32Array.from({ length: 64 }, (_, i) => (i < 8 ? 1 : 0.1)),
+    bass: 0.9,
+  }
+  const quietDist = meanDist(quillsOf())
+  for (const c of [main, ...created]) logOf(c).length = 0
+  renderFrame(rc, loud, structuredClone(cfgS))
+  const loudDist = meanDist(quillsOf())
+  check(
+    'a loud bass frame swells the shell well past the silent one',
+    loudDist > quietDist + 2,
+    `loud=${loudDist.toFixed(1)} quiet=${quietDist.toFixed(1)}`,
+  )
+
+  // 7) The Spin dial turns the planet: same frozen frame, spin 0.9 vs 0 —
+  //    the dots (and their quills) land somewhere else entirely.
+  renderOne({ ...structuredClone(cfgS), visualizer: { ...cfgS.visualizer, sphereSpin: 0.9 } }, 0.5)
+  const spinning = JSON.stringify(quillsOf())
+  renderOne({ ...structuredClone(cfgS), visualizer: { ...cfgS.visualizer, sphereSpin: 0 } }, 0.5)
+  const still = JSON.stringify(quillsOf())
+  check('spin speed turns the planet', spinning !== still, `moved=${spinning !== still}`)
+
+  // 8) The Quills dial: 0 = the smooth shell (no quill strokes at all),
+  //    the default 0.6 grows the audio spikes across the shell.
+  renderOne({ ...structuredClone(cfgS), visualizer: { ...cfgS.visualizer, sphereQuills: 0 } }, 0.5)
+  const smooth = quillsOf().length
+  renderOne(structuredClone(cfgS), 0.5)
+  check(
+    'quills 0 is the smooth shell; the default grows the spikes',
+    smooth === 0 && quillsOf().length > 300,
+    `smooth=${smooth} quilled=${quillsOf().length}`,
+  )
+
+  // 9) The Glow switch: off kills the atmosphere halo, the faint core disc
+  //    stays (the planet keeps its body behind the shell either way).
+  renderOne({ ...structuredClone(cfgS), visualizer: { ...cfgS.visualizer, glow: false } }, 0.5)
+  const offHalo = gradientFills().length
+  renderOne(structuredClone(cfgS), 0.5)
+  const onHalo = gradientFills().length
+  check('glow off drops the atmosphere halo (core disc stays)', offHalo === 1 && onHalo === 2, `off=${offHalo} on=${onHalo}`)
+
+  // 10) The Transparency dial scales every sphere pass to exactly half —
+  //     dots AND quills alike (the S9 contract extends to the planet).
+  renderOne(structuredClone(cfgS), 0.5)
+  const baseAlphas = new Set([...dotsOf(), ...quillsOf()].map((r) => r.alpha))
+  renderOne({ ...structuredClone(cfgS), visualizer: { ...cfgS.visualizer, transparency: 0.5 } }, 0.5)
+  const halfSet = new Set([...dotsOf(), ...quillsOf()].map((r) => r.alpha))
+  check(
+    'transparency 50% scales every sphere pass to exactly half',
+    halfSet.size === baseAlphas.size && [...halfSet].every((a) => baseAlphas.has(a * 2)),
+    `base=${baseAlphas.size} half=${halfSet.size}`,
+  )
+
+  // 11) Bar count densifies the planet (rings at 1/5 weight, dots-per-ring
+  //     at 4/5 — 24 → a 10 × 24 planet, 192 → 26 × 88).
+  renderOne({ ...structuredClone(cfgS), visualizer: { ...cfgS.visualizer, barCount: 24 } }, 0.5)
+  const few = dotsOf().length
+  renderOne({ ...structuredClone(cfgS), visualizer: { ...cfgS.visualizer, barCount: 192 } }, 0.5)
+  const many = dotsOf().length
+  check('bar count densifies the dot shell', many > few && few >= 240, `few=${few} many=${many}`)
+
+  // 12) The other styles stay untouched: bars still paints its classic
+  //     24-bar fill stack at alpha 1.
+  const cfgBars = structuredClone(DEFAULT_STUDIO_CONFIG)
+  cfgBars.visualizer = { ...structuredClone(DEFAULT_STUDIO_CONFIG.visualizer), style: 'bars' as const, glow: false }
+  cfgBars.visualizer.barCount = 24
+  renderOne(structuredClone(cfgBars))
+  const barFillAlphas = new Set(fillsOf().map((r) => r.alpha))
+  check(
+    'bars render unchanged after adding sphere (24 fills at full alpha)',
+    fills(main) === 24 && barFillAlphas.size === 1 && barFillAlphas.has(1),
+    `fills=${fills(main)} alphas=${[...barFillAlphas].join(',')}`,
+  )
+}
+
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { AudioWaveform, BarChart3, Droplet, Grid3x3, Mountain, Move3d, Radar, Sparkles, Wand2, Waves, Loader2 } from 'lucide-react'
+import { AudioWaveform, BarChart3, Droplet, Grid3x3, Mountain, Move3d, Orbit, Radar, Sparkles, Wand2, Waves, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { VisualizerStyle } from '@/lib/visualizer/types'
 import { extractPaletteFromArt } from '@/lib/visualizer/palette'
@@ -27,6 +27,7 @@ const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] =
   { id: 'ribbon', label: 'Ribbon', icon: Waves },
   { id: 'perspective', label: 'Perspective', icon: Move3d },
   { id: 'terrain', label: 'Terrain', icon: Mountain },
+  { id: 'sphere', label: 'Sphere', icon: Orbit },
 ]
 
 /** Plain uppercase section label (VISUALIZER / GRADIENT / …) like the reference UI. */
@@ -319,6 +320,36 @@ export function StyleTab() {
             </p>
           </>
         ) : null}
+        {/* Sphere — the 3D planet's own dressing */}
+        {visualizer.style === 'sphere' ? (
+          <>
+            <SliderRow
+              label="Spin"
+              value={visualizer.sphereSpin}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={(sphereSpin) => patchVisualizer({ sphereSpin })}
+              format={(v) => v.toFixed(2)}
+            />
+            <SliderRow
+              label="Quills"
+              value={visualizer.sphereQuills}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={(sphereQuills) => patchVisualizer({ sphereQuills })}
+              format={(v) => v.toFixed(2)}
+            />
+            <p className="text-xs leading-relaxed text-zinc-500">
+              A 3D planet of dots spinning on a tilted axis — every latitude
+              rides its own frequency band, so the bass equator surges while
+              the poles crackle with treble, and the back hemisphere prints
+              dim for the depth. Quills grows the audio spikes; Spin sets the
+              rotation. The palette sweeps pole to pole.
+            </p>
+          </>
+        ) : null}
         <SliderRow
           label="Sensitivity"
           value={visualizer.sensitivity}
@@ -328,7 +359,7 @@ export function StyleTab() {
           onChange={(sensitivity) => patchVisualizer({ sensitivity })}
           format={(v) => v.toFixed(1)}
         />
-        {(visualizer.style !== 'ribbon' && visualizer.style !== 'terrain') ? (
+        {(visualizer.style !== 'ribbon' && visualizer.style !== 'terrain' && visualizer.style !== 'sphere') ? (
           <SliderRow
             label="Roundness"
             value={visualizer.roundness}
@@ -339,7 +370,7 @@ export function StyleTab() {
             format={(v) => v.toFixed(2)}
           />
         ) : null}
-        {(visualizer.style !== 'ribbon' && visualizer.style !== 'terrain') ? (
+        {(visualizer.style !== 'ribbon' && visualizer.style !== 'terrain' && visualizer.style !== 'sphere') ? (
           <SliderRow
             label="Gap"
             value={visualizer.gap}
@@ -351,10 +382,11 @@ export function StyleTab() {
           />
         ) : null}
 
-        {(visualizer.style === 'perspective' || visualizer.style === 'terrain') ? (
+        {(visualizer.style === 'perspective' || visualizer.style === 'terrain' || visualizer.style === 'sphere') ? (
           // The road and the landscape are horizon scenes (up is the sky,
-          // down is the ground) — mirroring makes no sense for them, so
-          // there is no Mirror choice — just the glow switch.
+          // down is the ground), and the sphere is symmetric around its own
+          // center — mirroring any of them changes nothing, so there is no
+          // Mirror choice — just the glow switch.
           <div className="space-y-1.5 pt-1">
             <MicroLabel>Glow</MicroLabel>
             <div className="flex h-8 items-center justify-end">
