@@ -95,9 +95,17 @@
  * that spelled an artificial grid on gradients; stamping is then a max-blend
  * copy (~3 ms for the whole frame, measured), and alpha-max reproduces the
  * same dot-union a nonzero Path2D fill paints.
+ *
+ * Print grain: on a PERFECT lattice the merged dots of dark tones leave
+ * perfectly aligned square holes — invisible in the classic print (the
+ * picture shows through them) but glaring on the poster's paper at larger
+ * dot sizes (the "square silhouette"). Dots big enough to merge therefore
+ * carry a deterministic per-cell position offset (pure hash — see the stamp
+ * loop) that breaks the alignment the way real print grain does; midtone
+ * dots stay exactly on the grid.
  */
 import type { AudioFrame, HalftoneFilterConfig, RenderContext } from './types'
-import { clamp01, getWork, resetWork } from './filter-utils'
+import { clamp01, getWork, resetWork, hash01 } from './filter-utils'
 
 /* --------------------------------- ink sprites --------------------------------- */
 
@@ -832,6 +840,29 @@ export function drawHalftoneFilter(
       const r = Math.sqrt(depth) * cellS * 0.72 * press // ink area grows with darkness
       if (r < 0.4) continue
       const gx = (i + 0.5 - n / 2) * cellS
+      // Print grain — the shadow-phase fix. On a perfect lattice the merged
+      // dots of dark tones leave holes that are EXACTLY aligned: four
+      // overlapping neighbours leave one astroid hole, and every cell leaves
+      // the same one, so the dark end of any smooth area fills with a rigid
+      // grid of identical square holes — the "square silhouette" the poster's
+      // white paper makes unmissable at larger dot sizes (classic print hides
+      // the same holes behind the picture, which is why they never showed
+      // before Print only / the fills existed). Real print's grain breaks
+      // that grid up, so dots big enough to merge carry a deterministic
+      // position offset (pure hash of the cell indices — no randomness, no
+      // time, preview and exports stay frame-exact). The ramp starts right
+      // where the star-shaped holes first appear (dots ~85% of merging) and
+      // saturates just past full diagonal merge — the tones where the rigid
+      // grid actually reads — while the clean round-dot midtone lattice
+      // above the merge onset stays exactly on the grid.
+      const mergeT = (r - cellS * 0.46) / (cellS * 0.14)
+      let jx = 0
+      let jy = 0
+      if (mergeT > 0) {
+        const amp = Math.min(1, mergeT) * cellS * 0.14
+        jx = (hash01(i * 2 + 1, j * 2 + 3) - 0.5) * 2 * amp
+        jy = (hash01(j * 2 + 5, i * 2 + 7) - 0.5) * 2 * amp
+      }
       // Stamp position: R(45°)·(gx, gy) + center, snapped to the pixel grid
       // with the sub-pixel residue carried by the sprite variant at 1/4 px
       // steps (≤ 0.125 px center error). The old 1/2 px steps left a periodic
@@ -839,8 +870,8 @@ export function drawHalftoneFilter(
       // columns/rows into faint stripes at small dot sizes — half the
       // quantization error removes the beat's contrast, and the dot LATTICE
       // stays just as true.
-      const fx = W / 2 + (gx - gy) * SQ
-      const fy = H / 2 + (gx + gy) * SQ
+      const fx = W / 2 + (gx - gy) * SQ + jx
+      const fy = H / 2 + (gx + gy) * SQ + jy
       const sx = Math.round(fx)
       const sy = Math.round(fy)
       // Residue ∈ [−0.5, 0.5); ×4 rounding yields indices 0..4 ⇔ offsets

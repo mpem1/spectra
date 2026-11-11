@@ -1076,6 +1076,182 @@ console.log('S11 halftone ink fills — the picture or the gradient inside the d
   )
 }
 
+/* ------------------- S12 halftone print grain (shadow-phase fix) ------------------- */
+
+console.log('S12 halftone print grain — merged dots carry grain, midtone lattice stays exact')
+{
+  // The print grain displaces merged dots by a pure hash of the cell indices
+  // so the shadow-phase holes never align into the rigid square lattice users
+  // reported as a "square silhouette" on the poster's paper. The contract:
+  // deterministic (no randomness, no song time), and midtone dots — below the
+  // merge onset — stay EXACTLY on the 45° lattice.
+  //
+  // The assertions run on their own 960×540 rig: at the shared 320×180 size
+  // the factory cell pitch (~3 px) aliases the lattice onto the pixel grid so
+  // hard that no clean center/midpoint structure exists to assert against.
+  // At 960×540 with dotSize 14 the pitch is ~11 px — dot centers are solid
+  // ink, midpoints are pure paper, and everything is measurable.
+  const BW = 960
+  const BH = 540
+  const bmain = makeCanvas()
+  const bctx = (bmain as unknown as { getContext: () => CanvasRenderingContext2D }).getContext()
+  const brc = { ctx: bctx, width: BW, height: BH } as unknown as RenderContext
+  const cfg12 = baseConfig()
+  cfg12.anaglyphFilter = { ...cfg12.anaglyphFilter, enabled: false }
+  cfg12.halftoneFilter = { ...cfg12.halftoneFilter, enabled: true, strength: 1, dotSize: 14 }
+
+  const pimgsOf = (c: HTMLCanvasElement): OpRec[] => logOf(c).filter((r) => r.kind === 'pimg')
+  const bLogOf = (c: HTMLCanvasElement): OpRec[] => logOf(c)
+  const drawsOf = (c: HTMLCanvasElement): OpRec[] => bLogOf(c).filter((r) => r.kind === 'draw')
+  /** Clear every log, render one frame into the big rig. */
+  const renderBig = (t = 0.5): void => {
+    for (const c of created) logOf(c).length = 0
+    renderFrame(brc, frameAt(t), cfg12)
+  }
+  /** The ink buffer put onto the ink canvas THIS frame (960×540 = 2 073 600 B). */
+  const inkOf = (): Uint8ClampedArray | undefined => {
+    for (const c of created) {
+      const rec = pimgsOf(c).find((r) => {
+        const img = r.style as { data?: Uint8ClampedArray } | undefined
+        return !!img && img.data instanceof Uint8ClampedArray && img.data.length === BW * BH * 4
+      })
+      if (rec) return (rec.style as { data: Uint8ClampedArray }).data
+    }
+    return undefined
+  }
+  /** The halftone's sample canvas: the work canvas that drew the big rig's
+   *  live frame (identified fresh each call — work canvases are cached and
+   *  reused, so creation order says nothing). */
+  const sampleOf = (): HTMLCanvasElement => {
+    const sample = created.find((c) => drawsOf(c).length === 1 && drawsOf(c)[0].src === bmain)
+    if (!sample) throw new Error('S12: sample canvas not found')
+    return sample
+  }
+  /** Feed the sampler a uniform tone so every cell prints the same dot. */
+  const feedTone = (v: number): void => {
+    const sample = sampleOf()
+    const b = baseOf.get(sample)
+    if (!b) throw new Error('S12: no method table for the sample canvas')
+    b.getImageData = (
+      _x: number,
+      _y: number,
+      w: number,
+      h: number,
+    ) => {
+      const data = new Uint8ClampedArray(w * h * 4)
+      for (let p = 0; p < w * h; p++) {
+        data[p * 4] = v
+        data[p * 4 + 1] = v
+        data[p * 4 + 2] = v
+        data[p * 4 + 3] = 255
+      }
+      return { data, width: w, height: h }
+    }
+  }
+
+  // Rig geometry: diag = ceil(hypot(960,540)) = 1102, cell = round(14·540/720)
+  // = 11 → wait: round(14·0.75) = round(10.5) = 11 → n = ceil(1102/11) = 101,
+  // pitch = 1102/101 ≈ 10.91.
+  const diag = Math.ceil(Math.hypot(BW, BH))
+  const cell = Math.max(3, Math.round(14 * (BH / 720)))
+  const n = Math.ceil(diag / cell)
+  const cellS = diag / n
+  const SQ = Math.SQRT1_2
+  const latticeXY = (i: number, j: number): [number, number] => {
+    const gx = (i + 0.5 - n / 2) * cellS
+    const gy = (j + 0.5 - n / 2) * cellS
+    return [Math.round(BW / 2 + (gx - gy) * SQ), Math.round(BH / 2 + (gx + gy) * SQ)]
+  }
+
+  // 1) Midtone tone 94 against the factory dotRange 0.55: depth =
+  //    (0.55−94/255)/0.55 → r ≈ 0.41·cellS — below the 0.46·cellS grain
+  //    onset, so every dot sits EXACTLY on its lattice point: the center
+  //    pixel is solid ink at any sub-pixel residue (r + rim/2 > 2.9 px),
+  //    and the square midpoint halfway between the four dots of a cell is
+  //    PURE paper (0.71·cellS ≈ 7.7 px away — past r + rim ≈ 5.5 even at
+  //    the nearest 4×4 subsample). A regression that drops the ramp and
+  //    grains every dot displaces dots toward those midpoints and lights
+  //    them up, failing this check.
+  renderBig() // one frame so the sample canvas exists to be retargeted
+  feedTone(94)
+  renderBig()
+  const mid = inkOf()
+  {
+    let centersInked = 0
+    let centersProbed = 0
+    let midpointsClean = 0
+    let midpointsProbed = 0
+    if (mid) {
+      for (let j = 4; j < n - 4; j += 3) {
+        for (let i = 4; i < n - 4; i += 3) {
+          const [sx, sy] = latticeXY(i, j)
+          if (sx <= 3 || sy <= 3 || sx >= BW - 4 || sy >= BH - 4) continue
+          centersProbed++
+          if (mid[(sy * BW + sx) * 4 + 3] === 255) centersInked++
+          const [nx, ny] = latticeXY(i + 1, j + 1)
+          const mx = Math.round((sx + nx) / 2)
+          const my = Math.round((sy + ny) / 2)
+          if (mx <= 3 || my <= 3 || mx >= BW - 4 || my >= BH - 4) continue
+          midpointsProbed++
+          if (mid[(my * BW + mx) * 4 + 3] === 0) midpointsClean++
+        }
+      }
+    }
+    check(
+      'midtone dots sit exactly on the lattice (no grain below the merge onset)',
+      !!mid && centersProbed > 20 && centersInked === centersProbed && midpointsClean === midpointsProbed,
+      `centers ${centersInked}/${centersProbed} solid, midpoints ${midpointsClean}/${midpointsProbed} clean`,
+    )
+  }
+
+  // 2) Determinism, same song time: two renders of the merged tone (tone 0,
+  //    depth 1 → r = 0.72·cellS, deep in the grain zone) produce
+  //    byte-identical ink — the grain is a pure hash, never Math.random.
+  feedTone(0)
+  renderBig()
+  const g1 = inkOf()
+  renderBig()
+  const g2 = inkOf()
+  check(
+    'the grain is deterministic (same frame → byte-identical ink)',
+    !!g1 && !!g2 && g1.length === g2.length && g1.every((v, k) => v === g2[k]),
+    'buffers differ',
+  )
+
+  // 3) Determinism across song time: the grain hashes cell indices only —
+  //    no clock, no audio — so a later frame stamps the same dots.
+  renderBig(40.25)
+  const g3 = inkOf()
+  check(
+    'the grain carries no time (later frame stamps the same merged tone)',
+    !!g1 && !!g3 && g1.length === g3.length && g1.every((v, k) => v === g3[k]),
+    'buffers differ across song time',
+  )
+
+  // 4) Grain never unseats a dot: even at full merge (deepest tone, maximum
+  //    grain) every lattice center stays solidly inked — the offset is
+  //    capped at 0.14·cellS, far inside a 0.72·cellS dot.
+  {
+    let centersInked = 0
+    let centersProbed = 0
+    if (g1) {
+      for (let j = 4; j < n - 4; j += 3) {
+        for (let i = 4; i < n - 4; i += 3) {
+          const [sx, sy] = latticeXY(i, j)
+          if (sx <= 3 || sy <= 3 || sx >= BW - 4 || sy >= BH - 4) continue
+          centersProbed++
+          if (g1[(sy * BW + sx) * 4 + 3] === 255) centersInked++
+        }
+      }
+    }
+    check(
+      'merged dots keep their lattice neighborhoods under grain',
+      !!g1 && centersProbed > 20 && centersInked === centersProbed,
+      `centers ${centersInked}/${centersProbed} solid`,
+    )
+  }
+}
+
 /* --------------------------------- verdict -------------------------------- */
 
 console.log(`\n${pass} passed, ${fail} failed`)
