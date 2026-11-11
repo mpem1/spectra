@@ -493,7 +493,8 @@ function drawVisualizer(
   switch (cfg.style) {
     case 'bars':
     case 'wave':
-    case 'grid': {
+    case 'grid':
+    case 'ribbon': {
       // These three draw a classic left→right strip. Vertical orientation
       // rotates that strip 90° counter-clockwise into a top→bottom column:
       // bass stays at the bottom, bars/wave grow sideways from the layer's
@@ -519,6 +520,7 @@ function drawVisualizer(
       const styleRc: RenderContext = vertical ? { ...rc, width: H, height: W } : rc
       if (cfg.style === 'bars') drawBars(styleRc, frame, cfg, S)
       else if (cfg.style === 'wave') drawWave(styleRc, frame, cfg, S)
+      else if (cfg.style === 'ribbon') drawRibbon(styleRc, frame, cfg, S)
       else drawGrid(styleRc, frame, cfg, S)
       break
     }
@@ -996,6 +998,189 @@ function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
   ctx.lineWidth = Math.max(1, 1.8 * S)
   ctx.strokeStyle = withAlpha(cHigh, 0.8)
   ctx.stroke(mainPath)
+}
+
+/* ---------------------------------- ribbon ----------------------------------- */
+
+/**
+ * Liquid neon ribbon — the layered glow-wave poster look: a horizontal band
+ * of translucent wave envelopes stacked around the canvas center, each layer
+ * carrying the palette as its own drifting color sweep, finished with a
+ * white-hot filament tracing the middle. The spectrum folds into a heavily
+ * smoothed envelope (slightly log-spaced bins + two binomial smoothing
+ * passes + quadratic midpoints), slow per-layer phase drift keeps the lobes
+ * traveling like liquid, an idle triple-sine keeps it alive in total
+ * silence, and the bass swells the whole band. Every number derives from
+ * frame.styleTime / frame.freq — no randomness, fully deterministic in
+ * exports. Mirror: 'none' = the classic symmetric ribbon (the reference
+ * look), 'mirror' = additionally folded around the canvas' vertical center
+ * line, 'center' = the lower half carries the phase-inverted envelope
+ * (organic asymmetry). The strip joins the bars/wave/grid vertical-
+ * orientation transform, so it can also run as a full-height column.
+ */
+const RIBBON_POINTS = 64
+const RIBBON_CURVE = 96
+const RIBBON_LAYERS = 4
+/** Outer→inner amplitude scales — the wide soft bands sit behind, the tight
+ *  saturated lobes ride in front, and the filament hugs the center. */
+const RIBBON_AMP = [1.0, 0.8, 0.62, 0.45]
+/** Outer→inner fill alphas — translucent bands stacking into a hot core. */
+const RIBBON_ALPHA = [0.42, 0.55, 0.7, 0.88]
+
+/** One binomial [1 4 6 4 1]/16 smoothing pass with edge clamping. */
+function ribbonSmooth(src: Float32Array, dst: Float32Array): void {
+  const n = src.length
+  for (let i = 0; i < n; i++) {
+    const a = src[Math.max(0, i - 2)] ?? 0
+    const b = src[Math.max(0, i - 1)] ?? 0
+    const c = src[i] ?? 0
+    const d = src[Math.min(n - 1, i + 1)] ?? 0
+    const e = src[Math.min(n - 1, i + 2)] ?? 0
+    dst[i] = (a + 4 * b + 6 * c + 4 * d + e) / 16
+  }
+}
+
+function drawRibbon(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+  const { ctx, width: W, height: H } = rc
+  const t = frame.styleTime
+  const g = cfg.gradient
+  const sens = clamp(cfg.sensitivity, 0, 3)
+  const energy = clamp01(frame.energy)
+  const bass = clamp01(frame.bass)
+  // The whole-layer alpha (Transparency dial) — every pass multiplies it,
+  // exactly like the radial inner ring does.
+  const la = visualizerLayerAlpha(cfg)
+  const cy = cfg.mirror !== 'none' ? H * clamp01(cfg.mirrorOffset ?? 0.5) : H / 2
+  const maxAmp = Math.min(H * 0.21 * sens * (1 + bass * 0.3), H * 0.3)
+  const minAmp = 1.2 * S
+
+  /* ---- spectrum → twice-smoothed envelope control points ---- */
+  const freq = frame.freq
+  const len = Math.max(1, freq.length)
+  const raw = new Float32Array(RIBBON_POINTS)
+  for (let i = 0; i < RIBBON_POINTS; i++) {
+    // Slightly log-spaced bins — the bass owns less of the ribbon than a
+    // plain linear map would give it.
+    const bin = Math.min(len - 1, Math.floor(((i + 0.5) / RIBBON_POINTS) ** 1.25 * len))
+    raw[i] = clamp01((freq[bin] ?? 0) * sens)
+  }
+  const pass1 = new Float32Array(RIBBON_POINTS)
+  const env = new Float32Array(RIBBON_POINTS)
+  ribbonSmooth(raw, pass1)
+  ribbonSmooth(pass1, env)
+
+  /** Envelope at x (0..1) — interpolated control points + the idle
+   *  triple-sine that keeps the ribbon dancing in total silence. */
+  const envAt = (x01: number): number => {
+    const f = clamp01(x01) * (RIBBON_POINTS - 1)
+    const i = Math.floor(f)
+    const fr = f - i
+    const a = env[i] ?? 0
+    const b = env[Math.min(RIBBON_POINTS - 1, i + 1)] ?? 0
+    const base = a + (b - a) * fr
+    const idle =
+      0.1 * (0.5 + 0.5 * Math.sin(x01 * 3.4 + t * 0.55)) +
+      0.05 * (0.5 + 0.5 * Math.sin(x01 * 5.1 - t * 0.4))
+    return base + idle
+  }
+
+  /** Horizontal fold for Mirror = 'mirror' — continuous, smooth at the seam. */
+  const fold = (x01: number): number => (cfg.mirror === 'mirror' ? 1 - Math.abs(1 - 2 * x01) : x01)
+
+  /** Layer i's amplitude at x — envelope × traveling wobble. `flip`
+   *  phase-inverts the wobble (Mirror = 'center' organic bottom half). */
+  const layerAmp = (x01: number, i: number, flip: boolean): number => {
+    const wobble =
+      0.82 +
+      0.18 * Math.sin(fold(x01) * (2.2 + i * 1.7) + t * (0.5 + i * 0.23) + (i + (flip ? 0.5 : 0)) * 1.9)
+    return Math.max(minAmp, envAt(fold(x01)) * wobble * RIBBON_AMP[i] * maxAmp)
+  }
+
+  /** Smooth open spline through pts (quadratic midpoints, blob's technique). */
+  const traceSpline = (pts: Array<[number, number]>): void => {
+    ctx.beginPath()
+    ctx.moveTo(pts[0][0], pts[0][1])
+    for (let k = 1; k < pts.length - 1; k++) {
+      const mx = (pts[k][0] + pts[k + 1][0]) / 2
+      const my = (pts[k][1] + pts[k + 1][1]) / 2
+      ctx.quadraticCurveTo(pts[k][0], pts[k][1], mx, my)
+    }
+    const last = pts[pts.length - 1]
+    ctx.lineTo(last[0], last[1])
+  }
+
+  const buildCurve = (i: number, sign: number, flip: boolean): Array<[number, number]> => {
+    const pts: Array<[number, number]> = []
+    for (let k = 0; k <= RIBBON_CURVE; k++) {
+      const x01 = k / RIBBON_CURVE
+      pts.push([x01 * W, cy + sign * layerAmp(x01, i, flip)])
+    }
+    return pts
+  }
+
+  /** Layer i's fill: the palette swept along the configured gradient angle,
+   *  with the sampling window rotated by the layer's slow phase drift — the
+   *  hues travel through the band like the reference's liquid color wash. */
+  const layerFill = (i: number): CanvasGradient => {
+    const phase = (i / (RIBBON_LAYERS + 1) + t * 0.035 * (i % 2 === 0 ? 1 : -1) + 1) % 1
+    const line = gradientLine(g.angle, W, H)
+    const gr = ctx.createLinearGradient(line.x0, line.y0, line.x1, line.y1)
+    const K = 6
+    for (let j = 0; j <= K; j++) {
+      const p = j / K
+      gr.addColorStop(p, sampleGradient(g.stops, (p + phase) % 1, t, g.cycleColors, g.cycleSpeed))
+    }
+    return gr
+  }
+
+  const midColor = sampleGradient(g.stops, 0.5, t, g.cycleColors, g.cycleSpeed)
+
+  /* ---- ambient aura — the soft color wash the band glows into ---- */
+  if (cfg.glow) {
+    const auraR = H * 0.8
+    const aura = ctx.createRadialGradient(W / 2, cy, 0, W / 2, cy, auraR)
+    aura.addColorStop(0, withAlpha(midColor, 0.12 * la))
+    aura.addColorStop(0.5, withAlpha(midColor, 0.05 * la))
+    aura.addColorStop(1, withAlpha(midColor, 0))
+    ctx.fillStyle = aura
+    ctx.fillRect(W / 2 - auraR, cy - auraR, auraR * 2, auraR * 2)
+  }
+
+  /* ---- the stacked wave layers, outermost first ---- */
+  for (let i = 0; i < RIBBON_LAYERS; i++) {
+    const top = buildCurve(i, -1, false)
+    const bottom = buildCurve(i, 1, cfg.mirror === 'center')
+    const closed: Array<[number, number]> = [...top, ...bottom.slice().reverse()]
+    ctx.globalAlpha = RIBBON_ALPHA[i] * la
+    ctx.fillStyle = layerFill(i)
+    if (cfg.glow) {
+      ctx.shadowColor = withAlpha(midColor, 0.85)
+      ctx.shadowBlur = 24 * S
+    } else {
+      ctx.shadowBlur = 0
+    }
+    traceSpline(closed)
+    ctx.closePath()
+    ctx.fill()
+    ctx.shadowBlur = 0
+  }
+
+  /* ---- white-hot filament along the middle of the band ---- */
+  const filament = buildCurve(RIBBON_LAYERS - 1, -1, false).map(([x, y]) => [x, cy - (cy - y) * 0.45] as [number, number])
+  ctx.globalAlpha = la
+  ctx.lineWidth = Math.max(1.5, 2.6 * S)
+  ctx.lineCap = 'round'
+  ctx.strokeStyle = `rgba(255, 255, 255, ${(0.42 + 0.4 * energy).toFixed(3)})`
+  if (cfg.glow) {
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.9)'
+    ctx.shadowBlur = 14 * S
+  } else {
+    ctx.shadowBlur = 0
+  }
+  traceSpline(filament)
+  ctx.stroke()
+  ctx.shadowBlur = 0
+  ctx.globalAlpha = 1
 }
 
 /* ------------------------------------ grid ----------------------------------- */

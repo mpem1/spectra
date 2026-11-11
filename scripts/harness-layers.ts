@@ -108,7 +108,10 @@ function makeCanvas(): HTMLCanvasElement {
     // the halftone ink buffer's bytes back (colors + alpha coverage).
     putImageData: (img: unknown) =>
       rec({ kind: 'pimg', op: state.op, alpha: state.alpha, style: img }),
-    fill: () => rec({ kind: 'fill', op: state.op, alpha: state.alpha }),
+    // fill records carry fillStyle too — Path2D-based passes (grid, blob,
+    // ribbon) fill with gradient OBJECTS, and the S12 layer-color assertions
+    // read those stops back.
+    fill: () => rec({ kind: 'fill', op: state.op, alpha: state.alpha, style: base.fillStyle }),
     // Text passes (lyrics, titles, watermark, disc labels) — the alpha on
     // each record is what the opacity assertions read.
     fillText: () => rec({ kind: 'text', op: state.op, alpha: state.alpha }),
@@ -1074,6 +1077,120 @@ console.log('S11 halftone ink fills — the picture or the gradient inside the d
     c6.inked > 0 && c6.black === c6.inked && c6.red === 0 && c6.blue === 0,
     `inked=${c6.inked} black=${c6.black} red=${c6.red} blue=${c6.blue}`,
   )
+}
+
+/* --------------------- S12 ribbon visualizer ------------------------------- */
+
+console.log('S12 ribbon — the layered glow-wave visualizer')
+{
+  const fillAlphas = (): Set<number> =>
+    new Set(logOf(main).filter((r) => r.kind === 'fill').map((r) => r.alpha))
+  const frects = (c: HTMLCanvasElement): OpRec[] => logOf(c).filter((r) => r.kind === 'frect')
+
+  // A clean config: factory defaults, ribbon selected, no filters distorting
+  // the op census.
+  const cfgR = structuredClone(DEFAULT_STUDIO_CONFIG)
+  cfgR.visualizer = { ...structuredClone(DEFAULT_STUDIO_CONFIG.visualizer), style: 'ribbon' as const, glow: false }
+
+  // Warm-up: the recording stub's save/restore are no-ops, so a leftover
+  // globalAlpha from an earlier section leaks into the next render's
+  // un-alphaed passes (real canvases restore through save/restore). One
+  // throwaway render settles the stub state (drawRibbon pins alpha back to 1
+  // at its end) before anything is measured.
+  renderOne(structuredClone(cfgR), 1.25)
+
+  // 1) Deterministic: the same frozen frame renders the identical op stream.
+  const first = renderOne(structuredClone(cfgR), 1.25)
+  const logA = JSON.stringify(logOf(main))
+  renderOne(structuredClone(cfgR), 1.25)
+  const logB = JSON.stringify(logOf(main))
+  check(
+    'ribbon renders deterministically (same frame → identical op stream)',
+    first === null && logA === logB,
+    `match=${logA === logB} lenA=${logA.length} lenB=${logB.length}`,
+  )
+
+  // 2) The layer stack paints: 4 wave-layer fills (the filament strokes, and
+  //    strokes are not recorded) + nothing else on a solid background.
+  const ribbonFills = fills(main)
+  const ribbonAlphas = fillAlphas()
+  check(
+    'ribbon paints the 4 translucent wave layers',
+    ribbonFills === 4 && ribbonAlphas.size === 4,
+    `fills=${ribbonFills} alphas=${[...ribbonAlphas].join(',')}`,
+  )
+  const expected = [0.42, 0.55, 0.7, 0.88]
+  check(
+    'the layer alphas match the factory stack exactly',
+    expected.every((a) => ribbonAlphas.has(a)),
+    `alphas=${[...ribbonAlphas].join(',')}`,
+  )
+
+  // 3) Each layer carries its own drifting color sweep — the gradient
+   //    sampling windows differ, so the fills never share one color set.
+  const gradStops = logOf(main)
+    .filter((r) => r.kind === 'fill')
+    .map((r) => JSON.stringify((r.style as { stops?: Array<[number, string]> }).stops ?? []))
+  const distinct = new Set(gradStops).size
+  check(
+    'every layer sweeps its own phase-shifted gradient',
+    distinct === 4,
+    `distinct=${distinct} of ${gradStops.length}`,
+  )
+
+  // 4) Alive in silence: a fully silent frame still paints the full stack
+  //    (the idle triple-sine keeps the ribbon dancing).
+  const silent = { ...frameAt(0.5), freq: new Float32Array(64), energy: 0, bass: 0, treble: 0, sub: 0 }
+  for (const c of [main, ...created]) logOf(c).length = 0
+  renderFrame(rc, silent, structuredClone(cfgR))
+  check('a silent frame still paints the full ribbon (idle life)', fills(main) === 4, `fills=${fills(main)}`)
+
+  // 5) Glow: the aura arrives as one extra full-band fillRect wash.
+  renderOne({ ...structuredClone(cfgR), visualizer: { ...cfgR.visualizer, glow: true } })
+  const glowFrects = frects(main).length
+  renderOne({ ...structuredClone(cfgR), visualizer: { ...cfgR.visualizer, glow: false } })
+  const plainFrects = frects(main).length
+  check(
+    'glow adds the ambient aura wash (one fillRect), off adds none',
+    glowFrects === plainFrects + 1,
+    `glow=${glowFrects} plain=${plainFrects}`,
+  )
+
+  // 6) The Transparency dial scales every layer uniformly (0.5 → half of
+  //    each stack alpha) — the S9 contract extends to the ribbon.
+  renderOne({ ...structuredClone(cfgR), visualizer: { ...cfgR.visualizer, transparency: 0.5 } })
+  const halfAlphas = fillAlphas()
+  check(
+    'transparency 50% scales every ribbon layer to exactly half',
+    ribbonFills === fills(main) &&
+      expected.every((a) => [...halfAlphas].some((b) => Math.abs(b - a * 0.5) < 1e-9)),
+    `alphas=${[...halfAlphas].join(',')}`,
+  )
+
+  // 7) Mirror variants all render, all deterministic, all full stacks.
+  for (const mirror of ['mirror', 'center'] as const) {
+    const cfgM = { ...structuredClone(cfgR), visualizer: { ...cfgR.visualizer, mirror } }
+    renderOne(cfgM, 0.75)
+    const mA = JSON.stringify(logOf(main))
+    renderOne(cfgM, 0.75)
+    check(
+      `mirror ${mirror} renders a full deterministic stack`,
+      fills(main) === 4 && mA === JSON.stringify(logOf(main)),
+      `fills=${fills(main)} deterministic=${mA === JSON.stringify(logOf(main))}`,
+    )
+  }
+
+  // 8) Vertical orientation rides the shared strip transform.
+  renderOne({ ...structuredClone(cfgR), visualizer: { ...cfgR.visualizer, orientation: 'vertical' } })
+  check('vertical orientation renders the full stack', fills(main) === 4, `fills=${fills(main)}`)
+
+  // 9) The other styles are untouched: bars still paints its classic bar
+  //    fills (24 bars at alpha 1) — the ribbon dispatch added no drift.
+  const cfgBars = structuredClone(DEFAULT_STUDIO_CONFIG)
+  cfgBars.visualizer = { ...structuredClone(DEFAULT_STUDIO_CONFIG.visualizer), style: 'bars' as const, glow: false }
+  cfgBars.visualizer.barCount = 24
+  renderOne(structuredClone(cfgBars))
+  check('bars render unchanged (24 fills at full alpha)', fills(main) === 24 && fillAlphas().size === 1 && fillAlphas().has(1), `fills=${fills(main)} alphas=${[...fillAlphas()].join(',')}`)
 }
 
 /* --------------------------------- verdict -------------------------------- */

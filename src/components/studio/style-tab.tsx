@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { AudioWaveform, BarChart3, Droplet, Grid3x3, Radar, Sparkles, Wand2, Loader2 } from 'lucide-react'
+import { AudioWaveform, BarChart3, Droplet, Grid3x3, Radar, Sparkles, Wand2, Waves, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { VisualizerStyle } from '@/lib/visualizer/types'
 import { extractPaletteFromArt } from '@/lib/visualizer/palette'
@@ -23,6 +23,7 @@ const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] =
   { id: 'particles', label: 'Particles', icon: Sparkles },
   { id: 'blob', label: 'Blob', icon: Droplet },
   { id: 'grid', label: 'Grid', icon: Grid3x3 },
+  { id: 'ribbon', label: 'Ribbon', icon: Waves },
 ]
 
 /** Plain uppercase section label (VISUALIZER / GRADIENT / …) like the reference UI. */
@@ -130,7 +131,8 @@ export function StyleTab() {
         {/* Orientation — the strip styles can run left→right or top→bottom */}
         {visualizer.style === 'bars' ||
         visualizer.style === 'wave' ||
-        visualizer.style === 'grid' ? (
+        visualizer.style === 'grid' ||
+        visualizer.style === 'ribbon' ? (
           <div className="space-y-1.5">
             <MicroLabel>Orientation</MicroLabel>
             <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
@@ -214,24 +216,28 @@ export function StyleTab() {
           onChange={(sensitivity) => patchVisualizer({ sensitivity })}
           format={(v) => v.toFixed(1)}
         />
-        <SliderRow
-          label="Roundness"
-          value={visualizer.roundness}
-          min={0}
-          max={1}
-          step={0.05}
-          onChange={(roundness) => patchVisualizer({ roundness })}
-          format={(v) => v.toFixed(2)}
-        />
-        <SliderRow
-          label="Gap"
-          value={visualizer.gap}
-          min={0}
-          max={0.8}
-          step={0.05}
-          onChange={(gap) => patchVisualizer({ gap })}
-          format={(v) => v.toFixed(2)}
-        />
+        {visualizer.style !== 'ribbon' ? (
+          <SliderRow
+            label="Roundness"
+            value={visualizer.roundness}
+            min={0}
+            max={1}
+            step={0.05}
+            onChange={(roundness) => patchVisualizer({ roundness })}
+            format={(v) => v.toFixed(2)}
+          />
+        ) : null}
+        {visualizer.style !== 'ribbon' ? (
+          <SliderRow
+            label="Gap"
+            value={visualizer.gap}
+            min={0}
+            max={0.8}
+            step={0.05}
+            onChange={(gap) => patchVisualizer({ gap })}
+            format={(v) => v.toFixed(2)}
+          />
+        ) : null}
 
         <div className="grid grid-cols-2 gap-3 pt-1">
           <div className="space-y-1.5">

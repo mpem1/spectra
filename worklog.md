@@ -2153,3 +2153,56 @@ Gates + verification:
 - Harness (scripts/harness-layers.ts S11, 7 checks; suite 85 → 93): the mock now records putImageData (pimg ops keep the ImageData reference — the ink buffer's bytes are read back directly) and exposes each canvas's method table through a WeakMap (NOT a canvas property — a __base back-reference made the canvas graph cyclic and broke an S3 JSON.stringify assertion). S11 retargets the sample canvas's getImageData to a left-red/right-blue opaque grid, then proves: classic ink prints black dots (zero picture colors in the buffer); Picture fill stamps BOTH color families with zero black and skips the source-in recolor; Picture wins over gradient + custom inkColor; gradient ink still recolors with both dialed stops; Print only + Picture keeps colored dots on the paper; a raw config without imageFill prints classic black. S1 defaults contract gained the imageFill=false check. All existing S1–S10 checks pass untouched (surgical getImageData override, default mock behavior unchanged).
 - Gates: layers 93/93, anaglyph-flip 8, pop 13, kick 20, bg-flip 19 all green; tsc 33 = 33 baseline (zero new); lint 0 errors / 27 vendored warnings.
 - Browser E2E (agent-browser, red|blue test image uploaded as the background — gotcha: the background file input only exists after the Background card is switched to Image mode, the first input[type=file] is the audio loader): Ink fill = perfectly neutral halves [117,117,117]/[106,106,106] (black dots on white paper, the hidden picture's colors ignored); Gradient = warm amber blend [163,147,120]/[195,164,111]; Picture = left [233,138,142] vs right [141,141,225] — the hidden red|blue picture printed inside the dots on the white paper; Ink-panel Gradient toggle OFF preserved Picture (red/blue unchanged), ON cleared it (warm gradient took over) — two-door sync verified both directions; Print only off + Ink = the classic halftone over the picture (left [102,24,25], right [40,26,81] — image darkened by black dots, no backdrop flood); Gradient chip correctly lights the Ink panel's Gradient switch (checked=true) while the Backdrop's stays false; no page errors, console clean, no horizontal overflow at 390px.
+
+---
+
+Task ID: 15
+Agent: main orchestrator (Z.ai Code)
+Task: Ribbon visualizer — replicate the user's reference video (Vecteezy 51279584,
+glowing vibrant colors audio visualizer) as a new visualizer style.
+
+Work Log:
+- Fetched the reference page past the Cloudflare gate (browser-UA curl) and pulled the
+  watermarked preview MP4 (static.vecteezy.com, 1024x576, 15s); frame-stepped it with
+  ffmpeg (4 key frames) + z-ai vision attempts. Style breakdown: one full-width
+  horizontal band of stacked translucent wave envelopes mirrored around the vertical
+  center, hues varying across x AND drifting over time (green/red -> magenta/blue ->
+  pink/cyan), white-hot filament through the middle, heavy bloom, near-black backdrop
+  with soft ambient color washes, liquid (never spiky) motion.
+- Implemented as VisualizerStyle 'ribbon' (label "Ribbon", Waves icon):
+  * renderer.ts drawRibbon — spectrum folds into a 64-point envelope (log-spaced
+    bins 1.25, two binomial [1 4 6 4 1]/16 smoothing passes), drawn as 4 stacked
+    wave layers (amp scales 1/.8/.62/.45, alphas .42/.55/.7/.88, outermost first)
+    of quadratic-midpoint splines closed top+bottom, each layer filling with its
+    own phase-shifted palette sweep along the configured gradient angle (hue
+    windows rotate 0.035 rad/s, alternating direction), white-hot filament stroke
+    (alpha .42+.4*energy) lifted 0.45x of the inner layer, ambient aura radial wash
+    when glow on, idle triple-sine keeps it alive in silence, bass swells the band,
+    maxAmp = min(H*0.21*sens*(1+bass*0.3), H*0.3) (browser-tuned: the first 0.26/0.44
+    tuning filled 88% of the frame on loud bass — reference stays ~40%), Mirror:
+    none = symmetric (the reference look), mirror = continuous horizontal fold
+    (1-|1-2x|), center = phase-flipped organic bottom half; joined the
+    bars/wave/grid vertical-orientation transform (Side/anchor included); every
+    number from styleTime/freq — deterministic exports; layer alphas multiply the
+    Transparency dial (visualizerLayerAlpha) and globalAlpha is restored at the end.
+  * types.ts — 'ribbon' added to the VisualizerStyle union (no config fields added,
+    zero store migration).
+  * style-tab.tsx — Ribbon card in the VISUALIZER grid; Orientation section now
+    includes ribbon; Roundness + Gap sliders hidden for ribbon (meaningless).
+- Harness S12 (layers 98 -> 109): determinism (identical op streams), the 4-layer
+  fill census + exact factory alphas, per-layer distinct phase-shifted gradients,
+  silence-alive full stack, glow aura fillRect delta, Transparency 50% exact halving,
+  mirror/center deterministic full stacks, vertical orientation, bars-unchanged
+  regression. Two harness artifacts fixed en route: fill records now carry fillStyle
+  (Path2D fills were unobservable before), and S12 does one warm-up render because
+  the recording stub's save/restore are no-ops (leftover globalAlpha from S11 leaked
+  into the compared renders; real canvases restore through save/restore).
+- Browser-proven (agent-browser, test-tone.wav live): layered glow ribbon matches
+  the reference structure (filament core -> saturated lobes -> soft outer glow),
+  reacts/undulates with audio, Center mode organic asymmetry, Mirror fold, vertical
+  full-height column with Side selector, Roundness/Gap correctly hidden, Bars
+  classic path intact, zero console errors.
+
+Result: harness 109 + flip 18 + pop 13 + kick 20 + bg-flip 19 + transcribe 17 all
+green, tsc 33 = 33 baseline, lint 0 errors (27 vendored warnings), committed and
+pushed for Pages deploy.
