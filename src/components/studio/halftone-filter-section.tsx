@@ -78,6 +78,7 @@ export function HalftoneFilterSection() {
         kick — you choose which side shows, how hard a kick fires it, how
         long it stays, and whether the picture stays black &amp; white.
         Print only wipes the picture away: just the dots on a backdrop.
+        Inside the dots: the ink, a gradient, or the picture's own colors.
       </p>
 
       {filter.enabled ? (
@@ -142,6 +143,41 @@ export function HalftoneFilterSection() {
               look, or any color / gradient for posters.
             </p>
           )}
+          <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5">
+            <MicroLabel className="text-zinc-400">Inside the dots</MicroLabel>
+            <div
+              className="grid grid-cols-3 gap-1.5"
+              role="group"
+              aria-label="What fills the halftone dots"
+            >
+              <FlipDirButton
+                label="Ink"
+                sub="solid color"
+                active={!filter.imageFill && !filter.gradient}
+                onClick={() => patchHalftoneFilter({ imageFill: false, gradient: false })}
+              />
+              <FlipDirButton
+                label="Gradient"
+                sub="two colors"
+                active={!filter.imageFill && !!filter.gradient}
+                onClick={() => patchHalftoneFilter({ imageFill: false, gradient: true })}
+              />
+              <FlipDirButton
+                label="Picture"
+                sub="image colors"
+                active={!!filter.imageFill}
+                onClick={() => patchHalftoneFilter({ imageFill: true })}
+              />
+            </div>
+            <p className="text-[10px] leading-snug text-zinc-600">
+              What the dots are made of. Ink is the solid color from the Ink
+              panel below; Gradient is that panel&apos;s two-color blend (the
+              same switch as its Gradient toggle) drifting with the song;
+              Picture prints the picture&apos;s own colors inside every dot —
+              a color halftone, with Black &amp; white / Contrast shaping
+              what the dots carry.
+            </p>
+          </div>
           <BeatPunchRow
             on={filter.beatReactive}
             strength={filter.beatStrength}
@@ -288,7 +324,15 @@ export function HalftoneFilterSection() {
             <ToggleRow
               label="Gradient"
               checked={filter.gradient}
-              onCheckedChange={(gradient) => patchHalftoneFilter({ gradient })}
+              onCheckedChange={(gradient) =>
+                patchHalftoneFilter({
+                  gradient,
+                  // Turning the Ink panel's gradient on IS an explicit ink
+                  // choice — it steps on the Picture fill so the toggle does
+                  // exactly what it says. Turning it off leaves the fill as-is.
+                  imageFill: gradient ? false : filter.imageFill,
+                })
+              }
             />
             {filter.gradient ? (
               <>

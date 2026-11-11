@@ -43,6 +43,13 @@
  *       grayscale conditions the snapshot instead of the visible frame,
  *       the print-direction rest shows the bare backdrop, and raw configs
  *       without the new fields stay classic
+ *   S11 halftone ink fills — the "Inside the dots" choice: classic ink
+ *       stays black in the buffer, Picture fill stamps each dot the source
+ *       picture's own cell color (both color families, zero black, the
+ *       source-in recolor skipped), Picture wins over gradient + inkColor,
+ *       gradient ink still recolors with both stops, Print only + Picture
+ *       keeps the paper under colored dots, and raw configs without
+ *       imageFill print classic black ink
  */
 
 import { renderFrame } from '../src/lib/visualizer/renderer'
@@ -53,7 +60,7 @@ import type { AudioFrame, RenderContext, StudioConfig } from '../src/lib/visuali
 /* ------------------------------ mock canvas ------------------------------ */
 
 interface OpRec {
-  kind: 'draw' | 'fill' | 'frect' | 'text'
+  kind: 'draw' | 'fill' | 'frect' | 'text' | 'pimg'
   src?: unknown
   x?: number
   op: string
@@ -94,6 +101,10 @@ function makeCanvas(): HTMLCanvasElement {
       rec({ kind: 'draw', src, x: typeof x === 'number' ? x : 0, op: state.op, alpha: state.alpha }),
     fillRect: () =>
       rec({ kind: 'frect', op: state.op, alpha: state.alpha, style: base.fillStyle }),
+    // putImageData keeps a reference to the ImageData so assertions can read
+    // the halftone ink buffer's bytes back (colors + alpha coverage).
+    putImageData: (img: unknown) =>
+      rec({ kind: 'pimg', op: state.op, alpha: state.alpha, style: img }),
     fill: () => rec({ kind: 'fill', op: state.op, alpha: state.alpha }),
     // Text passes (lyrics, titles, watermark, disc labels) — the alpha on
     // each record is what the opacity assertions read.
@@ -126,11 +137,15 @@ function makeCanvas(): HTMLCanvasElement {
   })
   ;(canv as unknown as { getContext: () => unknown }).getContext = () => ctx
   ;(canv as unknown as { __log: OpRec[] }).__log = log
+  baseOf.set(canv, base)
   return canv
 }
 
 /** Every canvas the pipeline asks document for, in creation order. */
 const created: HTMLCanvasElement[] = []
+/** canvas → its mock method table (a WeakMap, so probing a canvas's
+ *  internals never adds a cycle for the assertion JSON.stringify). */
+const baseOf = new WeakMap<object, Record<string, unknown>>()
 ;(globalThis as { document?: unknown }).document = {
   createElement: () => {
     const c = makeCanvas()
@@ -233,6 +248,7 @@ console.log('S1 factory defaults — kick dials + layers')
   check('background shade defaults to 0% (images show at full brightness)', d.background.shade === 0, `got ${d.background.shade}`)
   check('halftone Print only defaults to off (classic print)', d.halftoneFilter.printOnly === false, `got ${d.halftoneFilter.printOnly}`)
   check('halftone backdrop defaults to white paper', d.halftoneFilter.backdropColor === '#ffffff', `got ${d.halftoneFilter.backdropColor}`)
+  check('halftone Picture fill defaults to off (classic ink)', d.halftoneFilter.imageFill === false, `got ${d.halftoneFilter.imageFill}`)
   check('halftone backdrop gradient defaults to off', d.halftoneFilter.backdropGradient === false, `got ${d.halftoneFilter.backdropGradient}`)
   check('halftone config no longer carries flipColorLayers', !('flipColorLayers' in d.halftoneFilter), 'legacy key still present')
 }
@@ -837,6 +853,182 @@ console.log('S10 halftone Print only — the picture hides, the print stays')
     'the legacy screen samples the live frame again',
     !!sampleCanvas && draws(sampleCanvas).length === 1 && draws(sampleCanvas)[0].src === main,
     `sample src=${String(draws(sampleCanvas ?? main)[0]?.src)}`,
+  )
+}
+
+/* ------------------ S11 halftone ink fills (picture / gradient) ------------------ */
+
+console.log('S11 halftone ink fills — the picture or the gradient inside the dots')
+{
+  const cfg11 = baseConfig()
+  cfg11.anaglyphFilter = { ...cfg11.anaglyphFilter, enabled: false }
+  cfg11.halftoneFilter = { ...cfg11.halftoneFilter, enabled: true, strength: 0.9 }
+
+  const frects = (c: HTMLCanvasElement): OpRec[] => logOf(c).filter((r) => r.kind === 'frect')
+  const pimgs = (c: HTMLCanvasElement): OpRec[] => logOf(c).filter((r) => r.kind === 'pimg')
+
+  // The ink canvas is the one that receives the full-frame putImageData.
+  const inkCanvasOf = (): HTMLCanvasElement | undefined =>
+    created.find((c) =>
+      pimgs(c).some((r) => {
+        const img = r.style as { data?: Uint8ClampedArray } | undefined
+        return !!img && img.data instanceof Uint8ClampedArray && img.data.length === W * H * 4
+      }),
+    )
+  const inkImgOf = (c: HTMLCanvasElement | undefined): { data: Uint8ClampedArray } | undefined => {
+    const rec0 = c && pimgs(c)[0]
+    return rec0 ? (rec0.style as { data: Uint8ClampedArray }) : undefined
+  }
+
+  // Census over the stamped ink: printed pixels split into the grid's red
+  // family, blue family, and pure black (the classic factory ink).
+  const census = (img: { data: Uint8ClampedArray } | undefined) => {
+    let inked = 0
+    let red = 0
+    let blue = 0
+    let black = 0
+    if (!img) return { inked, red, blue, black }
+    const d = img.data
+    for (let p = 0; p < W * H; p++) {
+      if (d[p * 4 + 3] === 0) continue
+      inked++
+      const r = d[p * 4]
+      const b = d[p * 4 + 2]
+      if (r === 0 && d[p * 4 + 1] === 0 && b === 0) black++
+      else if (r > b) red++
+      else if (b > r) blue++
+    }
+    return { inked, red, blue, black }
+  }
+
+  // Feed the sampler a colored grid: left half red, right half blue, every
+  // cell fully opaque — matching the default mock's behavior (nothing is
+  // skipped), so op counts stay comparable to the earlier blocks.
+  const feedGrid = (c: HTMLCanvasElement) => {
+    const b = baseOf.get(c)
+    if (!b) throw new Error('S11: no method table for the sample canvas')
+    b.getImageData = (
+      _x: number,
+      _y: number,
+      w: number,
+      h: number,
+    ) => {
+      const data = new Uint8ClampedArray(w * h * 4)
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const p = (y * w + x) * 4
+          if (x < w / 2) {
+            data[p] = 220
+            data[p + 1] = 30
+            data[p + 2] = 40
+          } else {
+            data[p] = 30
+            data[p + 1] = 60
+            data[p + 2] = 220
+          }
+          data[p + 3] = 255
+        }
+      }
+      return { data, width: w, height: h }
+    }
+  }
+
+  // Classic print first: identify the sample canvas (it draws the live
+  // frame), then retarget its getImageData for every check below.
+  renderOne({ ...cfg11 })
+  const sample11 = created.find((c) => draws(c).length === 1 && draws(c)[0].src === main)
+  if (!sample11) throw new Error('S11: sample canvas not found')
+  feedGrid(sample11)
+
+  // 1) Classic ink: the buffer's printed pixels stay BLACK — no picture
+  //    colors leak in, no recolor at the factory black.
+  renderOne({ ...cfg11 })
+  const c1 = census(inkImgOf(inkCanvasOf()))
+  check(
+    'classic ink prints black dots (no picture colors in the buffer)',
+    c1.inked > 0 && c1.black === c1.inked && c1.red === 0 && c1.blue === 0,
+    `inked=${c1.inked} black=${c1.black} red=${c1.red} blue=${c1.blue}`,
+  )
+
+  // 2) Picture fill: the same dots now carry the grid's own colors — both
+  //    color families stamped, zero black, and the recolor pass skipped.
+  renderOne({ ...cfg11, halftoneFilter: { ...cfg11.halftoneFilter, imageFill: true } })
+  const inkCanvas2 = inkCanvasOf()
+  const c2 = census(inkImgOf(inkCanvas2))
+  check(
+    'Picture fill stamps the picture colors inside the dots',
+    c2.inked > 0 && c2.red > 0 && c2.blue > 0 && c2.black === 0,
+    `inked=${c2.inked} red=${c2.red} blue=${c2.blue} black=${c2.black}`,
+  )
+  check(
+    'Picture fill skips the ink recolor pass',
+    !!inkCanvas2 && !frects(inkCanvas2).some((r) => r.op === 'source-in'),
+    'source-in recolor ran',
+  )
+
+  // 3) Picture fill WINS over the gradient + a custom ink color: same
+  //    picture colors, still no recolor.
+  renderOne({
+    ...cfg11,
+    halftoneFilter: {
+      ...cfg11.halftoneFilter,
+      imageFill: true,
+      gradient: true,
+      inkColor: '#ff8800',
+      inkColor2: '#00ff88',
+    },
+  })
+  const c3 = census(inkImgOf(inkCanvasOf()))
+  check(
+    'Picture fill wins over gradient and ink color (colors still the picture)',
+    c3.inked > 0 && c3.red > 0 && c3.blue > 0 && c3.black === 0,
+    `inked=${c3.inked} red=${c3.red} blue=${c3.blue} black=${c3.black}`,
+  )
+
+  // 4) Gradient ink (Picture fill off): the recolor pass runs with both
+  //    dialed stops — the classic ink pipeline is untouched.
+  renderOne({
+    ...cfg11,
+    halftoneFilter: {
+      ...cfg11.halftoneFilter,
+      imageFill: false,
+      gradient: true,
+      inkColor: '#114422',
+      inkColor2: '#55aa88',
+    },
+  })
+  const inkCanvas4 = inkCanvasOf()
+  const gradFrect = inkCanvas4 && frects(inkCanvas4).find((r) => r.op === 'source-in')
+  const gradStyle = gradFrect?.style as { stops?: Array<[number, string]> } | undefined
+  check(
+    'gradient ink still recolors through source-in with both stops',
+    !!gradStyle &&
+      JSON.stringify(gradStyle.stops) === JSON.stringify([[0, '#114422'], [1, '#55aa88']]),
+    `stops=${JSON.stringify(gradStyle?.stops)}`,
+  )
+
+  // 5) Print only + Picture fill: the poster keeps its white backdrop AND
+  //    the dots carry the hidden picture's colors.
+  renderOne({
+    ...cfg11,
+    halftoneFilter: { ...cfg11.halftoneFilter, printOnly: true, imageFill: true },
+  })
+  const c5 = census(inkImgOf(inkCanvasOf()))
+  check(
+    'Print only + Picture fill = colored dots on the paper backdrop',
+    c5.inked > 0 && c5.red > 0 && c5.blue > 0 && c5.black === 0,
+    `inked=${c5.inked} red=${c5.red} blue=${c5.blue} black=${c5.black}`,
+  )
+
+  // 6) A raw config without imageFill (older save) prints black ink again.
+  const legacy11 = structuredClone(cfg11) as StudioConfig
+  delete (legacy11.halftoneFilter as unknown as Record<string, unknown>).imageFill
+  renderOne(legacy11)
+  const c6 = census(inkImgOf(inkCanvasOf()))
+  check(
+    'a raw config without imageFill prints classic black ink',
+    c6.inked > 0 && c6.black === c6.inked && c6.red === 0 && c6.blue === 0,
+    `inked=${c6.inked} black=${c6.black} red=${c6.red} blue=${c6.blue}`,
   )
 }
 

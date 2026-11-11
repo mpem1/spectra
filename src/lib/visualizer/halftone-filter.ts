@@ -219,15 +219,32 @@ function getSprite(lvl: number, oxIdx: number, oyIdx: number): DotSprite {
 
 /* --------------------------------- ink buffer ---------------------------------- */
 
-/** Full-frame RGBA scratch (black + stamped alpha), reused across frames. */
-const inkBuffers = new Map<string, { buf: Uint8ClampedArray; img: ImageData }>()
+/** Full-frame RGBA scratch (black + stamped alpha), reused across frames.
+ *  colR/colG/colB hold each stamped dot's fill color for the Picture fill
+ *  (imageFill) — written only where a dot owns the pixel, read only where
+ *  the alpha byte says a dot exists this frame, so they never need clearing
+ *  (buf.fill(0) already zeroes the visible bytes every frame). */
+interface InkBuffer {
+  buf: Uint8ClampedArray
+  img: ImageData
+  colR: Uint8ClampedArray
+  colG: Uint8ClampedArray
+  colB: Uint8ClampedArray
+}
+const inkBuffers = new Map<string, InkBuffer>()
 
-function getInkBuffer(W: number, H: number): { buf: Uint8ClampedArray; img: ImageData } {
+function getInkBuffer(W: number, H: number): InkBuffer {
   const key = `${W}x${H}`
   let e = inkBuffers.get(key)
   if (!e) {
     const buf = new Uint8ClampedArray(W * H * 4)
-    e = { buf, img: new ImageData(buf, W, H) } // ImageData views the SAME buffer
+    e = {
+      buf,
+      img: new ImageData(buf, W, H), // ImageData views the SAME buffer
+      colR: new Uint8ClampedArray(W * H),
+      colG: new Uint8ClampedArray(W * H),
+      colB: new Uint8ClampedArray(W * H),
+    }
     inkBuffers.set(key, e)
   }
   e.buf.fill(0)
@@ -568,6 +585,9 @@ export function drawHalftoneFilter(
   // low end, both scaled by the motion dial — 0 = static). All inputs are
   // song time / audio fields, so exports match the preview frame-exactly.
   const solo = !!cfg.printOnly
+  // Picture fill (color halftone): every dot carries the source picture's
+  // own color at its cell instead of the ink — wins over inkColor/gradient.
+  const imageInk = !!cfg.imageFill
   const bgMotion = clamp01(cfg.backdropMotion ?? 0.5)
   const paintBackdrop = () => {
     ctx.save()
@@ -777,6 +797,9 @@ export function drawHalftoneFilter(
   const data = smCtx.getImageData(0, 0, n, n).data
   const ink = getInkBuffer(W, H)
   const buf = ink.buf
+  const colR = ink.colR
+  const colG = ink.colG
+  const colB = ink.colB
   const SQ = Math.SQRT1_2
   const rMax = cellS * 0.72 * press
   // Deepest reachable rung for this frame's widest dot.
@@ -830,12 +853,26 @@ export function drawHalftoneFilter(
       const yy1 = Math.min(H - 1, y0 + 2 * box)
       const xx0 = Math.max(0, x0)
       const xx1 = Math.min(W - 1, x0 + 2 * box)
+      // The dot's fill color for the Picture fill — the source picture's
+      // own color at this cell (in Print only that's the hidden snapshot,
+      // so picture conditioning shapes what the dots carry).
+      const cr = data[k]
+      const cg = data[k + 1]
+      const cb = data[k + 2]
       for (let yy = yy0; yy <= yy1; yy++) {
         let o = (yy * W + xx0) * 4 + 3 // alpha byte of black RGBA
         let s = (yy - y0) * stride + (xx0 - x0)
         for (let xx = xx0; xx <= xx1; xx++) {
           const v = a[s++]
-          if (v > buf[o]) buf[o] = v // alpha-max = the Path2D dot union
+          if (v > buf[o]) {
+            buf[o] = v // alpha-max = the Path2D dot union
+            if (imageInk) {
+              const p = o >> 2 // o is pixel p's alpha byte → p = o >> 2
+              colR[p] = cr
+              colG[p] = cg
+              colB[p] = cb
+            }
+          }
           o += 4
         }
       }
@@ -856,9 +893,21 @@ export function drawHalftoneFilter(
   //    source-over).
   const inkCanvas = getWork('ht:ink', W, H)
   const ictx = resetWork(inkCanvas.getContext('2d')!)
+  if (imageInk) {
+    // Picture fill: paint each dot its own cell color straight into the
+    // buffer (img.data views the SAME bytes as buf), then skip the ink
+    // recolor below entirely — the picture IS the ink this frame.
+    for (let p = 0, P = W * H; p < P; p++) {
+      if (buf[p * 4 + 3] > 0) {
+        buf[p * 4] = colR[p]
+        buf[p * 4 + 1] = colG[p]
+        buf[p * 4 + 2] = colB[p]
+      }
+    }
+  }
   ictx.putImageData(ink.img, 0, 0)
   const inkColor = cfg.inkColor ?? '#000000'
-  if (cfg.gradient || inkColor !== '#000000') {
+  if (!imageInk && (cfg.gradient || inkColor !== '#000000')) {
     // Recolor the coverage silhouette with one 'source-in' fill. Black (the
     // default) skips this — the buffer is already black, so the classic look
     // pays zero extra GPU work.

@@ -585,6 +585,13 @@ export interface HalftoneFilterConfig {
    *  static). Only matters while Print only AND the backdrop gradient are
    *  on. */
   backdropMotion: number
+  /** Fill the dots with the picture's own colors — a color halftone: every
+   *  dot carries the color the picture has where that dot sits (in Print
+   *  only that's the hidden snapshot, so Black & white / Contrast shape
+   *  what the dots carry; classic print tints the dots with the live
+   *  picture). Wins over the Ink color / Gradient while on. Factory false
+   *  = the classic ink fill. */
+  imageFill: boolean
 }
 
 /**
@@ -1175,6 +1182,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     backdropGradient: false,
     backdropColor2: '#fbbf24',
     backdropMotion: 0.5,
+    imageFill: false,
   },
   glitchFilter: {
     enabled: false,
