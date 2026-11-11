@@ -300,7 +300,7 @@ export function StyleTab() {
               out of a vanishing point on the right while heights ride the music.
               Echo trails redraw where each bar stood a moment ago. Mirror slides
               a faded reflection out from under the road (Mirror offset moves its
-              water line); Center aims the vanishing point dead ahead.
+              water line); Center converges a twin tunnel dead ahead.
             </p>
           </>
         ) : null}

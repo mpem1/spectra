@@ -1431,9 +1431,9 @@ function drawPerspective(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
   // Mirror family: 'mirror' slides a faded reflection of the up bars out
   // from under the road — a red twin across the water line, which the
   // Mirror offset dial moves lower (capped at a fifth of the canvas so it
-  // never leaves the screen); 'center' aims the vanishing point dead ahead
-  // at the canvas middle — the road converges on the center instead of
-  // drifting off the right edge. 'none' is the untouched classic.
+  // never leaves the screen); 'center' runs a twin road entering from the
+  // left edge, so the tunnel converges dead-center, symmetric both ways.
+  // 'none' is the untouched classic.
   const mirrorMode = cfg.mirror ?? 'none'
   const centerSym = mirrorMode === 'center'
   const reflect = mirrorMode === 'mirror'
@@ -1455,7 +1455,11 @@ function drawPerspective(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
   const d0 = -0.16
   const R = 18 // zFar / zNear — the long read: a gentle, receding squeeze
   const XV = centerSym ? W * 0.5 : W * 1.04 // vanishing point: dead ahead in Center mode
-  const A = (XV - W * 0.93) * R // x(d) = XV − A·R^(−d), chosen so x(1) = 0.93W
+  // x(d) = XV − A·R^(−d). Classic: A·R is sized so x(1) = 0.93W — the road
+  // sweeps the whole canvas. Center: the near edge lands just past the
+  // right edge and the far end a hair past the middle (the twin road
+  // paints the mirrored left half, so the tunnel fills the canvas).
+  const A = centerSym ? XV - W * 1.06 : (XV - W * 0.93) * R
   const HNEAR = H * 2.45 // height at depth 0, amp = 1 — the near pills overflow
   const WNEAR = W * 0.34 // width ceiling at depth 0 (spacing usually binds first)
   const phase = (t * flow * 2) % 1
@@ -1483,7 +1487,9 @@ function drawPerspective(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
     hs[j] = HNEAR * Math.pow(R, -d) * (0.085 + 0.915 * amp) * (1 + bass * 0.22)
     const dxFar = xs[(j + 1) % M] - xs[j]
     const dxNear = xs[j] - xs[(j - 1 + M) % M]
-    const spacing = dxFar > 0 ? dxFar : dxNear
+    // |·| — the Center road runs A < 0 (x decreases with depth), so the
+    // raw deltas are negative there; the gap itself is what matters.
+    const spacing = Math.abs(dxFar > 0 ? dxFar : dxNear)
     ws[j] = Math.min(WNEAR * Math.pow(R, -d), spacing * (1 - gap * 0.85))
   }
 
@@ -1580,30 +1586,36 @@ function drawPerspective(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
   }
 
   // Painter's order: far first, near last (near pills overlap the far
-  // texture, exactly like the reference).
+  // texture, exactly like the reference). Center mode paints the road
+  // twice — the twin enters from the left edge, so the tunnel converges
+  // dead-center with both halves filled.
   const order = Array.from({ length: M }, (_, j) => j).sort((a, b) => dNs[b] - dNs[a])
-  for (const j of order) {
-    const x = xs[j]
-    const w = ws[j]
-    if (x + w < -2 || x - w > W + 2) continue
-    const h = hs[j]
-    const dN = dNs[j]
-    const fade = 1 - 0.38 * dN // far texture sinks gently into the black
-    // Echo first (it lives behind the solid pill, beyond its cap).
-    drawEcho(x, w, h, j, -1, upColor, fade)
-    drawEcho(x, w, h, j, 1, downColor, fade)
-    pill(x, w, h, -1, upColor, la * fade)
-    drawRibs(x, w, h, -1)
-    if (reflect) {
-      // The reflection: the up bar mirrored across the water line, sliding
-      // out from under the road with the Mirror offset dial. A touch wider
-      // than its bar so a red fringe peeks around the blue even at 0, and
-      // faded to half strength so it reads as wet pavement.
-      pill(x, w * 1.18, h, 1, upColor, la * fade * 0.5, cy + drop)
+  const paintRoad = (flip: boolean): void => {
+    for (const j of order) {
+      const x = flip ? W - xs[j] : xs[j]
+      const w = ws[j]
+      if (x + w < -2 || x - w > W + 2) continue
+      const h = hs[j]
+      const dN = dNs[j]
+      const fade = 1 - 0.38 * dN // far texture sinks gently into the black
+      // Echo first (it lives behind the solid pill, beyond its cap).
+      drawEcho(x, w, h, j, -1, upColor, fade)
+      drawEcho(x, w, h, j, 1, downColor, fade)
+      pill(x, w, h, -1, upColor, la * fade)
+      drawRibs(x, w, h, -1)
+      if (reflect) {
+        // The reflection: the up bar mirrored across the water line, sliding
+        // out from under the road with the Mirror offset dial. A touch wider
+        // than its bar so a red fringe peeks around the blue even at 0, and
+        // faded to half strength so it reads as wet pavement.
+        pill(x, w * 1.18, h, 1, upColor, la * fade * 0.5, cy + drop)
+      }
+      pill(x, w, h, 1, downColor, la * fade)
+      drawRibs(x, w, h, 1)
     }
-    pill(x, w, h, 1, downColor, la * fade)
-    drawRibs(x, w, h, 1)
   }
+  paintRoad(false)
+  if (centerSym) paintRoad(true)
   ctx.shadowBlur = 0
   ctx.globalAlpha = la
 }
