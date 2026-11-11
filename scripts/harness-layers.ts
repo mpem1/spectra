@@ -340,6 +340,7 @@ console.log('S1 factory defaults — kick dials + layers')
   check('halftone backdrop gradient defaults to off', d.halftoneFilter.backdropGradient === false, `got ${d.halftoneFilter.backdropGradient}`)
   check('halftone config no longer carries flipColorLayers', !('flipColorLayers' in d.halftoneFilter), 'legacy key still present')
   check('visualizer flowSpeed defaults to 0.5 (gentle stream)', d.visualizer.flowSpeed === 0.5, `got ${d.visualizer.flowSpeed}`)
+  check('visualizer perspMirrorDrop defaults to 0 (hugging reflection)', d.visualizer.perspMirrorDrop === 0, `got ${d.visualizer.perspMirrorDrop}`)
 }
 
 /* ------------------------- S2 migration matrix (pure) ----------------------- */
@@ -1602,8 +1603,11 @@ console.log('S14 terrain — the 3D wireframe landscape')
   // 15) The Mirror offset dial: pass 4 paints each ridge segment and its
   //     reflection back-to-back, so the 2-pt strokes alternate original /
   //     reflection. The dial must leave the landscape's own segments
-  //     BIT-IDENTICAL while every reflection drops by exactly
-  //     2 · drop · H/2 (the fold line slides drop · H/2 below the ground).
+  //     BIT-IDENTICAL while every reflection image drops by exactly
+  //     2 · drop · H · 0.2 — the image moves at twice the water line's speed
+  //     (a mirror image across an axis shifted by d moves by 2d), and the
+  //     water line itself is capped at a fifth of the canvas so it can
+  //     never leave the screen.
   renderOne(
     { ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const } },
     0.5,
@@ -1627,35 +1631,39 @@ console.log('S14 terrain — the 3D wireframe landscape')
     orig0.length > 200 &&
       orig0.length === orig1.length &&
       JSON.stringify(orig0) === JSON.stringify(orig1) &&
-      Math.abs(reflShift - 0.3 * H) < 1,
-    `orig ${orig0.length}→${orig1.length} same=${JSON.stringify(orig0) === JSON.stringify(orig1)} shift=${reflShift.toFixed(1)} want=${(0.3 * H).toFixed(1)}`,
+      Math.abs(reflShift - 0.3 * H * 0.4) < 1,
+    `orig ${orig0.length}→${orig1.length} same=${JSON.stringify(orig0) === JSON.stringify(orig1)} shift=${reflShift.toFixed(1)} want=${(0.3 * H * 0.4).toFixed(1)}`,
   )
 
-  // 16) Center mode honors the dial too: the lower symmetric curtain copies
-  //     drop by the same exact shift while the upper halves stay.
+  // 16) Center mode pins the symmetric range to the ground line — the
+  //     Mirror offset dial does nothing there (byte-identical frames with
+  //     the dial at 0 and 0.3) — and the range's underside is the terrain's
+  //     OWN hills: different geometry from the mirror's reflection, even
+  //     ignoring the reflection's half-strength alpha (points compared).
+  const centerCfg = { ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'center' as const } }
+  renderOne(structuredClone(centerCfg), 0.5)
+  const cLow0 = segs2().filter((_, i) => i % 2 === 1)
   renderOne(
-    { ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'center' as const } },
+    { ...structuredClone(centerCfg), visualizer: { ...centerCfg.visualizer, terrainMirrorDrop: 0.3 } },
     0.5,
   )
-  const curtUp0 = curtainStrokes().filter((_, i) => i % 2 === 0)
-  const curtLo0 = curtainStrokes().filter((_, i) => i % 2 === 1)
-  renderOne(
-    {
-      ...structuredClone(cfgT),
-      visualizer: { ...cfgT.visualizer, mirror: 'center' as const, terrainMirrorDrop: 0.3 },
-    },
-    0.5,
-  )
-  const curtUp1 = curtainStrokes().filter((_, i) => i % 2 === 0)
-  const curtLo1 = curtainStrokes().filter((_, i) => i % 2 === 1)
-  const loShift = meanYOf(curtLo1) - meanYOf(curtLo0)
+  const cLow1 = segs2().filter((_, i) => i % 2 === 1)
   check(
-    'center mode drops the lower range with the dial, uppers unchanged',
-    curtUp0.length === curtUp1.length &&
-      curtUp0.length > 0 &&
-      JSON.stringify(curtUp0) === JSON.stringify(curtUp1) &&
-      Math.abs(loShift - 0.3 * H) < 1,
-    `uppers ${curtUp0.length}→${curtUp1.length} same=${JSON.stringify(curtUp0) === JSON.stringify(curtUp1)} shift=${loShift.toFixed(1)} want=${(0.3 * H).toFixed(1)}`,
+    'center mode ignores the dial (the range stays anchored)',
+    cLow0.length > 200 &&
+      cLow0.length === cLow1.length &&
+      JSON.stringify(cLow0) === JSON.stringify(cLow1),
+    `lows ${cLow0.length}→${cLow1.length} same=${JSON.stringify(cLow0) === JSON.stringify(cLow1)}`,
+  )
+  const ptsOf = (rs: OpRec[]): string => JSON.stringify(rs.map((r) => r.pts))
+  renderOne(structuredClone(centerCfg), 0.5)
+  const cLowPts = ptsOf(segs2().filter((_, i) => i % 2 === 1))
+  renderOne({ ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const } }, 0.5)
+  const mLowPts = ptsOf(segs2().filter((_, i) => i % 2 === 1))
+  check(
+    'center grows its own underside, not the mirror copy',
+    cLowPts !== mLowPts,
+    `distinct=${cLowPts !== mLowPts}`,
   )
 }
 
@@ -1814,39 +1822,23 @@ console.log('S15 sphere — the 3D dot-matrix planet')
     `fills=${fills(main)} alphas=${[...barFillAlphas].join(',')}`,
   )
 
-  // 13) The Mirror family: 'mirror' paints every dot's screen reflection —
-  //     exactly twice the dot fills — and 'center' flips the quills to grow
-  //     inward (tips land closer to the center than the roots).
-  const distAt = (recs: OpRec[], last: boolean): number => {
-    let s = 0
-    let c = 0
-    for (const r of recs) {
-      const pts = r.pts ?? []
-      const p = last ? pts[pts.length - 1] : pts[0]
-      if (!p) continue
-      s += Math.hypot(p.x - W / 2, p.y - H / 2)
-      c++
-    }
-    return c > 0 ? s / c : 0
+  // 13) The Mirror revert: the planet reads best as one clean orb — the
+  //     mirrored twin just doubled the dots into mush — so the sphere now
+  //     ignores the Mirror dropdown entirely: 'mirror' and 'center' must
+  //     render EXACTLY the classic 'none' frame (bit-identical op streams).
+  const planetJSON = (mirror: 'none' | 'mirror' | 'center'): string => {
+    const cfg = structuredClone(cfgS)
+    cfg.visualizer.mirror = mirror
+    renderOne(cfg, 0.5)
+    return JSON.stringify(logOf(main))
   }
-  renderOne(structuredClone(cfgS), 0.5)
-  const baseDots = dotsOf().length
-  const outRoot = distAt(quillsOf(), false)
-  const outTip = distAt(quillsOf(), true)
-  renderOne({ ...structuredClone(cfgS), visualizer: { ...cfgS.visualizer, mirror: 'mirror' as const } }, 0.5)
-  const mirDots = dotsOf().length
-  renderOne({ ...structuredClone(cfgS), visualizer: { ...cfgS.visualizer, mirror: 'center' as const } }, 0.5)
-  const inRoot = distAt(quillsOf(), false)
-  const inTip = distAt(quillsOf(), true)
+  const noneOps = planetJSON('none')
+  const mirrorOps = planetJSON('mirror')
+  const centerOps = planetJSON('center')
   check(
-    'mirror paints the planet twice (every dot + its screen reflection)',
-    mirDots === baseDots * 2,
-    `base=${baseDots} mirror=${mirDots}`,
-  )
-  check(
-    'center grows the quills inward, none grows them outward',
-    outTip > outRoot && inTip < inRoot,
-    `out ${outTip.toFixed(2)}>??${outRoot.toFixed(2)} · in ${inTip.toFixed(2)}<??${inRoot.toFixed(2)}`,
+    'mirror settings render the classic planet (reverted)',
+    mirrorOps === noneOps && centerOps === noneOps,
+    `mirror=${mirrorOps === noneOps} center=${centerOps === noneOps}`,
   )
 
   // 14) Vertical orientation quarter-rolls the planet: the same op count,
@@ -1897,7 +1889,7 @@ console.log('S16 the Mirror family — every style answers Mirror and Center dif
     renderFrame(rc, frame, cfg)
     return JSON.stringify(logOf(main))
   }
-  for (const style of ['bars', 'wave', 'radial', 'particles', 'blob', 'grid', 'ribbon', 'terrain', 'sphere']) {
+  for (const style of ['bars', 'wave', 'radial', 'particles', 'blob', 'grid', 'ribbon', 'terrain', 'perspective']) {
     const noneOps = opsJSON(loud, styleWithMirror(style, 'none'))
     const mirrorOps = opsJSON(loud, styleWithMirror(style, 'mirror'))
     const centerOps = opsJSON(loud, styleWithMirror(style, 'center'))

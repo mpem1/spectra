@@ -1428,6 +1428,16 @@ function drawPerspective(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
   const bass = clamp01(frame.bass)
   const la = visualizerLayerAlpha(cfg)
   const cy = H * clamp01(cfg.mirrorOffset ?? 0.5)
+  // Mirror family: 'mirror' slides a faded reflection of the up bars out
+  // from under the road — a red twin across the water line, which the
+  // Mirror offset dial moves lower (capped at a fifth of the canvas so it
+  // never leaves the screen); 'center' aims the vanishing point dead ahead
+  // at the canvas middle — the road converges on the center instead of
+  // drifting off the right edge. 'none' is the untouched classic.
+  const mirrorMode = cfg.mirror ?? 'none'
+  const centerSym = mirrorMode === 'center'
+  const reflect = mirrorMode === 'mirror'
+  const drop = clamp01(cfg.perspMirrorDrop ?? 0) * H * 0.2
   const round = clamp01(cfg.roundness)
   const gap = clamp01(cfg.gap)
   // Strict two-color split — flat colors, depth only dims them.
@@ -1444,7 +1454,7 @@ function drawPerspective(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
   const flow = clamp(cfg.flowSpeed ?? 0.5, 0, 1)
   const d0 = -0.16
   const R = 18 // zFar / zNear — the long read: a gentle, receding squeeze
-  const XV = W * 1.04 // vanishing point, just past the right edge
+  const XV = centerSym ? W * 0.5 : W * 1.04 // vanishing point: dead ahead in Center mode
   const A = (XV - W * 0.93) * R // x(d) = XV − A·R^(−d), chosen so x(1) = 0.93W
   const HNEAR = H * 2.45 // height at depth 0, amp = 1 — the near pills overflow
   const WNEAR = W * 0.34 // width ceiling at depth 0 (spacing usually binds first)
@@ -1478,7 +1488,15 @@ function drawPerspective(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
   }
 
   /** Solid capsule pass, shared by both sides. */
-  const pill = (x: number, w: number, h: number, sign: number, color: string, alpha: number): void => {
+  const pill = (
+    x: number,
+    w: number,
+    h: number,
+    sign: number,
+    color: string,
+    alpha: number,
+    base: number = cy,
+  ): void => {
     if (w <= 0.05 || h <= 0.05) return
     ctx.globalAlpha = alpha
     ctx.fillStyle = color
@@ -1489,7 +1507,7 @@ function drawPerspective(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
       ctx.shadowBlur = 0
     }
     const r = (w / 2) * (0.25 + 0.75 * round)
-    fillRoundRect(ctx, x - w / 2, sign < 0 ? cy - h : cy, w, h, r)
+    fillRoundRect(ctx, x - w / 2, sign < 0 ? base - h : base, w, h, r)
     ctx.fill()
     ctx.shadowBlur = 0
   }
@@ -1548,7 +1566,7 @@ function drawPerspective(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
   }
 
   /** LED segment ribs inside a solid pill (near slots only). */
-  const drawRibs = (x: number, w: number, h: number, sign: number): void => {
+  const drawRibs = (x: number, w: number, h: number, sign: number, base: number = cy): void => {
     if (texture <= 0.03 || w < 5) return
     ctx.globalAlpha = 0.22 * texture * la
     ctx.fillStyle = '#000000'
@@ -1556,7 +1574,7 @@ function drawPerspective(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
     const sw = Math.max(1, w * 0.07)
     for (let k = 1; k < n; k++) {
       const xr = x - w / 2 + (w * k) / n - sw / 2
-      const yTop = sign < 0 ? cy - h : cy
+      const yTop = sign < 0 ? base - h : base
       ctx.fillRect(xr, yTop + h * 0.08, sw, h * 0.84)
     }
   }
@@ -1576,6 +1594,13 @@ function drawPerspective(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
     drawEcho(x, w, h, j, 1, downColor, fade)
     pill(x, w, h, -1, upColor, la * fade)
     drawRibs(x, w, h, -1)
+    if (reflect) {
+      // The reflection: the up bar mirrored across the water line, sliding
+      // out from under the road with the Mirror offset dial. A touch wider
+      // than its bar so a red fringe peeks around the blue even at 0, and
+      // faded to half strength so it reads as wet pavement.
+      pill(x, w * 1.18, h, 1, upColor, la * fade * 0.5, cy + drop)
+    }
     pill(x, w, h, 1, downColor, la * fade)
     drawRibs(x, w, h, 1)
   }
@@ -1625,10 +1650,12 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
   const hy = H * clamp01(cfg.mirrorOffset ?? 0.5) // the vanishing line (Horizon dial)
   const flow = clamp(cfg.flowSpeed ?? 0.5, 0, 1)
   const fill = clamp01(cfg.terrainFill ?? 0.4)
-  // Mirror family: 'center' grows the range symmetrically around each row's
-  // ground line (ridge up + equal ridge down — the band replaces the flat
-  // earth); 'mirror' keeps the classic landscape and adds its wireframe
-  // reflection across the ground, a lake reflection in the horizon scene.
+  // Mirror family: 'mirror' keeps the classic landscape and adds its faded
+  // lake reflection across a water line (the Mirror offset dial slides that
+  // line lower — capped at a fifth of the canvas so it never leaves the
+  // screen); 'center' grows the range symmetrically around each row's
+  // ground line with its OWN hills below (a phase-shifted noise field), so
+  // the two modes read completely differently.
   const mirrorMode = cfg.mirror ?? 'none'
   const centerSym = mirrorMode === 'center'
   const reflect = mirrorMode === 'mirror'
@@ -1697,6 +1724,16 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
     return HPEAK * (0.12 + 0.88 * rowAmp(r, c)) * (0.22 + 0.78 * n) * (1 + bass * 0.25)
   }
 
+  /** The Center mode's underside elevation: the SAME amplitude envelope
+   *  (rowAmp drives both halves with the same band energy) over a
+   *  phase-shifted noise field, so the lower hills are the terrain's own —
+   *  an organic inverted range, not the mirror's copy. */
+  const worldHLow = (r: number, c: number): number => {
+    const v = (ROWS - r) * 0.42 - t * flow * 2.2
+    const n = noise2(c * 0.33 + 137.1, v + 71.3) * 0.72 + noise2(c * 0.71 + 91.2, v * 1.9 + 5.8) * 0.28
+    return HPEAK * (0.12 + 0.88 * rowAmp(r, c)) * (0.22 + 0.78 * n) * (1 + bass * 0.25)
+  }
+
   // Precompute the mesh's screen positions (world height × u = screen rise).
   const px = new Float64Array((ROWS + 1) * COLS)
   const py = new Float64Array((ROWS + 1) * COLS)
@@ -1714,12 +1751,19 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
 
   // Mirror offset (the Style tab's dial): the reflection normally folds
   // exactly at each row's ground line — a perfect mirror lake hugging the
-  // hills. The dial slides the fold line LOWER by up to half the canvas, so
-  // the mirrored landscape detaches and drops like a raised water line.
-  // 0 (factory) keeps the fold exactly on the ground: the classic look,
-  // bit-identical to before the dial existed. Pure math → deterministic.
-  const drop = clamp01(cfg.terrainMirrorDrop ?? 0) * H * 0.5
-  const foldY = (r: number): number => gy[r] + drop
+  // hills. The dial slides the water line LOWER by up to a fifth of the
+  // canvas, so the mirrored landscape detaches and drops — clearly visible
+  // but never pushed off the screen. 0 (factory) keeps the fold exactly on
+  // the ground: the classic look, bit-identical to before the dial existed.
+  // Center mode pins its fold to the ground line — the dial answers Mirror
+  // only. Pure math → deterministic.
+  const drop = clamp01(cfg.terrainMirrorDrop ?? 0) * H * 0.2
+  /** The lower half's screen Y at (row, col): the faded reflection across
+   *  the water line in Mirror mode, the organic underside in Center mode. */
+  const lowY = (r: number, c: number): number => {
+    if (centerSym) return gy[r] + worldHLow(r, c) * uAt(r)
+    return 2 * (gy[r] + drop) - py[r * COLS + c]
+  }
 
   const rowPath = (r: number): void => {
     ctx.beginPath()
@@ -1741,8 +1785,7 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
       rowPath(r)
       if (centerSym) {
         for (let c = COLS - 1; c >= 0; c--) {
-          const idx = r * COLS + c
-          ctx.lineTo(px[idx], 2 * foldY(r) - py[idx])
+          ctx.lineTo(px[r * COLS + c], lowY(r, c))
         }
       } else {
         ctx.lineTo(px[r * COLS + COLS - 1], gy[r])
@@ -1770,12 +1813,12 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
     ctx.strokeStyle = colColor(c)
     ctx.stroke()
     if (centerSym) {
-      // The lower half of the symmetric range.
+      // The lower half of the symmetric range — its own hills.
       ctx.beginPath()
       for (let r = 0; r <= ROWS; r++) {
         const idx = r * COLS + c
-        if (r === 0) ctx.moveTo(px[idx], 2 * foldY(r) - py[idx])
-        else ctx.lineTo(px[idx], 2 * foldY(r) - py[idx])
+        if (r === 0) ctx.moveTo(px[idx], lowY(r, c))
+        else ctx.lineTo(px[idx], lowY(r, c))
       }
       ctx.stroke()
     }
@@ -1813,10 +1856,14 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
       ctx.strokeStyle = colColor(c)
       ctx.stroke()
       if (centerSym || reflect) {
+        // Center: the underside's own segment at full strength. Mirror: the
+        // lake reflection, faded to half strength so it reads as water.
+        ctx.globalAlpha = la * fade * (reflect ? 0.55 : 1)
         ctx.beginPath()
-        ctx.moveTo(px[i0], 2 * foldY(r) - py[i0])
-        ctx.lineTo(px[i0 + 1], 2 * foldY(r) - py[i0 + 1])
+        ctx.moveTo(px[i0], lowY(r, c))
+        ctx.lineTo(px[i0 + 1], lowY(r, c + 1))
         ctx.stroke()
+        ctx.globalAlpha = la * fade
       }
     }
   }
@@ -1871,12 +1918,9 @@ function drawSphere(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
   const vertical = (cfg.orientation ?? 'horizontal') === 'vertical'
   const crz = vertical ? 0 : 1
   const srz = vertical ? 1 : 0
-  // Mirror family, same semantics as the radial: 'mirror' paints every dot's
-  // reflection across the screen's vertical axis (left/right symmetry);
-  // 'center' grows the quills INTO the planet instead of out.
-  const mirrorMode = cfg.mirror ?? 'none'
-  const inward = mirrorMode === 'center'
-  const reflect = mirrorMode === 'mirror'
+  // (The Mirror family was reverted here on purpose: a mirrored twin just
+  // doubled the dot shell into mush — the planet reads best as one clean
+  // orb, so the sphere ignores the Mirror dropdown entirely.)
 
   const shell = 1 + bass * 0.16 // the whole planet breathes with the low end
 
@@ -1932,7 +1976,7 @@ function drawSphere(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
       const yr = x1 * srz + y2 * crz
 
       const surface = R * shell
-      const tip = surface * (1 + amp * 0.5 * quills * (inward ? -1 : 1))
+      const tip = surface * (1 + amp * 0.5 * quills)
 
       // Pinhole projection of the quill root (on the shell) and tip.
       const pR = CAM / (CAM + z2 * surface)
@@ -2003,24 +2047,6 @@ function drawSphere(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
     ctx.beginPath()
     ctx.arc(px[idx], py[idx], pr[idx], 0, Math.PI * 2)
     ctx.fill()
-    if (reflect) {
-      // The screen-mirrored twin: same ring band, same depth (a reflection
-      // across the vertical axis keeps z), painted right after its original
-      // so the pair overlaps in the correct order.
-      if (dx * dx + dy * dy > 0.64) {
-        ctx.globalAlpha = la * pa[idx] * 0.85
-        ctx.strokeStyle = pc[idx]
-        ctx.beginPath()
-        ctx.moveTo(2 * cx - qx0[idx], qy0[idx])
-        ctx.lineTo(2 * cx - qx1[idx], qy1[idx])
-        ctx.stroke()
-      }
-      ctx.globalAlpha = la * pa[idx]
-      ctx.fillStyle = pc[idx]
-      ctx.beginPath()
-      ctx.arc(2 * cx - px[idx], py[idx], pr[idx], 0, Math.PI * 2)
-      ctx.fill()
-    }
   }
   ctx.globalAlpha = la
 }

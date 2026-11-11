@@ -298,7 +298,9 @@ export function StyleTab() {
             <p className="text-xs leading-relaxed text-zinc-500">
               The reference look: red bars above the line, blue below, streaming
               out of a vanishing point on the right while heights ride the music.
-              Echo trails redraw where each bar stood a moment ago.
+              Echo trails redraw where each bar stood a moment ago. Mirror slides
+              a faded reflection out from under the road (Mirror offset moves its
+              water line); Center aims the vanishing point dead ahead.
             </p>
           </>
         ) : null}
@@ -320,8 +322,9 @@ export function StyleTab() {
               rows bunch at the horizon, bass lifts the near hills, and the
               surface streams forward with Flow speed. The palette sweeps
               across the columns; Fill 0 is the pure glowing wireframe;
-              Mirror adds the lake reflection (Mirror offset slides its line
-              lower), Center grows the range symmetrically around the ground.
+              Mirror lays a faded lake reflection (Mirror offset slides its
+              water line lower), Center grows the range both ways with its
+              own hills below.
             </p>
           </>
         ) : null}
@@ -351,8 +354,7 @@ export function StyleTab() {
               rides its own frequency band, so the bass equator surges while
               the poles crackle with treble, and the back hemisphere prints
               dim for the depth. Quills grows the audio spikes; Spin sets the
-              rotation; Vertical rolls the axis sideways; Mirror paints every
-              dot's reflection; Center grows the quills inward. The palette
+              rotation; Vertical rolls the axis sideways. The palette
               sweeps pole to pole.
             </p>
           </>
@@ -389,11 +391,11 @@ export function StyleTab() {
           />
         ) : null}
 
-        {visualizer.style === 'perspective' ? (
-          // The road is a horizon scene with a strict up/down meaning —
-          // mirroring it would fold the vanishing point, so it keeps no
-          // Mirror choice — just the glow switch. The terrain and the
-          // sphere join the full Mirror family below.
+        {visualizer.style === 'sphere' ? (
+          // The planet reads best as one clean orb — its mirrored twin just
+          // doubled the dots into mush, so the sphere keeps no Mirror
+          // choice — just the glow switch. Every other style (including the
+          // road and the terrain) answers the full Mirror family below.
           <div className="space-y-1.5 pt-1">
             <MicroLabel>Glow</MicroLabel>
             <div className="flex h-8 items-center justify-end">
@@ -453,17 +455,24 @@ export function StyleTab() {
           />
         ) : null}
 
-        {/* Terrain's mirror line: the lake reflection folds at the ground
-            line by default (a perfect mirror lake); this dial slides the
-            fold lower, detaching the mirrored hills down the screen. */}
-        {visualizer.mirror !== 'none' && visualizer.style === 'terrain' ? (
+        {/* Reflection offset: the lake (terrain) and road (perspective)
+            reflections fold right at the ground / hide under the road by
+            default; this dial slides the water line lower, detaching the
+            mirrored copy down the screen. Center mode pins its own fold to
+            the ground, so the dial only answers Mirror. */}
+        {visualizer.mirror === 'mirror' &&
+        (visualizer.style === 'terrain' || visualizer.style === 'perspective') ? (
           <SliderRow
             label="Mirror offset"
-            value={visualizer.terrainMirrorDrop}
+            value={visualizer.style === 'terrain' ? visualizer.terrainMirrorDrop : visualizer.perspMirrorDrop}
             min={0}
             max={1}
             step={0.01}
-            onChange={(terrainMirrorDrop) => patchVisualizer({ terrainMirrorDrop })}
+            onChange={(v) =>
+              patchVisualizer(
+                visualizer.style === 'terrain' ? { terrainMirrorDrop: v } : { perspMirrorDrop: v },
+              )
+            }
             format={(v) => `${Math.round(v * 100)}%`}
           />
         ) : null}

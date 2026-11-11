@@ -101,6 +101,13 @@ export interface VisualizerConfig {
    *  ago (up side gets rib combs, down side a dot matrix, like the
    *  reference). 0 = clean pills with no history. */
   perspEcho: number
+  /** Perspective style — reflection offset 0..1. With Mirror on, the up
+   *  bars reflect across a water line that normally hugs the road's horizon
+   *  (the red reflection hides under the down bars). This dial slides the
+   *  water line LOWER — the red reflection slides out from under the road
+   *  like a wet-street mirror, capped so it never leaves the screen.
+   *  0 = the classic hugging reflection (the factory look). */
+  perspMirrorDrop: number
   /** Terrain style — solid-earth band fill 0..1. Each depth row fills the
    *  band between its ridge line and the flat ground below it (drawn far →
    *  near, so nearer bands overlap farther ones like real hills). 0 = the
@@ -108,9 +115,10 @@ export interface VisualizerConfig {
   terrainFill: number
   /** Terrain style — lake-reflection offset 0..1. With Mirror on, the
    *  reflection normally folds exactly at each row's ground line (a perfect
-   *  mirror lake). This dial slides the fold line LOWER — the mirrored hills
-   *  detach and drop down the screen like a raised water line. 0 = the
-   *  classic hugging reflection (the factory look). */
+   *  mirror lake). This dial slides the water line LOWER — the mirrored
+   *  hills detach and drop, capped at a fifth of the canvas so the
+   *  reflection never leaves the screen. 0 = the classic hugging
+   *  reflection (the factory look). */
   terrainMirrorDrop: number
   /** Sphere style — spin speed 0..1. How fast the dot-matrix planet turns
    *  around its tilted axis (0 = a slow drift, 1 = a fast whirl). */
@@ -1035,6 +1043,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     perspDown: '#1e6bff',
     perspTexture: 0.45,
     perspEcho: 0.55,
+    perspMirrorDrop: 0,
     terrainFill: 0.4,
     terrainMirrorDrop: 0,
     sphereSpin: 0.35,
