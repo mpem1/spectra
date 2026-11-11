@@ -527,6 +527,9 @@ function drawVisualizer(
     case 'radial':
       drawRadial(rc, frame, cfg, S)
       break
+    case 'horizon':
+      drawHorizon(rc, frame, cfg, S)
+      break
     case 'particles':
       drawParticles(rc, frame, cfg, S)
       break
@@ -1280,4 +1283,135 @@ function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
     ctx.globalAlpha = la
   }
   ctx.shadowBlur = 0
+}
+
+/* ---------------------------------- horizon ---------------------------------- */
+
+/**
+ * Perspective equalizer road — the "sound waveform flying past on black"
+ * reference look: rounded neon pills standing on a horizon line, the up
+ * side and its mirror pointing down, the whole row receding into a
+ * vanishing point just past the right edge (giant near bars at the left, a
+ * fine dense waveform texture far away) while the road streams past the
+ * camera. Each bar tracks its own frequency bin — bass owns the near
+ * field, treble the far texture — and the flow phase derives purely from
+ * frame.styleTime, so exports stay frame-exact. An idle traveling wave
+ * keeps the road alive in silence, the bass swells the whole road on a
+ * hit, and each bar drags a translucent trail ghost where it stood a
+ * moment ago. Palette: the up side sweeps the palette's first half (near =
+ * first stop, fading into the middle hue at the vanishing point) and the
+ * down side sweeps the second half mirrored (near = last stop) — the
+ * dominant near field reads two-tone like the reference, and a red→blue
+ * palette reproduces it exactly. Geometry is real perspective
+ * (x, height and width all ∝ 1/depth), so bars crowd toward the vanishing
+ * point with constant width-to-spacing ratio; the Gap dial thins the
+ * pills, Roundness rounds their caps, and the horizon line itself rides
+ * the Mirror offset value (labeled "Horizon" on this style's tab).
+ */
+function drawHorizon(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+  const { ctx, width: W, height: H } = rc
+  const t = frame.styleTime
+  const freq = frame.freq
+  const len = Math.max(1, freq.length)
+  const sens = clamp(cfg.sensitivity, 0, 3)
+  const bass = clamp01(frame.bass)
+  const la = visualizerLayerAlpha(cfg)
+  const g = cfg.gradient
+  const cy = H * clamp01(cfg.mirrorOffset ?? 0.5)
+  const round = clamp01(cfg.roundness)
+  const gap = clamp01(cfg.gap)
+
+  /* ---- road geometry: real perspective over the slot range ---- */
+  const M = Math.round(clamp(cfg.barCount, 16, 192))
+  const flow = clamp(cfg.flowSpeed ?? 0.5, 0, 1)
+  const d0 = -0.16 // near cutoff — depth 0 sits just off the left edge
+  const R = 24 // zFar / zNear — how hard the perspective squeezes the far end
+  const XV = W * 1.04 // vanishing point, just past the right edge
+  const A = (XV - W * 0.93) * R // x(d) = XV − A·R^(−d), chosen so x(1) = 0.93W
+  const HNEAR = H * 2.05 // height at depth 0, amp = 1 — the near bars overflow
+  const WNEAR = W * 0.16 // width ceiling at depth 0 (spacing usually binds first)
+  const TRAIL_SLOTS = 0.85 // the trail ghost sits this many slots behind
+  const phase = (t * flow * 2) % 1 // slots streamed past per second = flow × 2
+
+  /** Depth parameter and screen x for slot progress p ∈ [0,1) (0 = nearest). */
+  const depthAt = (p: number): number => d0 + (1 - d0) * p
+  const xAt = (d: number): number => XV - A * Math.pow(R, -d)
+
+  const xs = new Float64Array(M)
+  const ws = new Float64Array(M)
+  const hs = new Float64Array(M)
+  const amps = new Float64Array(M)
+  const dNs = new Float64Array(M)
+  const ps = new Float64Array(M)
+  for (let j = 0; j < M; j++) {
+    const p = (((j - phase) % M) + M) % M / M
+    const d = depthAt(p)
+    ps[j] = p
+    dNs[j] = (d - d0) / (1 - d0) // 0 near .. 1 far, for bins + palette
+    xs[j] = xAt(d)
+    // Frequency bin — bass near, treble far, slightly log-spaced. An idle
+    // traveling wave keeps the road breathing in total silence.
+    const bin = Math.min(len - 1, Math.floor(Math.pow(dNs[j], 1.12) * len))
+    const amp0 = clamp01((freq[bin] ?? 0) * sens)
+    const idle = 0.05 + 0.04 * Math.sin(dNs[j] * 16.5 - t * 1.9) + 0.025 * Math.sin(dNs[j] * 27.3 + t * 1.25)
+    amps[j] = Math.max(amp0, idle)
+    hs[j] = HNEAR * Math.pow(R, -d) * (0.085 + 0.915 * amps[j]) * (1 + bass * 0.22)
+    // Width: the slot's on-screen room (constant ratio along the road),
+    // thinned by the Gap dial, capped so the nearest off-screen slots
+    // can't blob together.
+    const dxFar = xs[(j + 1) % M] - xs[j]
+    const dxNear = xs[j] - xs[(j - 1 + M) % M]
+    const spacing = dxFar > 0 ? dxFar : dxNear
+    ws[j] = Math.min(WNEAR * Math.pow(R, -d), spacing * (1 - gap * 0.85))
+  }
+
+  /** One pill pass — up (sign −1) and down (sign +1) share everything. */
+  const pill = (x: number, w: number, h: number, sign: number, color: string, alpha: number, blur: number): void => {
+    if (w <= 0.05 || h <= 0.05) return
+    ctx.globalAlpha = alpha
+    ctx.fillStyle = color
+    if (cfg.glow) {
+      ctx.shadowColor = color
+      ctx.shadowBlur = blur
+    } else {
+      ctx.shadowBlur = 0
+    }
+    const r = (w / 2) * (0.25 + 0.75 * round)
+    fillRoundRect(ctx, x - w / 2, sign < 0 ? cy - h : cy, w, h, r)
+    ctx.fill()
+  }
+
+  // Painter's order: far first, near last (near pills overlap the far
+  // texture, exactly like the reference). Slot index order IS progress
+  // order except at the single wrap slot, so sort by depth once.
+  const order = Array.from({ length: M }, (_, j) => j).sort((a, b) => dNs[b] - dNs[a])
+  for (const j of order) {
+    const x = xs[j]
+    const w = ws[j]
+    if (x + w < -2 || x - w > W + 2) continue
+    const h = hs[j]
+    const dN = dNs[j]
+    // Two-tone near field: the up side owns the palette's first half, the
+    // down side the second (mirrored) — both converge on the middle hue
+    // toward the vanishing point, like the reference's red/blue road.
+    const up = sampleGradient(g.stops, 0.5 * dN, t, g.cycleColors, g.cycleSpeed)
+    const down = sampleGradient(g.stops, 1 - 0.5 * dN, t, g.cycleColors, g.cycleSpeed)
+    // Trail ghost — the same pill where it stood TRAIL_SLOTS ago (farther
+    // down the road), faint and slightly thinner.
+    const pG = ps[j] + TRAIL_SLOTS / M
+    const dG = depthAt(pG)
+    const xG = xAt(dG)
+    const hG = HNEAR * Math.pow(R, -dG) * (0.085 + 0.915 * amps[j]) * (1 + bass * 0.28)
+    const wG = w * 0.9
+    if (xG + wG >= -2 && xG - wG <= W + 2) {
+      const blurG = wG * 1.1 + 2 * S
+      pill(xG, wG, hG, -1, up, 0.15 * la, blurG)
+      pill(xG, wG, hG, 1, down, 0.15 * la, blurG)
+    }
+    const blur = w * 1.1 + 2 * S
+    pill(x, w, h, -1, up, la, blur)
+    pill(x, w, h, 1, down, la, blur)
+  }
+  ctx.shadowBlur = 0
+  ctx.globalAlpha = la
 }

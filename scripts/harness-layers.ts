@@ -66,6 +66,10 @@ interface OpRec {
   kind: 'draw' | 'fill' | 'frect' | 'text' | 'pimg'
   src?: unknown
   x?: number
+  y?: number
+  w?: number
+  h?: number
+  rects?: Array<{ x: number; y: number; w: number; h: number }>
   op: string
   alpha: number
   style?: unknown
@@ -76,6 +80,17 @@ function makeCanvas(): HTMLCanvasElement {
   const state = { op: 'source-over', alpha: 1 }
   const log: OpRec[] = []
   const rec = (r: OpRec) => log.push(r)
+  // Path tracking: beginPath clears, roundRect/rect record — so fill()
+  // captures the geometry of path-based passes (bars, horizon pills).
+  type Rect = { x: number; y: number; w: number; h: number }
+  let path: Rect[] = []
+  const pushRect = (x?: number, y?: number, w?: number, h?: number) =>
+    path.push({
+      x: typeof x === 'number' ? x : 0,
+      y: typeof y === 'number' ? y : 0,
+      w: typeof w === 'number' ? w : 0,
+      h: typeof h === 'number' ? h : 0,
+    })
   const base: Record<string, unknown> = {
     canvas: canv,
     filter: 'none',
@@ -102,16 +117,37 @@ function makeCanvas(): HTMLCanvasElement {
     createPattern: () => null,
     drawImage: (src: unknown, x?: number) =>
       rec({ kind: 'draw', src, x: typeof x === 'number' ? x : 0, op: state.op, alpha: state.alpha }),
-    fillRect: () =>
-      rec({ kind: 'frect', op: state.op, alpha: state.alpha, style: base.fillStyle }),
+    fillRect: (x?: number, y?: number, w?: number, h?: number) =>
+      rec({
+        kind: 'frect',
+        x: typeof x === 'number' ? x : 0,
+        y: typeof y === 'number' ? y : 0,
+        w: typeof w === 'number' ? w : 0,
+        h: typeof h === 'number' ? h : 0,
+        op: state.op,
+        alpha: state.alpha,
+        style: base.fillStyle,
+      }),
     // putImageData keeps a reference to the ImageData so assertions can read
     // the halftone ink buffer's bytes back (colors + alpha coverage).
     putImageData: (img: unknown) =>
       rec({ kind: 'pimg', op: state.op, alpha: state.alpha, style: img }),
     // fill records carry fillStyle too — Path2D-based passes (grid, blob,
     // ribbon) fill with gradient OBJECTS, and the S12 layer-color assertions
-    // read those stops back.
-    fill: () => rec({ kind: 'fill', op: state.op, alpha: state.alpha, style: base.fillStyle }),
+    // read those stops back. The tracked path (or a Path2D argument's
+    // recorded rects) rides along so geometry assertions can read pill/bar
+    // rectangles back.
+    fill: (p?: unknown) =>
+      rec({
+        kind: 'fill',
+        op: state.op,
+        alpha: state.alpha,
+        style: base.fillStyle,
+        rects:
+          p && typeof p === 'object' && Array.isArray((p as { __rects?: unknown }).__rects)
+            ? (p as { __rects: Rect[] }).__rects.slice()
+            : path.slice(),
+      }),
     // Text passes (lyrics, titles, watermark, disc labels) — the alpha on
     // each record is what the opacity assertions read.
     fillText: () => rec({ kind: 'text', op: state.op, alpha: state.alpha }),
@@ -141,6 +177,14 @@ function makeCanvas(): HTMLCanvasElement {
       return true
     },
   })
+  // beginPath / roundRect / rect join the table AFTER the proxy so the
+  // path tracker captures them (a Proxy `has` trap would also work, but
+  // explicit members keep the mock honest).
+  ;(base as Record<string, unknown>).beginPath = () => {
+    path = []
+  }
+  ;(base as Record<string, unknown>).roundRect = pushRect
+  ;(base as Record<string, unknown>).rect = pushRect
   ;(canv as unknown as { getContext: () => unknown }).getContext = () => ctx
   ;(canv as unknown as { __log: OpRec[] }).__log = log
   baseOf.set(canv, base)
@@ -160,10 +204,15 @@ const baseOf = new WeakMap<object, Record<string, unknown>>()
   },
 }
 // The grid style batches its dots into a Path2D — a recording stub is all
-// the harness needs (the mock ctx's fill() logs regardless of the path).
+// the harness needs (the mock ctx's fill() logs regardless of the path);
+// rect() records so path-argument geometry stays readable too.
 ;(globalThis as { Path2D?: unknown }).Path2D = class {
+  __rects: Array<{ x: number; y: number; w: number; h: number }> = []
   moveTo(): void {}
   arc(): void {}
+  rect(x: number, y: number, w: number, h: number): void {
+    this.__rects.push({ x, y, w, h })
+  }
 }
 // The halftone's ink buffer wraps its bytes in an ImageData — bun has no
 // ImageData global, so a minimal stand-in is all the harness needs (the
@@ -257,6 +306,7 @@ console.log('S1 factory defaults — kick dials + layers')
   check('halftone Picture fill defaults to off (classic ink)', d.halftoneFilter.imageFill === false, `got ${d.halftoneFilter.imageFill}`)
   check('halftone backdrop gradient defaults to off', d.halftoneFilter.backdropGradient === false, `got ${d.halftoneFilter.backdropGradient}`)
   check('halftone config no longer carries flipColorLayers', !('flipColorLayers' in d.halftoneFilter), 'legacy key still present')
+  check('visualizer flowSpeed defaults to 0.5 (gentle stream)', d.visualizer.flowSpeed === 0.5, `got ${d.visualizer.flowSpeed}`)
 }
 
 /* ------------------------- S2 migration matrix (pure) ----------------------- */
@@ -1191,6 +1241,118 @@ console.log('S12 ribbon — the layered glow-wave visualizer')
   cfgBars.visualizer.barCount = 24
   renderOne(structuredClone(cfgBars))
   check('bars render unchanged (24 fills at full alpha)', fills(main) === 24 && fillAlphas().size === 1 && fillAlphas().has(1), `fills=${fills(main)} alphas=${[...fillAlphas()].join(',')}`)
+}
+
+/* --------------------- S13 horizon visualizer ------------------------------- */
+
+console.log('S13 horizon — the perspective equalizer road')
+{
+  const frects = (c: HTMLCanvasElement): OpRec[] => logOf(c).filter((r) => r.kind === 'frect')
+  const fillAlphas = (): Set<number> =>
+    new Set(logOf(main).filter((r) => r.kind === 'fill').map((r) => r.alpha))
+  /** Pills are path fills (fillRoundRect → one roundRect each), so the
+   *  geometry lives in the fill records' tracked rects. */
+  const pillRects = (): Array<{ x: number; y: number; w: number; h: number }> => {
+    const out: Array<{ x: number; y: number; w: number; h: number }> = []
+    for (const r of logOf(main)) {
+      if (r.kind !== 'fill') continue
+      for (const q of r.rects ?? []) out.push(q)
+    }
+    return out
+  }
+
+  // A clean config: factory defaults, horizon selected, glow off so the
+  // fill census stays pure.
+  const cfgH = structuredClone(DEFAULT_STUDIO_CONFIG)
+  cfgH.visualizer = {
+    ...structuredClone(DEFAULT_STUDIO_CONFIG.visualizer),
+    style: 'horizon' as const,
+    glow: false,
+    barCount: 48,
+  }
+
+  // Warm-up: settle the recording stub's alpha state (same reason as S12;
+  // drawHorizon pins globalAlpha back to la at its end).
+  renderOne(structuredClone(cfgH), 1.25)
+
+  // 1) Deterministic: the same frozen frame renders the identical op stream.
+  renderOne(structuredClone(cfgH), 1.25)
+  const logA = JSON.stringify(logOf(main))
+  renderOne(structuredClone(cfgH), 1.25)
+  const logB = JSON.stringify(logOf(main))
+  check(
+    'horizon renders deterministically (same frame → identical op stream)',
+    logA === logB,
+    `match=${logA === logB} lenA=${logA.length} lenB=${logB.length}`,
+  )
+
+  // 2) Two-sided pills at full layer alpha, plus trail ghosts at 0.15.
+  const roadFills = logOf(main).filter((r) => r.kind === 'fill')
+  const roadAlphas = new Set(roadFills.map((r) => r.alpha))
+  const solid = roadFills.filter((r) => r.alpha === 1).length
+  check(
+    'the road paints two-sided pills plus faint trail ghosts',
+    solid >= 24 && roadAlphas.size === 2 && roadAlphas.has(1) && roadAlphas.has(0.15),
+    `solid=${solid} alphas=${[...roadAlphas].join(',')}`,
+  )
+
+  // 3) Real perspective: the widest visible pill dwarfs the thinnest.
+  const widths = pillRects()
+    .filter((q) => q.w > 0.5)
+    .map((q) => q.w)
+  const wMax = widths.length ? Math.max(...widths) : 0
+  const wMin = widths.length ? Math.min(...widths) : 0
+  check(
+    'near pills are an order of magnitude wider than far ones',
+    widths.length > 8 && wMax > 8 * wMin,
+    `max=${wMax.toFixed(1)} min=${wMin.toFixed(1)} n=${widths.length}`,
+  )
+
+  // 4) Both halves anchor on the horizon line (default 50% of 180 = 90).
+  const rects = pillRects().filter((q) => q.w > 0.5 && q.h > 1)
+  const upAnchored = rects.some((r) => Math.abs(r.y + r.h - 90) < 1e-6)
+  const downAnchored = rects.some((r) => Math.abs(r.y - 90) < 1e-6)
+  check('up pills stand on the horizon and down pills hang from it', upAnchored && downAnchored, `up=${upAnchored} down=${downAnchored}`)
+
+  // 5) Alive in silence: the idle traveling wave keeps the road breathing.
+  const silent = { ...frameAt(0.5), freq: new Float32Array(64), energy: 0, bass: 0, treble: 0, sub: 0 }
+  for (const c of [main, ...created]) logOf(c).length = 0
+  renderFrame(rc, silent, structuredClone(cfgH))
+  const silentSolid = logOf(main).filter((r) => r.kind === 'fill' && r.alpha === 1).length
+  check('a silent frame still paints the full road (idle wave)', silentSolid >= 24, `solid=${silentSolid}`)
+
+  // 6) The flow dial moves the road: same frozen frame, flow 0.5 vs 0 —
+  //    the phase shift lands the pills somewhere else entirely.
+  renderOne({ ...structuredClone(cfgH), visualizer: { ...cfgH.visualizer, flowSpeed: 0.5 } }, 0.5)
+  const flowing = JSON.stringify(logOf(main))
+  renderOne({ ...structuredClone(cfgH), visualizer: { ...cfgH.visualizer, flowSpeed: 0 } }, 0.5)
+  const still = JSON.stringify(logOf(main))
+  check('flow speed moves the pills along the road', flowing !== still, `moved=${flowing !== still}`)
+
+  // 7) The Transparency dial scales every pass exactly (main 1 → 0.5,
+  //    ghost 0.15 → 0.075) — the S9 contract extends to the road.
+  renderOne({ ...structuredClone(cfgH), visualizer: { ...cfgH.visualizer, transparency: 0.5 } })
+  const half = fillAlphas()
+  check(
+    'transparency 50% scales every road pass to exactly half',
+    half.size === 2 && half.has(0.5) && half.has(0.075),
+    `alphas=${[...half].join(',')}`,
+  )
+
+  // 8) Bar count densifies the road.
+  renderOne({ ...structuredClone(cfgH), visualizer: { ...cfgH.visualizer, barCount: 16 } })
+  const few = logOf(main).filter((r) => r.kind === 'fill' && r.alpha === 1).length
+  renderOne({ ...structuredClone(cfgH), visualizer: { ...cfgH.visualizer, barCount: 96 } })
+  const many = logOf(main).filter((r) => r.kind === 'fill' && r.alpha === 1).length
+  check('bar count densifies the road', many > few && few >= 8, `few=${few} many=${many}`)
+
+  // 9) The other styles stay untouched: bars still paints its classic
+  //    24-bar fill stack at alpha 1.
+  const cfgBars = structuredClone(DEFAULT_STUDIO_CONFIG)
+  cfgBars.visualizer = { ...structuredClone(DEFAULT_STUDIO_CONFIG.visualizer), style: 'bars' as const, glow: false }
+  cfgBars.visualizer.barCount = 24
+  renderOne(structuredClone(cfgBars))
+  check('bars render unchanged after the horizon addition (24 fills at full alpha)', fills(main) === 24 && fillAlphas().size === 1 && fillAlphas().has(1), `fills=${fills(main)} alphas=${[...fillAlphas()].join(',')}`)
 }
 
 /* --------------------------------- verdict -------------------------------- */

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { AudioWaveform, BarChart3, Droplet, Grid3x3, Radar, Sparkles, Wand2, Waves, Loader2 } from 'lucide-react'
+import { AudioWaveform, BarChart3, Droplet, Grid3x3, Radar, Sparkles, Sunrise, Wand2, Waves, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { VisualizerStyle } from '@/lib/visualizer/types'
 import { extractPaletteFromArt } from '@/lib/visualizer/palette'
@@ -24,6 +24,7 @@ const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] =
   { id: 'blob', label: 'Blob', icon: Droplet },
   { id: 'grid', label: 'Grid', icon: Grid3x3 },
   { id: 'ribbon', label: 'Ribbon', icon: Waves },
+  { id: 'horizon', label: 'Horizon', icon: Sunrise },
 ]
 
 /** Plain uppercase section label (VISUALIZER / GRADIENT / …) like the reference UI. */
@@ -207,6 +208,29 @@ export function StyleTab() {
           onChange={(smoothing) => patchVisualizer({ smoothing })}
           format={(v) => v.toFixed(2)}
         />
+        {visualizer.style === 'horizon' ? (
+          <>
+            {/* Horizon line height — where the road's up/down halves meet */}
+            <SliderRow
+              label="Horizon"
+              value={visualizer.mirrorOffset}
+              min={0.1}
+              max={0.9}
+              step={0.01}
+              onChange={(mirrorOffset) => patchVisualizer({ mirrorOffset })}
+              format={(v) => `${Math.round(v * 100)}%`}
+            />
+            <SliderRow
+              label="Flow speed"
+              value={visualizer.flowSpeed}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={(flowSpeed) => patchVisualizer({ flowSpeed })}
+              format={(v) => v.toFixed(2)}
+            />
+          </>
+        ) : null}
         <SliderRow
           label="Sensitivity"
           value={visualizer.sensitivity}
@@ -239,26 +263,10 @@ export function StyleTab() {
           />
         ) : null}
 
-        <div className="grid grid-cols-2 gap-3 pt-1">
-          <div className="space-y-1.5">
-            <MicroLabel>Mirror</MicroLabel>
-            <Select
-              value={visualizer.mirror}
-              onValueChange={(mirror) =>
-                patchVisualizer({ mirror: mirror as typeof visualizer.mirror })
-              }
-            >
-              <SelectTrigger size="sm" className="w-full" aria-label="Mirror mode">
-                <SelectValue placeholder="Mirror" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                <SelectItem value="mirror">Mirror</SelectItem>
-                <SelectItem value="center">Center</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
+        {visualizer.style === 'horizon' ? (
+          // The road is always two-sided (up + its mirror), so there is no
+          // Mirror choice on this style — just the glow switch.
+          <div className="space-y-1.5 pt-1">
             <MicroLabel>Glow</MicroLabel>
             <div className="flex h-8 items-center justify-end">
               <Switch
@@ -268,7 +276,38 @@ export function StyleTab() {
               />
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <div className="space-y-1.5">
+              <MicroLabel>Mirror</MicroLabel>
+              <Select
+                value={visualizer.mirror}
+                onValueChange={(mirror) =>
+                  patchVisualizer({ mirror: mirror as typeof visualizer.mirror })
+                }
+              >
+                <SelectTrigger size="sm" className="w-full" aria-label="Mirror mode">
+                  <SelectValue placeholder="Mirror" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="mirror">Mirror</SelectItem>
+                  <SelectItem value="center">Center</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <MicroLabel>Glow</MicroLabel>
+              <div className="flex h-8 items-center justify-end">
+                <Switch
+                  aria-label="Toggle glow"
+                  checked={visualizer.glow}
+                  onCheckedChange={(glow) => patchVisualizer({ glow })}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Mirror/center axis position (styles with a vertical mirror axis) */}
         {visualizer.mirror !== 'none' &&

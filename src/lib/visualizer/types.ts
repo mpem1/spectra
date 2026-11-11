@@ -33,7 +33,7 @@ export type GradientPresetId = 'sunset' | 'aurora' | 'ember' | 'neon' | 'mono'
 
 /* --------------------------------- Visualizer -------------------------------- */
 
-export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon'
+export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'horizon'
 export type MirrorMode = 'none' | 'mirror' | 'center'
 
 export interface VisualizerConfig {
@@ -79,6 +79,10 @@ export interface VisualizerConfig {
    *  sits behind it. Scales uniformly on top of every inner alpha, exactly
    *  like the lyrics layer's opacity dial does for the words. */
   transparency: number
+  /** Horizon road flow speed 0..1 — how fast the perspective equalizer's
+   *  bars stream past the camera (0 = the road stands still, 1 = rush).
+   *  Only the horizon style reads it; every other style ignores it. */
+  flowSpeed: number
 }
 
 /* --------------------------------- Background -------------------------------- */
@@ -990,6 +994,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     orientation: 'horizontal',
     anchor: 'right',
     transparency: 0,
+    flowSpeed: 0.5,
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 48,
