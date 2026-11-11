@@ -139,14 +139,16 @@ export function StyleTab() {
 
         {/* Orientation — the long strip styles can run left→right or top→bottom
             (the perspective road rotates with them: vertical points its
-            vanishing at the top edge, near pills at the bottom — and the
-            terrain landscape rotates the same way, horizon turning vertical) */}
+            vanishing at the top edge, near pills at the bottom — the terrain
+            landscape rotates the same way, horizon turning vertical — and
+            the sphere quarter-rolls its whole axis into the horizontal) */}
         {visualizer.style === 'bars' ||
         visualizer.style === 'wave' ||
         visualizer.style === 'grid' ||
         visualizer.style === 'ribbon' ||
         visualizer.style === 'perspective' ||
-        visualizer.style === 'terrain' ? (
+        visualizer.style === 'terrain' ||
+        visualizer.style === 'sphere' ? (
           <div className="space-y-1.5">
             <MicroLabel>Orientation</MicroLabel>
             <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
@@ -172,8 +174,9 @@ export function StyleTab() {
                 </button>
               ))}
             </div>
-            {/* Side — vertical strips can hang from either edge */}
-            {visualizer.orientation === 'vertical' ? (
+            {/* Side — vertical strips can hang from either edge (the sphere
+                has no edges to hang from, so it skips this choice) */}
+            {visualizer.orientation === 'vertical' && visualizer.style !== 'sphere' ? (
               <div className="space-y-1.5">
                 <MicroLabel>Side</MicroLabel>
                 <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
@@ -316,7 +319,9 @@ export function StyleTab() {
               A 3D landscape of spectrum ridges rolling toward the camera —
               rows bunch at the horizon, bass lifts the near hills, and the
               surface streams forward with Flow speed. The palette sweeps
-              across the columns; Fill 0 is the pure glowing wireframe.
+              across the columns; Fill 0 is the pure glowing wireframe;
+              Mirror adds the lake reflection, Center grows the range
+              symmetrically around the ground.
             </p>
           </>
         ) : null}
@@ -346,7 +351,9 @@ export function StyleTab() {
               rides its own frequency band, so the bass equator surges while
               the poles crackle with treble, and the back hemisphere prints
               dim for the depth. Quills grows the audio spikes; Spin sets the
-              rotation. The palette sweeps pole to pole.
+              rotation; Vertical rolls the axis sideways; Mirror paints every
+              dot's reflection; Center grows the quills inward. The palette
+              sweeps pole to pole.
             </p>
           </>
         ) : null}
@@ -382,11 +389,11 @@ export function StyleTab() {
           />
         ) : null}
 
-        {(visualizer.style === 'perspective' || visualizer.style === 'terrain' || visualizer.style === 'sphere') ? (
-          // The road and the landscape are horizon scenes (up is the sky,
-          // down is the ground), and the sphere is symmetric around its own
-          // center — mirroring any of them changes nothing, so there is no
-          // Mirror choice — just the glow switch.
+        {visualizer.style === 'perspective' ? (
+          // The road is a horizon scene with a strict up/down meaning —
+          // mirroring it would fold the vanishing point, so it keeps no
+          // Mirror choice — just the glow switch. The terrain and the
+          // sphere join the full Mirror family below.
           <div className="space-y-1.5 pt-1">
             <MicroLabel>Glow</MicroLabel>
             <div className="flex h-8 items-center justify-end">

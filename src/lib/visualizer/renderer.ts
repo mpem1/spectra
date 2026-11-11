@@ -1533,6 +1533,13 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
   const hy = H * clamp01(cfg.mirrorOffset ?? 0.5) // the vanishing line (Horizon dial)
   const flow = clamp(cfg.flowSpeed ?? 0.5, 0, 1)
   const fill = clamp01(cfg.terrainFill ?? 0.4)
+  // Mirror family: 'center' grows the range symmetrically around each row's
+  // ground line (ridge up + equal ridge down — the band replaces the flat
+  // earth); 'mirror' keeps the classic landscape and adds its wireframe
+  // reflection across the ground, a lake reflection in the horizon scene.
+  const mirrorMode = cfg.mirror ?? 'none'
+  const centerSym = mirrorMode === 'center'
+  const reflect = mirrorMode === 'mirror'
 
   // Mesh density — columns ride Bar count at 3/4 weight (a near edge denser
   // than ~128 lines turns to mush); rows are fixed at a good depth read.
@@ -1623,14 +1630,23 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
   }
 
   // Pass 1 — solid earth: each row fills its ridge-to-ground band, far →
-  // near, so nearer bands overlap farther ones like real hills.
+  // near, so nearer bands overlap farther ones like real hills. Center
+  // mode fills the symmetric band between the ridge and its mirror below
+  // the ground line instead.
   if (fill > 0.01) {
     for (let r = 0; r <= ROWS; r++) {
       const dN = 1 - r / ROWS
       const fade = 1 - 0.68 * dN
       rowPath(r)
-      ctx.lineTo(px[r * COLS + COLS - 1], gy[r])
-      ctx.lineTo(px[r * COLS], gy[r])
+      if (centerSym) {
+        for (let c = COLS - 1; c >= 0; c--) {
+          const idx = r * COLS + c
+          ctx.lineTo(px[idx], 2 * gy[r] - py[idx])
+        }
+      } else {
+        ctx.lineTo(px[r * COLS + COLS - 1], gy[r])
+        ctx.lineTo(px[r * COLS], gy[r])
+      }
       ctx.closePath()
       ctx.globalAlpha = la * fill * fade
       ctx.fillStyle = withAlpha(colColor(COLS >> 1), 0.24)
@@ -1652,6 +1668,16 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
     }
     ctx.strokeStyle = colColor(c)
     ctx.stroke()
+    if (centerSym) {
+      // The lower half of the symmetric range.
+      ctx.beginPath()
+      for (let r = 0; r <= ROWS; r++) {
+        const idx = r * COLS + c
+        if (r === 0) ctx.moveTo(px[idx], 2 * gy[r] - py[idx])
+        else ctx.lineTo(px[idx], 2 * gy[r] - py[idx])
+      }
+      ctx.stroke()
+    }
   }
 
   // Pass 3 — glow underlay: one soft shadowed stroke per near row (cheap —
@@ -1671,7 +1697,8 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
   }
 
   // Pass 4 — the crisp ridge lines: per-segment palette colors, fog-dimmed
-  // with depth, thinner as they recede.
+  // with depth, thinner as they recede. Center/mirror modes add the lower
+  // copy: the symmetric range's underside, or the lake reflection.
   for (let r = 0; r <= ROWS; r++) {
     const dN = 1 - r / ROWS
     const fade = 1 - 0.62 * dN
@@ -1684,6 +1711,12 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
       ctx.lineTo(px[i0 + 1], py[i0 + 1])
       ctx.strokeStyle = colColor(c)
       ctx.stroke()
+      if (centerSym || reflect) {
+        ctx.beginPath()
+        ctx.moveTo(px[i0], 2 * gy[r] - py[i0])
+        ctx.lineTo(px[i0 + 1], 2 * gy[r] - py[i0 + 1])
+        ctx.stroke()
+      }
     }
   }
 }
@@ -1729,6 +1762,20 @@ function drawSphere(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
   const tilt = -0.42 + 0.05 * Math.sin(t * 0.45)
   const ct = Math.cos(tilt)
   const st = Math.sin(tilt)
+
+  // Orientation: 'vertical' quarter-rolls the whole planet about the view
+  // axis (the same CCW turn the strip styles use) — the pole-to-pole axis
+  // swings from screen-vertical to screen-horizontal. Exact 0/1 constants
+  // keep the roll deterministic.
+  const vertical = (cfg.orientation ?? 'horizontal') === 'vertical'
+  const crz = vertical ? 0 : 1
+  const srz = vertical ? 1 : 0
+  // Mirror family, same semantics as the radial: 'mirror' paints every dot's
+  // reflection across the screen's vertical axis (left/right symmetry);
+  // 'center' grows the quills INTO the planet instead of out.
+  const mirrorMode = cfg.mirror ?? 'none'
+  const inward = mirrorMode === 'center'
+  const reflect = mirrorMode === 'mirror'
 
   const shell = 1 + bass * 0.16 // the whole planet breathes with the low end
 
@@ -1779,17 +1826,20 @@ function drawSphere(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
       const z1 = -x0 * sa + z0 * ca
       const y2 = y0 * ct - z1 * st
       const z2 = y0 * st + z1 * ct
+      // Orientation quarter-roll about the view axis (depth is untouched).
+      const xr = x1 * crz - y2 * srz
+      const yr = x1 * srz + y2 * crz
 
       const surface = R * shell
-      const tip = surface * (1 + amp * 0.5 * quills)
+      const tip = surface * (1 + amp * 0.5 * quills * (inward ? -1 : 1))
 
       // Pinhole projection of the quill root (on the shell) and tip.
       const pR = CAM / (CAM + z2 * surface)
       const pT = CAM / (CAM + z2 * tip)
-      qx0[n] = cx + x1 * surface * pR
-      qy0[n] = cy - y2 * surface * pR
-      qx1[n] = cx + x1 * tip * pT
-      qy1[n] = cy - y2 * tip * pT
+      qx0[n] = cx + xr * surface * pR
+      qy0[n] = cy - yr * surface * pR
+      qx1[n] = cx + xr * tip * pT
+      qy1[n] = cy - yr * tip * pT
       px[n] = qx1[n]
       py[n] = qy1[n]
 
@@ -1852,6 +1902,24 @@ function drawSphere(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
     ctx.beginPath()
     ctx.arc(px[idx], py[idx], pr[idx], 0, Math.PI * 2)
     ctx.fill()
+    if (reflect) {
+      // The screen-mirrored twin: same ring band, same depth (a reflection
+      // across the vertical axis keeps z), painted right after its original
+      // so the pair overlaps in the correct order.
+      if (dx * dx + dy * dy > 0.64) {
+        ctx.globalAlpha = la * pa[idx] * 0.85
+        ctx.strokeStyle = pc[idx]
+        ctx.beginPath()
+        ctx.moveTo(2 * cx - qx0[idx], qy0[idx])
+        ctx.lineTo(2 * cx - qx1[idx], qy1[idx])
+        ctx.stroke()
+      }
+      ctx.globalAlpha = la * pa[idx]
+      ctx.fillStyle = pc[idx]
+      ctx.beginPath()
+      ctx.arc(2 * cx - px[idx], py[idx], pr[idx], 0, Math.PI * 2)
+      ctx.fill()
+    }
   }
   ctx.globalAlpha = la
 }

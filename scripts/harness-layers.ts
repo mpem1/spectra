@@ -1555,6 +1555,32 @@ console.log('S14 terrain — the 3D wireframe landscape')
     fills(main) === 24 && fillAlphaSet().size === 1 && fillAlphaSet().has(1),
     `fills=${fills(main)} alphas=${[...fillAlphaSet()].join(',')}`,
   )
+
+  // 14) The Mirror family: 'mirror' keeps the landscape and adds its
+  //     wireframe reflection (the 2-pt ridge segments double, the curtains
+  //     stay), 'center' grows the symmetric range (the ROWS+1-pt curtain
+  //     polylines double too).
+  renderOne(structuredClone(cfgT), 0.5)
+  const segs2 = (): OpRec[] => strokesOf().filter((r) => (r.pts?.length ?? 0) === 2)
+  const curtainStrokes = (): OpRec[] => strokesOf().filter((r) => (r.pts?.length ?? 0) === ROWS + 1)
+  const baseSegs = segs2().length
+  const baseCurtains = curtainStrokes().length
+  renderOne({ ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const } }, 0.5)
+  const mirrorSegs = segs2().length
+  const mirrorCurtains = curtainStrokes().length
+  renderOne({ ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'center' as const } }, 0.5)
+  const centerSegs = segs2().length
+  const centerCurtains = curtainStrokes().length
+  check(
+    'mirror adds the lake reflection (ridge segments double, curtains stay)',
+    mirrorSegs >= baseSegs * 2 && mirrorCurtains === baseCurtains,
+    `segs ${baseSegs}→${mirrorSegs} curtains ${baseCurtains}→${mirrorCurtains}`,
+  )
+  check(
+    'center grows the range both ways (curtains double)',
+    centerSegs >= baseSegs * 2 && centerCurtains === baseCurtains * 2,
+    `segs ${baseSegs}→${centerSegs} curtains ${baseCurtains}→${centerCurtains}`,
+  )
 }
 
 /* ----------------------- S15 sphere visualizer ------------------------------ */
@@ -1710,6 +1736,58 @@ console.log('S15 sphere — the 3D dot-matrix planet')
     'bars render unchanged after adding sphere (24 fills at full alpha)',
     fills(main) === 24 && barFillAlphas.size === 1 && barFillAlphas.has(1),
     `fills=${fills(main)} alphas=${[...barFillAlphas].join(',')}`,
+  )
+
+  // 13) The Mirror family: 'mirror' paints every dot's screen reflection —
+  //     exactly twice the dot fills — and 'center' flips the quills to grow
+  //     inward (tips land closer to the center than the roots).
+  const distAt = (recs: OpRec[], last: boolean): number => {
+    let s = 0
+    let c = 0
+    for (const r of recs) {
+      const pts = r.pts ?? []
+      const p = last ? pts[pts.length - 1] : pts[0]
+      if (!p) continue
+      s += Math.hypot(p.x - W / 2, p.y - H / 2)
+      c++
+    }
+    return c > 0 ? s / c : 0
+  }
+  renderOne(structuredClone(cfgS), 0.5)
+  const baseDots = dotsOf().length
+  const outRoot = distAt(quillsOf(), false)
+  const outTip = distAt(quillsOf(), true)
+  renderOne({ ...structuredClone(cfgS), visualizer: { ...cfgS.visualizer, mirror: 'mirror' as const } }, 0.5)
+  const mirDots = dotsOf().length
+  renderOne({ ...structuredClone(cfgS), visualizer: { ...cfgS.visualizer, mirror: 'center' as const } }, 0.5)
+  const inRoot = distAt(quillsOf(), false)
+  const inTip = distAt(quillsOf(), true)
+  check(
+    'mirror paints the planet twice (every dot + its screen reflection)',
+    mirDots === baseDots * 2,
+    `base=${baseDots} mirror=${mirDots}`,
+  )
+  check(
+    'center grows the quills inward, none grows them outward',
+    outTip > outRoot && inTip < inRoot,
+    `out ${outTip.toFixed(2)}>??${outRoot.toFixed(2)} · in ${inTip.toFixed(2)}<??${inRoot.toFixed(2)}`,
+  )
+
+  // 14) Vertical orientation quarter-rolls the planet: the same op count,
+  //     every point finite, and the quill geometry lands somewhere else.
+  renderOne(structuredClone(cfgS), 0.5)
+  const hOps = dotsOf().length + quillsOf().length
+  const hQuills = JSON.stringify(quillsOf())
+  renderOne(
+    { ...structuredClone(cfgS), visualizer: { ...cfgS.visualizer, orientation: 'vertical' as const } },
+    0.5,
+  )
+  const vOps = dotsOf().length + quillsOf().length
+  const vFinite = quillsOf().every((r) => (r.pts ?? []).every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)))
+  check(
+    'vertical orientation rolls the planet cleanly',
+    vOps === hOps && vFinite && JSON.stringify(quillsOf()) !== hQuills,
+    `hOps=${hOps} vOps=${vOps} finite=${vFinite} moved=${JSON.stringify(quillsOf()) !== hQuills}`,
   )
 }
 
