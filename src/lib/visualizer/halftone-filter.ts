@@ -62,6 +62,13 @@
  * raw side is the bare backdrop (a kick reveals the gradient, never the
  * hidden picture). With Print only off the frame is touched exactly as
  * before, byte for byte.
+ *
+ * The Gradient and Picture ink fills are POSTER fills: what they color
+ * lives INSIDE the dots, so selecting either one runs this same poster
+ * pipeline even with the Print only toggle off — the picture steps off the
+ * frame and only the halftone shows (never dots layered over the image).
+ * Switching the fill back to Ink returns the classic print over the
+ * picture.
  * How it stays fast & deterministic (pure canvas ops, one tiny getImageData):
  *   1. The LIVE frame is drawn rotated -45° straight into a TINY n×n canvas
  *      (one pixel per grid cell) — the browser's downscale smoothing does the
@@ -584,10 +591,15 @@ export function drawHalftoneFilter(
   // motion engine (a slow constant drift plus a swing driven by the song's
   // low end, both scaled by the motion dial — 0 = static). All inputs are
   // song time / audio fields, so exports match the preview frame-exactly.
-  const solo = !!cfg.printOnly
+  //
   // Picture fill (color halftone): every dot carries the source picture's
   // own color at its cell instead of the ink — wins over inkColor/gradient.
   const imageInk = !!cfg.imageFill
+  // The poster gate: Print only, OR a Gradient / Picture ink fill. The
+  // fills color what lives INSIDE the dots, so they print poster-style on
+  // their own — the picture steps off the frame while either is set (the
+  // user's ask: fills are never a layer on top of the existing image).
+  const poster = !!cfg.printOnly || imageInk || !!cfg.gradient
   const bgMotion = clamp01(cfg.backdropMotion ?? 0.5)
   const paintBackdrop = () => {
     ctx.save()
@@ -618,9 +630,9 @@ export function drawHalftoneFilter(
     // picture conditioning is skipped, so the flash shows the frame exactly
     // as the earlier filters left it (with Stay black & white on, the
     // conditioning IS applied first so the flash keeps the mono look).
-    // Print only: the flash side is the bare backdrop — a kick lifts the
-    // print clean off and the gradient shows, never the hidden picture.
-    if (solo) {
+    // Poster mode: the flash side is the bare backdrop — a kick lifts the
+    // print clean off and the backdrop shows, never the hidden picture.
+    if (poster) {
       paintBackdrop()
       return
     }
@@ -631,9 +643,9 @@ export function drawHalftoneFilter(
     // Rest, print direction: the regular picture alone — zero cost, the
     // frame is exactly as the earlier filters left it (with Stay black &
     // white on, the conditioning runs so the rest keeps the mono look).
-    // Print only: the rest is the bare backdrop — the print only exists
+    // Poster mode: the rest is the bare backdrop — the print only exists
     // while a kick holds it stamped in.
-    if (solo) {
+    if (poster) {
       paintBackdrop()
       return
     }
@@ -646,13 +658,14 @@ export function drawHalftoneFilter(
   // in the print direction it dissolves OUT as the print stamps in.
   const rawA = flipToPrint ? 1 - flipT : flipT
 
-  // Print only: snapshot the composed picture as the screen's source,
-  // condition the SNAPSHOT (never the visible frame), then flood the frame
-  // with the backdrop BEFORE anything else lands on it. From here on the
-  // visible canvas carries only the backdrop and the ink — the picture
-  // itself never shows again this frame.
+  // Poster mode (Print only, or a Gradient / Picture fill): snapshot the
+  // composed picture as the screen's source, condition the SNAPSHOT (never
+  // the visible frame), then flood the frame with the backdrop BEFORE
+  // anything else lands on it. From here on the visible canvas carries
+  // only the backdrop and the ink — the picture itself never shows again
+  // this frame.
   let src: HTMLCanvasElement | null = null
-  if (solo) {
+  if (poster) {
     src = getWork('ht:solo', W, H)
     const sctx = resetWork(src.getContext('2d')!)
     sctx.drawImage(ctx.canvas, 0, 0, W, H)
@@ -660,23 +673,23 @@ export function drawHalftoneFilter(
     paintBackdrop()
   }
 
-  if (flipMono && !solo) {
+  if (flipMono && !poster) {
     // "Stay black & white" conditions BEFORE the raw snapshot so the
     // dissolving picture is the mono one too — the whole swap then happens
     // inside the mono look, with no color popping through mid-crossfade
     // (conditioning after the snapshot would leave the dissolving side
     // full-color while the peak/rest sides are mono — a visible jump at
     // the swap's edges). The pass below is skipped when this ran.
-    // (Print only already conditioned its snapshot up above — and the
+    // (Poster mode already conditioned its snapshot up above — and the
     // visible frame is the backdrop, which must never be conditioned.)
     applyConditioning(ctx.canvas, ctx)
   }
   if (flipOn && rawA > 0.001) {
     // Keep the untouched frame around so the swap can dissolve between
     // the print state and the regular picture (one full-frame GPU copy,
-    // and only while a kick is landing or fading). Print only: the canvas
+    // and only while a kick is landing or fading). Poster mode: the canvas
     // at this moment IS the bare backdrop (painted above), so the swap's
-    // raw side is the gradient — exactly the "lift the print clean off"
+    // raw side is the backdrop — exactly the "lift the print clean off"
     // behavior.
     raw = getWork('ht:raw', W, H)
     resetWork(raw.getContext('2d')!).drawImage(ctx.canvas, 0, 0, W, H)
@@ -698,10 +711,10 @@ export function drawHalftoneFilter(
   // 0) Picture conditioning — run the pass defined above (one GPU pass;
   //    the defaults skip it inside). Shapes the picture AND the print.
   //    "Stay black & white" already conditioned up above (before the raw
-  //    snapshot), and running it twice would double the contrast. Print
-  //    only conditioned its hidden snapshot instead — the visible frame is
+  //    snapshot), and running it twice would double the contrast. Poster
+  //    mode conditioned its hidden snapshot instead — the visible frame is
   //    the backdrop and must never run through the picture conditioning.
-  if (!flipMono && !solo) applyConditioning(ctx.canvas, ctx)
+  if (!flipMono && !poster) applyConditioning(ctx.canvas, ctx)
 
   // The negative flip — one GPU pass that inverts whatever is currently on
   // the frame. Runs at the very END (after the ink is laid down) so picture
@@ -786,8 +799,8 @@ export function drawHalftoneFilter(
   smCtx.scale(1 / cellS, 1 / cellS)
   smCtx.rotate(-Math.PI / 4)
   smCtx.translate(-W / 2, -H / 2)
-  // Print only reads the hidden snapshot (the picture as it was before the
-  // backdrop flooded the frame); the classic path reads the live frame.
+  // Poster mode reads the hidden snapshot (the picture as it was before
+  // the backdrop flooded the frame); the classic path reads the live frame.
   smCtx.drawImage(src ?? ctx.canvas, 0, 0, W, H)
 
   // 2) One read of the tiny grid; stamp every dark cell's dot into the ink
@@ -853,8 +866,8 @@ export function drawHalftoneFilter(
       const yy1 = Math.min(H - 1, y0 + 2 * box)
       const xx0 = Math.max(0, x0)
       const xx1 = Math.min(W - 1, x0 + 2 * box)
-      // The dot's fill color for the Picture fill — the source picture's
-      // own color at this cell (in Print only that's the hidden snapshot,
+      // The dot's fill color for the Picture fill — the hidden snapshot's
+      // own color at this cell (Picture fill always prints in poster mode,
       // so picture conditioning shapes what the dots carry).
       const cr = data[k]
       const cg = data[k + 1]
@@ -896,7 +909,9 @@ export function drawHalftoneFilter(
   if (imageInk) {
     // Picture fill: paint each dot its own cell color straight into the
     // buffer (img.data views the SAME bytes as buf), then skip the ink
-    // recolor below entirely — the picture IS the ink this frame.
+    // recolor below entirely — the picture IS the ink this frame. (The
+    // fill always prints in poster mode, so these colored dots land on
+    // the backdrop, never on the picture.)
     for (let p = 0, P = W * H; p < P; p++) {
       if (buf[p * 4 + 3] > 0) {
         buf[p * 4] = colR[p]
@@ -910,7 +925,8 @@ export function drawHalftoneFilter(
   if (!imageInk && (cfg.gradient || inkColor !== '#000000')) {
     // Recolor the coverage silhouette with one 'source-in' fill. Black (the
     // default) skips this — the buffer is already black, so the classic look
-    // pays zero extra GPU work.
+    // pays zero extra GPU work. (With the Gradient fill on, poster mode is
+    // already forced above, so this gradient paints the poster's dots.)
     ictx.globalCompositeOperation = 'source-in'
     if (cfg.gradient) {
       // Gradient angle = slow constant drift + a swing driven by the song's

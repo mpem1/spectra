@@ -46,7 +46,9 @@ function FlipDirButton({
  * printed from black & white / contrast-punched / negative source, the
  * ink can be any color or a two-color gradient that moves with the song,
  * and Print only wipes the picture away entirely — just the dots dancing
- * on a backdrop you choose.
+ * on a backdrop you choose. The Gradient / Picture fills print that same
+ * poster on their own (the fill lives inside the dots, so the picture
+ * steps off the frame while either is set).
  */
 export function HalftoneFilterSection() {
   const filter = useStudioStore((s) => s.config.halftoneFilter)
@@ -54,6 +56,13 @@ export function HalftoneFilterSection() {
 
   const set = (key: keyof HalftoneFilterConfig) => (value: number) =>
     patchHalftoneFilter({ [key]: value } as Partial<HalftoneFilterConfig>)
+
+  // The poster is up whenever Print only is on — or whenever a Gradient /
+  // Picture fill is set, because those fills live INSIDE the dots and print
+  // poster-style on their own (the picture steps off the frame; never dots
+  // layered over the image). Mirrors the renderer's poster gate.
+  const posterActive =
+    filter.printOnly || !!filter.gradient || !!filter.imageFill
 
   return (
     <section className={sectionShell('yellow')}>
@@ -77,8 +86,10 @@ export function HalftoneFilterSection() {
         snaps back between kicks. Flip on kick swaps the whole look on every
         kick — you choose which side shows, how hard a kick fires it, how
         long it stays, and whether the picture stays black &amp; white.
-        Print only wipes the picture away: just the dots on a backdrop.
-        Inside the dots: the ink, a gradient, or the picture's own colors.
+        Inside the dots: the ink, a gradient, or the picture&apos;s own
+        colors — the gradient and picture fills print on their own paper
+        (only the halftone shows), and Print only pins that poster look on
+        for the plain ink too.
       </p>
 
       {filter.enabled ? (
@@ -88,7 +99,7 @@ export function HalftoneFilterSection() {
             checked={filter.printOnly}
             onCheckedChange={(printOnly) => patchHalftoneFilter({ printOnly })}
           />
-          {filter.printOnly ? (
+          {posterActive ? (
             <>
               <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5">
                 <MicroLabel className="text-zinc-400">Backdrop</MicroLabel>
@@ -134,6 +145,9 @@ export function HalftoneFilterSection() {
                 look, or two blended colors with the same drift-and-kick motion
                 as the ink gradient. Flip on kick now lifts the print clean off,
                 flashing the bare backdrop.
+                {posterActive && !filter.printOnly
+                  ? ' Right now the Gradient / Picture fill raised this poster on its own — switch the fill back to Ink to print over the picture again.'
+                  : ''}
               </p>
             </>
           ) : (
@@ -171,11 +185,14 @@ export function HalftoneFilterSection() {
             </div>
             <p className="text-[10px] leading-snug text-zinc-600">
               What the dots are made of. Ink is the solid color from the Ink
-              panel below; Gradient is that panel&apos;s two-color blend (the
-              same switch as its Gradient toggle) drifting with the song;
-              Picture prints the picture&apos;s own colors inside every dot —
-              a color halftone, with Black &amp; white / Contrast shaping
-              what the dots carry.
+              panel below; Gradient is that panel&apos;s two-color blend
+              drifting with the song; Picture prints the picture&apos;s own
+              colors inside every dot — a color halftone, with Black &amp;
+              white / Contrast shaping what the dots carry. Gradient and
+              Picture fill the dots on their own paper: the picture steps off
+              the frame and only the halftone shows — never dots layered over
+              the image. Ink keeps the picture underneath (unless Print only
+              is on).
             </p>
           </div>
           <BeatPunchRow
@@ -364,7 +381,8 @@ export function HalftoneFilterSection() {
             ) : (
               <p className="text-[10px] leading-snug text-zinc-600">
                 Turn on Gradient to blend two colors across the dots and move
-                the blend with the sound.
+                the blend with the sound. The gradient prints on its own
+                paper — the picture steps off the frame while it&apos;s set.
               </p>
             )}
           </div>

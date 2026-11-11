@@ -46,10 +46,13 @@
  *   S11 halftone ink fills — the "Inside the dots" choice: classic ink
  *       stays black in the buffer, Picture fill stamps each dot the source
  *       picture's own cell color (both color families, zero black, the
- *       source-in recolor skipped), Picture wins over gradient + inkColor,
- *       gradient ink still recolors with both stops, Print only + Picture
- *       keeps the paper under colored dots, and raw configs without
- *       imageFill print classic black ink
+ *       source-in recolor skipped) and PRINTS POSTER-STYLE ON ITS OWN —
+ *       even with Print only off, the fill snapshots the picture, floods
+ *       the frame with the backdrop and reads the snapshot (never dots
+ *       layered over the image), Picture wins over gradient + inkColor,
+ *       gradient ink recolors with both stops and floods the poster
+ *       backdrop too, Print only + Picture keeps the paper under colored
+ *       dots, and raw configs without imageFill print classic black ink
  */
 
 import { renderFrame } from '../src/lib/visualizer/renderer'
@@ -866,6 +869,7 @@ console.log('S11 halftone ink fills — the picture or the gradient inside the d
 
   const frects = (c: HTMLCanvasElement): OpRec[] => logOf(c).filter((r) => r.kind === 'frect')
   const pimgs = (c: HTMLCanvasElement): OpRec[] => logOf(c).filter((r) => r.kind === 'pimg')
+  const lastOf = (ops: OpRec[]): OpRec | undefined => ops[ops.length - 1]
 
   // The ink canvas is the one that receives the full-frame putImageData.
   const inkCanvasOf = (): HTMLCanvasElement | undefined =>
@@ -941,7 +945,9 @@ console.log('S11 halftone ink fills — the picture or the gradient inside the d
   feedGrid(sample11)
 
   // 1) Classic ink: the buffer's printed pixels stay BLACK — no picture
-  //    colors leak in, no recolor at the factory black.
+  //    colors leak in, no recolor at the factory black. The frame op
+  //    baseline is captured here so the fill blocks can prove the poster
+  //    runs (one extra backdrop fill) even with Print only off.
   renderOne({ ...cfg11 })
   const c1 = census(inkImgOf(inkCanvasOf()))
   check(
@@ -949,10 +955,19 @@ console.log('S11 halftone ink fills — the picture or the gradient inside the d
     c1.inked > 0 && c1.black === c1.inked && c1.red === 0 && c1.blue === 0,
     `inked=${c1.inked} black=${c1.black} red=${c1.red} blue=${c1.blue}`,
   )
+  const classicFrects11 = frects(main).length
+  const classicDraws11 = draws(main).length
 
   // 2) Picture fill: the same dots now carry the grid's own colors — both
   //    color families stamped, zero black, and the recolor pass skipped.
+  //    AND the fill prints poster-style ON ITS OWN (Print only off): the
+  //    picture is snapshotted, the screen reads that snapshot, and the
+  //    frame is flooded with the white backdrop before the ink lands —
+  //    never dots layered over the image. ('ht:solo' may already exist
+  //    from S10 — the work-canvas cache reuses it — so the snapshot is
+  //    identified by what it drew THIS frame, not by creation order.)
   renderOne({ ...cfg11, halftoneFilter: { ...cfg11.halftoneFilter, imageFill: true } })
+  const solo11 = created.find((c) => draws(c).length === 1 && draws(c)[0].src === main)
   const inkCanvas2 = inkCanvasOf()
   const c2 = census(inkImgOf(inkCanvas2))
   check(
@@ -964,6 +979,28 @@ console.log('S11 halftone ink fills — the picture or the gradient inside the d
     'Picture fill skips the ink recolor pass',
     !!inkCanvas2 && !frects(inkCanvas2).some((r) => r.op === 'source-in'),
     'source-in recolor ran',
+  )
+  check(
+    'Picture fill without Print only hides the picture (snapshot taken)',
+    !!solo11,
+    'no snapshot canvas drew the live frame',
+  )
+  check(
+    'Picture fill reads the hidden snapshot, not the live frame',
+    !!solo11 && draws(sample11).length === 1 && draws(sample11)[0].src === solo11,
+    `sample src=${String(draws(sample11 ?? main)[0]?.src)}`,
+  )
+  check(
+    'Picture fill floods the frame with one white backdrop fill (poster)',
+    frects(main).length === classicFrects11 + 1 &&
+      lastOf(frects(main))?.alpha === 1 &&
+      lastOf(frects(main))?.style === '#ffffff',
+    `frects=${frects(main).length} vs ${classicFrects11} last=${JSON.stringify(lastOf(frects(main)))}`,
+  )
+  check(
+    'Picture fill still lands the ink on top of the backdrop',
+    draws(main).length === classicDraws11 && lastOf(draws(main))?.alpha === 0.9,
+    `draws=${draws(main).length} vs ${classicDraws11} lastα=${lastOf(draws(main))?.alpha}`,
   )
 
   // 3) Picture fill WINS over the gradient + a custom ink color: same
@@ -985,8 +1022,9 @@ console.log('S11 halftone ink fills — the picture or the gradient inside the d
     `inked=${c3.inked} red=${c3.red} blue=${c3.blue} black=${c3.black}`,
   )
 
-  // 4) Gradient ink (Picture fill off): the recolor pass runs with both
-  //    dialed stops — the classic ink pipeline is untouched.
+  // 4) Gradient fill (Picture fill off): the recolor pass runs with both
+  //    dialed stops — AND the gradient is a poster fill too: with Print
+  //    only off the backdrop still floods before the ink lands.
   renderOne({
     ...cfg11,
     halftoneFilter: {
@@ -1006,9 +1044,15 @@ console.log('S11 halftone ink fills — the picture or the gradient inside the d
       JSON.stringify(gradStyle.stops) === JSON.stringify([[0, '#114422'], [1, '#55aa88']]),
     `stops=${JSON.stringify(gradStyle?.stops)}`,
   )
+  check(
+    'Gradient fill without Print only floods the poster backdrop too',
+    frects(main).length === classicFrects11 + 1 && lastOf(frects(main))?.style === '#ffffff',
+    `frects=${frects(main).length} vs ${classicFrects11} style=${String(lastOf(frects(main))?.style)}`,
+  )
 
   // 5) Print only + Picture fill: the poster keeps its white backdrop AND
-  //    the dots carry the hidden picture's colors.
+  //    the dots carry the hidden picture's colors (the toggle changes
+  //    nothing about the fill — it already printed this way on its own).
   renderOne({
     ...cfg11,
     halftoneFilter: { ...cfg11.halftoneFilter, printOnly: true, imageFill: true },

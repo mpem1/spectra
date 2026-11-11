@@ -553,7 +553,11 @@ export interface HalftoneFilterConfig {
   invert: boolean
   /** Halftone ink color as '#rrggbb' (default black = classic print) */
   inkColor: string
-  /** Two-color gradient ink instead of one flat color */
+  /** Two-color gradient ink instead of one flat color. The gradient lives
+   *  INSIDE the dots, so turning it on prints poster-style on its own — the
+   *  picture steps off the frame and only the halftone shows on the
+   *  backdrop (never dots layered over the image). Switching the fill back
+   *  to Ink returns the classic print over the picture. */
   gradient: boolean
   /** Gradient's second color as '#rrggbb' (only matters when gradient) */
   inkColor2: string
@@ -571,26 +575,29 @@ export interface HalftoneFilterConfig {
    *  load as off (the classic print over the picture). */
   printOnly: boolean
   /** Poster backdrop color as '#rrggbb' — the "paper" the print sits on
-   *  while Print only is on (factory white = classic print on paper).
-   *  Ignored while Print only is off. */
+   *  while the poster is up (Print only, or a Gradient / Picture fill,
+   *  which print poster-style on their own; factory white = classic print
+   *  on paper). Ignored while the classic print covers the picture. */
   backdropColor: string
   /** Two-color gradient backdrop instead of one flat color (only matters
-   *  while Print only is on) */
+   *  while the poster is up — Print only, or a Gradient / Picture fill) */
   backdropGradient: boolean
   /** Backdrop gradient's second color as '#rrggbb' (only matters while
-   *  Print only AND the backdrop gradient are on) */
+   *  the poster is up AND the backdrop gradient is on) */
   backdropColor2: string
   /** How much the backdrop gradient moves with the sound 0..1 — the same
    *  motion engine as the ink gradient (slow drift + kick swing, 0 =
-   *  static). Only matters while Print only AND the backdrop gradient are
-   *  on. */
+   *  static). Only matters while the poster is up AND the backdrop
+   *  gradient is on. */
   backdropMotion: number
   /** Fill the dots with the picture's own colors — a color halftone: every
-   *  dot carries the color the picture has where that dot sits (in Print
-   *  only that's the hidden snapshot, so Black & white / Contrast shape
-   *  what the dots carry; classic print tints the dots with the live
-   *  picture). Wins over the Ink color / Gradient while on. Factory false
-   *  = the classic ink fill. */
+   *  dot carries the color the picture has where that dot sits. The fill
+   *  lives INSIDE the dots, so it prints poster-style on its own — the
+   *  picture steps off the frame and only the halftone shows on the
+   *  backdrop (never dots layered over the image); the screen samples the
+   *  hidden snapshot, so Black & white / Contrast shape what the dots
+   *  carry. Wins over the Ink color / Gradient while on. Factory false =
+   *  the classic ink fill (dots over the picture). */
   imageFill: boolean
 }
 
