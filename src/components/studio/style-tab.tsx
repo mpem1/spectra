@@ -323,8 +323,10 @@ export function StyleTab() {
               surface streams forward with Flow speed. The palette sweeps
               across the columns; Fill 0 is the pure glowing wireframe;
               Mirror pulls the range onto a shore and lays a faded lake
-              below it (Mirror offset slides the water line lower), Center
-              grows the range both ways with its own hills below.
+              below it (Mirror offset sinks the water line below the shore
+              or raises it into the range — high water), Center grows the
+              range both ways with its own hills below (Spread dials their
+              depth). Zero is always the factory look.
             </p>
           </>
         ) : null}
@@ -455,24 +457,32 @@ export function StyleTab() {
           />
         ) : null}
 
-        {/* Reflection offset: the lake (terrain) and road (perspective)
-            reflections fold right at the ground / hide under the road by
-            default; this dial slides the water line lower, detaching the
-            mirrored copy down the screen. Center mode pins its own fold to
-            the ground, so the dial only answers Mirror. */}
-        {visualizer.mirror === 'mirror' &&
-        (visualizer.style === 'terrain' || visualizer.style === 'perspective') ? (
+        {/* Terrain's dial answers both mirror modes, signed both ways from
+            the factory look at 0: Mirror offset slides the lake's water
+            line (positive sinks it below the shore, negative raises it into
+            the range — high water); Spread scales how deep the Center
+            underside grows. Perspective's road reflection keeps its own
+            one-way water line under the road. */}
+        {visualizer.style === 'terrain' && visualizer.mirror !== 'none' ? (
+          <SliderRow
+            label={visualizer.mirror === 'mirror' ? 'Mirror offset' : 'Spread'}
+            value={visualizer.terrainMirrorDrop}
+            min={-1}
+            max={1}
+            step={0.01}
+            onChange={(terrainMirrorDrop) => patchVisualizer({ terrainMirrorDrop })}
+            format={(v) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`}
+          />
+        ) : null}
+
+        {visualizer.mirror === 'mirror' && visualizer.style === 'perspective' ? (
           <SliderRow
             label="Mirror offset"
-            value={visualizer.style === 'terrain' ? visualizer.terrainMirrorDrop : visualizer.perspMirrorDrop}
+            value={visualizer.perspMirrorDrop}
             min={0}
             max={1}
             step={0.01}
-            onChange={(v) =>
-              patchVisualizer(
-                visualizer.style === 'terrain' ? { terrainMirrorDrop: v } : { perspMirrorDrop: v },
-              )
-            }
+            onChange={(v) => patchVisualizer({ perspMirrorDrop: v })}
             format={(v) => `${Math.round(v * 100)}%`}
           />
         ) : null}

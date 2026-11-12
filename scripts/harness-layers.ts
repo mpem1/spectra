@@ -1605,10 +1605,12 @@ console.log('S14 terrain — the 3D wireframe landscape')
   //     ~72% down the canvas — above the bottom edge, unlike None mode
   //     where the near rows overflow past it) and the reflection is the
   //     whole range flipped across ONE water line in the freed space. The
-  //     dial slides the water line lower: the range's own segments stay
-  //     BIT-IDENTICAL, the reflection moves, and every reflection point
-  //     stays on the canvas (below the range, above the bottom edge) at
-  //     any dial value — the lake can never slide off screen.
+  //     signed dial answers BOTH directions: positive sinks the water line
+  //     toward the bottom edge (the lake detaches), negative raises it into
+  //     the range (high water — the lake climbs above the shore). The
+  //     range's own segments stay BIT-IDENTICAL across the dry values and
+  //     every reflection point stays on the canvas at -1, 0 and +1 — the
+  //     lake can never leave the screen in either direction.
   renderOne(
     { ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const } },
     0.5,
@@ -1626,39 +1628,60 @@ console.log('S14 terrain — the 3D wireframe landscape')
   )
   const orig1 = segs2().filter((_, i) => i % 2 === 0)
   const refl1 = segs2().filter((_, i) => i % 2 === 1)
-  const reflMinY = Math.min(...ysOf(refl0), ...ysOf(refl1))
-  const reflMaxY = Math.max(...ysOf(refl0), ...ysOf(refl1))
+  renderOne(
+    {
+      ...structuredClone(cfgT),
+      visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const, terrainMirrorDrop: -1 },
+    },
+    0.5,
+  )
+  const origFlood = segs2().filter((_, i) => i % 2 === 0)
+  const reflFlood = segs2().filter((_, i) => i % 2 === 1)
+  const reflMinY = Math.min(...ysOf(refl0), ...ysOf(refl1), ...ysOf(reflFlood))
+  const reflMaxY = Math.max(...ysOf(refl0), ...ysOf(refl1), ...ysOf(reflFlood))
+  const floodMinY = Math.min(...ysOf(reflFlood))
   check(
-    'mirror lays the lake below the shore, fully on screen at any dial value',
+    'mirror lake: on screen at dial -1/0/+1, detaches below, floods above the shore',
     orig0.length > 200 &&
       orig0.length === orig1.length &&
       JSON.stringify(orig0) === JSON.stringify(orig1) &&
       origMaxY < H * 0.78 &&
-      reflMinY > origMaxY &&
+      reflMinY > 0 &&
       reflMaxY <= H + 1 &&
-      JSON.stringify(refl0) !== JSON.stringify(refl1),
-    `orig ${orig0.length}→${orig1.length} same=${JSON.stringify(orig0) === JSON.stringify(orig1)} origMaxY=${origMaxY.toFixed(1)} refl=[${reflMinY.toFixed(1)}..${reflMaxY.toFixed(1)}] H=${H}`,
+      JSON.stringify(refl0) !== JSON.stringify(refl1) &&
+      floodMinY < origMaxY,
+    `orig ${orig0.length}→${orig1.length} same=${JSON.stringify(orig0) === JSON.stringify(orig1)} origMaxY=${origMaxY.toFixed(1)} refl=[${reflMinY.toFixed(1)}..${reflMaxY.toFixed(1)}] floodMin=${floodMinY.toFixed(1)} H=${H}`,
   )
 
-  // 16) Center mode pins the symmetric range to the ground line — the
-  //     Mirror offset dial does nothing there (byte-identical frames with
-  //     the dial at 0 and 0.3) — and the range's underside is the terrain's
-  //     OWN hills: different geometry from the mirror's reflection, even
-  //     ignoring the reflection's half-strength alpha (points compared).
+  // 16) Center mode's dial (Spread) scales the depth of the range's OWN
+  //     underside: 0 = the factory blot, negative pulls it shallower,
+  //     positive pushes it deeper — monotonic in the underside's mean Y —
+  //     and the underside stays the terrain's own hills: different geometry
+  //     from the mirror's flipped copy (points compared).
   const centerCfg = { ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'center' as const } }
+  const meanYOf = (rs: OpRec[]): number =>
+    rs.reduce((s, r) => s + meanY(r), 0) / Math.max(1, rs.length)
   renderOne(structuredClone(centerCfg), 0.5)
   const cLow0 = segs2().filter((_, i) => i % 2 === 1)
+  const cMean0 = meanYOf(cLow0)
   renderOne(
-    { ...structuredClone(centerCfg), visualizer: { ...centerCfg.visualizer, terrainMirrorDrop: 0.3 } },
+    { ...structuredClone(centerCfg), visualizer: { ...centerCfg.visualizer, terrainMirrorDrop: -1 } },
     0.5,
   )
-  const cLow1 = segs2().filter((_, i) => i % 2 === 1)
+  const cMeanShallow = meanYOf(segs2().filter((_, i) => i % 2 === 1))
+  renderOne(
+    { ...structuredClone(centerCfg), visualizer: { ...centerCfg.visualizer, terrainMirrorDrop: 1 } },
+    0.5,
+  )
+  const cLowDeep = segs2().filter((_, i) => i % 2 === 1)
+  const cMeanDeep = meanYOf(cLowDeep)
   check(
-    'center mode ignores the dial (the range stays anchored)',
+    'center spread: shallower ← dial → deeper (monotonic underside)',
     cLow0.length > 200 &&
-      cLow0.length === cLow1.length &&
-      JSON.stringify(cLow0) === JSON.stringify(cLow1),
-    `lows ${cLow0.length}→${cLow1.length} same=${JSON.stringify(cLow0) === JSON.stringify(cLow1)}`,
+      cLowDeep.length === cLow0.length &&
+      cMeanShallow < cMean0 &&
+      cMean0 < cMeanDeep,
+    `meanY shallow=${cMeanShallow.toFixed(1)} < factory=${cMean0.toFixed(1)} < deep=${cMeanDeep.toFixed(1)}`,
   )
   const ptsOf = (rs: OpRec[]): string => JSON.stringify(rs.map((r) => r.pts))
   renderOne(structuredClone(centerCfg), 0.5)

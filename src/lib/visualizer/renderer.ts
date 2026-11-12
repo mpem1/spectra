@@ -1771,36 +1771,49 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
    * shore (a vertical compression about the horizon that ends the near
    * edge ~72% down the canvas), and the reflection is the entire range
    * flipped across ONE water line in the freed space, squashed to fit so
-   * it can never leave the screen. The dial slides the water line lower,
-   * opening a gap between shore and lake without moving the range itself.
-   * Center mode keeps the full-height range and pins its fold to the
-   * ground line — the dial answers Mirror only. Pure math → deterministic. */
+   * it can never leave the screen. The dial answers BOTH directions: 0
+   * pins the water line at the shore (factory); positive sinks it toward
+   * the bottom edge, opening a gap between shore and lake; negative
+   * raises it into the range — high water: the submerged foothills dim
+   * under the surface and the lake reflects the peaks still above the
+   * line. Center mode keeps the full-height range and pins its fold to
+   * the ground line; its dial (Spread) scales how deep the range's own
+   * underside grows. Pure math → deterministic. */
+  const dropV = clamp(cfg.terrainMirrorDrop ?? 0, -1, 1)
+  const spread = centerSym ? 1 + dropV : 1
   let rpy: Float64Array | null = null
   let waterY = 0
   let squash = 1
+  let flood = false
   if (reflect) {
     const gyNear = gy[ROWS] // the near edge — past the canvas bottom
     const k = clamp((H * 0.72 - hy) / Math.max(1e-6, gyNear - hy), 0.12, 1)
     for (let r = 0; r <= ROWS; r++) gy[r] = hy + (gy[r] - hy) * k
     for (let i = 0; i < py.length; i++) py[i] = hy + (py[i] - hy) * k
-    // The water line: the shore plus the dial's drop — up to half of the
-    // free space below the shore, so the gap opens but never reaches the
-    // bottom edge.
-    waterY = gy[ROWS] + clamp01(cfg.terrainMirrorDrop ?? 0) * (H - gy[ROWS]) * 0.5
-    // Squash-to-fit: the flipped range always fits between the water line
-    // and the bottom edge, at any dial value and any Horizon setting.
+    // The water line: the shore plus the signed dial. Positive sinks it up
+    // to 85% of the free space below the shore (the lake always keeps its
+    // fit below); negative raises it up to 90% of the way to the highest
+    // ridge — always strictly below that ridge, so something dry remains
+    // to reflect.
     let topY = Infinity
     for (let i = 0; i < py.length; i++) topY = Math.min(topY, py[i])
+    waterY =
+      dropV >= 0
+        ? gy[ROWS] + dropV * (H - gy[ROWS]) * 0.85
+        : gy[ROWS] + dropV * (gy[ROWS] - topY) * 0.9
+    flood = waterY < gy[ROWS]
+    // Squash-to-fit: the flipped range always fits between the water line
+    // and the bottom edge, at any dial value and any Horizon setting.
     squash = Math.min(1, (H - waterY) / Math.max(1e-6, waterY - topY))
     rpy = new Float64Array(py.length)
-    for (let i = 0; i < py.length; i++) rpy[i] = waterY + (waterY - py[i]) * squash
+    for (let i = 0; i < py.length; i++) rpy[i] = waterY + (waterY - Math.min(py[i], waterY)) * squash
   }
 
   /** The lower half's screen Y at (row, col): the lake reflection in Mirror
    *  mode (the whole range flipped across the single water line), the
-   *  organic underside in Center mode. */
+   *  organic underside in Center mode at the Spread dial's depth. */
   const lowY = (r: number, c: number): number => {
-    if (centerSym) return gy[r] + worldHLow(r, c) * uAt(r)
+    if (centerSym) return gy[r] + worldHLow(r, c) * uAt(r) * spread
     return rpy ? rpy[r * COLS + c] : py[r * COLS + c]
   }
 
@@ -1831,7 +1844,7 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
         ctx.lineTo(px[r * COLS], gy[r])
       }
       ctx.closePath()
-      ctx.globalAlpha = la * fill * fade
+      ctx.globalAlpha = la * fill * fade * (flood && gy[r] > waterY ? 0.35 : 1)
       ctx.fillStyle = withAlpha(colColor(COLS >> 1), 0.24)
       ctx.fill()
       if (reflect) {
@@ -1844,7 +1857,7 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
           if (c === 0) ctx.moveTo(px[idx], lowY(r, c))
           else ctx.lineTo(px[idx], lowY(r, c))
         }
-        const flipGy = waterY + (waterY - gy[r]) * squash
+        const flipGy = waterY + (waterY - Math.min(gy[r], waterY)) * squash
         ctx.lineTo(px[r * COLS + COLS - 1], flipGy)
         ctx.lineTo(px[r * COLS], flipGy)
         ctx.closePath()
@@ -1911,6 +1924,9 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
       ctx.moveTo(px[i0], py[i0])
       ctx.lineTo(px[i0 + 1], py[i0 + 1])
       ctx.strokeStyle = colColor(c)
+      // High water: a segment fully below the water line is under the
+      // surface — dim it so the submerged foothills sink into the lake.
+      if (flood && py[i0] > waterY && py[i0 + 1] > waterY) ctx.globalAlpha = la * fade * 0.35
       ctx.stroke()
       if (centerSym || reflect) {
         // Center: the underside's own segment at full strength. Mirror: the

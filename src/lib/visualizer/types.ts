@@ -113,12 +113,13 @@ export interface VisualizerConfig {
    *  near, so nearer bands overlap farther ones like real hills). 0 = the
    *  pure glowing wireframe. */
   terrainFill: number
-  /** Terrain style — lake-reflection offset 0..1. With Mirror on, the
-   *  reflection normally folds exactly at each row's ground line (a perfect
-   *  mirror lake). This dial slides the water line LOWER — the mirrored
-   *  hills detach and drop, capped at a fifth of the canvas so the
-   *  reflection never leaves the screen. 0 = the classic hugging
-   *  reflection (the factory look). */
+  /** Terrain style — mirror dial, signed -1..1 (0 = the factory look in
+   *  every mode). Mirror mode: the lake's water line — positive sinks it
+   *  toward the bottom edge (the lake detaches from the shore), negative
+   *  raises it into the range (high water: the foothills submerge and the
+   *  lake reflects the peaks that stay above the line). Center mode:
+   *  Spread — how deep the range's own underside grows (negative shallower,
+   *  positive deeper). The lake/underside always stays on the canvas. */
   terrainMirrorDrop: number
   /** Sphere style — spin speed 0..1. How fast the dot-matrix planet turns
    *  around its tilted axis (0 = a slow drift, 1 = a fast whirl). */
