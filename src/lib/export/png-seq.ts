@@ -18,6 +18,7 @@ import {
   releaseExportVideo,
   seekExportVideo,
 } from '../visualizer/animated-bg'
+import { bindSeratoSource, prepareSeratoEnvelope } from '../visualizer/serato'
 import type {
   ExportProgress,
   ExportSettings,
@@ -118,6 +119,14 @@ export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResu
   }
 
   const analyzer = new OfflineAnalyzer(audioBuffer, settings.fps)
+
+  // Serato strip: precompute the whole-song envelope before frame 0 (same
+  // contract as the MP4 path — see exporter.ts).
+  if (config.visualizer.style === 'serato') {
+    bindSeratoSource(audioBuffer)
+    await prepareSeratoEnvelope(audioBuffer)
+  }
+
   const total = Math.min(
     Math.ceil(lengthSeconds(settings.length, analyzer.duration) * settings.fps),
     analyzer.totalFrames,

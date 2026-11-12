@@ -18,6 +18,7 @@ import type {
 import { buildGradient, buildRadialGradient, gradientLine, sampleGradient, withAlpha } from './gradients'
 import { getBackgroundImage } from './image-cache'
 import { getBackgroundMedia, getGifAnimation, gifFrameAt, isGifSrc } from './animated-bg'
+import { currentSeratoEnvelope } from './serato'
 import { drawLyrics } from './lyrics'
 import { drawTitle } from './title'
 import { drawDisc } from './disc'
@@ -496,7 +497,8 @@ function drawVisualizer(
     case 'grid':
     case 'ribbon':
     case 'perspective':
-    case 'terrain': {
+    case 'terrain':
+    case 'serato': {
       // These styles draw a classic left→right strip (the perspective road
       // included — its vanishing point then sits past the right edge, and
       // the terrain landscape's horizon runs through the middle). Vertical
@@ -528,6 +530,7 @@ function drawVisualizer(
       else if (cfg.style === 'ribbon') drawRibbon(styleRc, frame, cfg, S)
       else if (cfg.style === 'perspective') drawPerspective(styleRc, frame, cfg, S)
       else if (cfg.style === 'terrain') drawTerrain(styleRc, frame, cfg, S)
+      else if (cfg.style === 'serato') drawSerato(styleRc, frame, cfg, S)
       else drawGrid(styleRc, frame, cfg, S)
       break
     }
@@ -1953,6 +1956,157 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
       }
     }
   }
+}
+
+/* ---------------------------------- serato ----------------------------------- */
+
+/**
+ * Serato — the turntable strip. The whole song's amplitude waveform scrolls
+ * under a fixed needle (dead center): past to the left, future to the right,
+ * exactly like the DJ deck's main wave. Columns are colored Serato-style —
+ * bassy passages print green, crisp ones yellow→red→pink (mapped from the
+ * track's own zero-crossing rate), or the palette/solid modes. The envelope
+ * comes from the decoded PCM (see serato.ts) so preview and export show the
+ * identical scroll; while no envelope is ready the strip shows its needle
+ * placeholder. Every value derives from frame.time + the envelope →
+ * deterministic exports.
+ */
+function drawSerato(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+  const { ctx, width: W, height: H } = rc
+  const stripH = H * clamp(cfg.seratoHeight ?? 0.62, 0.3, 1)
+  const cy = H / 2
+  const cx = W / 2
+  const half = stripH / 2
+  const env = currentSeratoEnvelope()
+
+  if (!env || env.peak.length === 0) {
+    // Placeholder — needle + dim center line while the track decodes or no
+    // audio is loaded yet. Same deterministic shape every frame.
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)'
+    ctx.fillRect(cx - S, cy - half, 2 * S, stripH)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.10)'
+    ctx.fillRect(0, cy - S / 2, W, S)
+    return
+  }
+
+  const winSec = clamp(cfg.seratoWindow ?? 12, 4, 30)
+  const t0 = frame.time - winSec / 2
+  const cps = env.columnsPerSec
+  const cols = env.peak.length
+  const loudRef = env.loudRef > 1e-4 ? env.loudRef : 1
+  const sens = clamp(cfg.sensitivity ?? 1, 0.1, 3)
+  const colors = cfg.seratoColors ?? 'rainbow'
+  const roundness = clamp01(cfg.roundness ?? 0)
+
+  // Chunky Serato columns: a 3px bar + 1px gap slot at 720p, scaled for
+  // export resolutions. Each slot aggregates the envelope columns it covers
+  // (max peak — transients must not vanish at deep zoom-outs).
+  const slot = Math.max(2, Math.round(4 * S))
+  const barW = Math.max(1, slot - Math.max(1, Math.round(S)))
+  const nSlots = Math.max(1, Math.ceil(W / slot))
+
+  const glow = !!cfg.glow
+  const grad = cfg.gradient
+  const firstColor = sampleGradient(grad.stops, 0, 0, false, 0)
+
+  // Column index range covered by slot i — shared by both passes.
+  const colRange = (i: number): [number, number] => {
+    const a = Math.floor((t0 + (i * slot * winSec) / W) * cps)
+    const b = Math.ceil((t0 + (((i + 1) * slot) / W) * winSec) * cps)
+    return [Math.max(0, a), Math.min(cols, Math.max(a + 1, b))]
+  }
+
+  // Aggregate per slot once: peak (max) + brightness (mean ZCR) + the
+  // slot's first column (the deterministic hue-jitter seed).
+  const peaks = new Float32Array(nSlots)
+  const brights = new Float32Array(nSlots)
+  const firsts = new Int32Array(nSlots)
+  for (let i = 0; i < nSlots; i++) {
+    const [a, b] = colRange(i)
+    let peak = 0
+    let zsum = 0
+    for (let c = a; c < b; c++) {
+      if (env.peak[c] > peak) peak = env.peak[c]
+      zsum += env.zcr[c]
+    }
+    peaks[i] = peak
+    brights[i] = b > a ? zsum / (b - a) : 0
+    firsts[i] = a
+  }
+
+  const drawPass = (alphaScale: number, heightScale: number): void => {
+    for (let i = 0; i < nSlots; i++) {
+      const ampN = clamp(peaks[i] / loudRef, 0, 1)
+      if (ampN <= 0.004) continue
+      const h = Math.min(half, Math.sqrt(ampN) * half * sens * heightScale)
+      if (h < 0.5) continue
+      const x = i * slot
+      let color: string
+      if (colors === 'rainbow') {
+        const b = clamp01(brights[i] / 0.12)
+        // Serato's spectral sweep: green (bassy) → yellow → red → pink.
+        const hue =
+          b < 0.4
+            ? 140 - 90 * (b / 0.4)
+            : 50 - 90 * ((b - 0.4) / 0.6) // 50 → −40 (≡ 320, magenta)
+        const jitter = (mulberry32(firsts[i] + 0x9e37)() - 0.5) * 18
+        const hueJ = ((hue + jitter) % 360 + 360) % 360
+        const light = (0.32 + 0.38 * ampN) * alphaScale
+        color = `hsl(${hueJ.toFixed(0)}, 90%, ${(clamp01(light) * 100).toFixed(0)}%)`
+      } else if (colors === 'palette') {
+        color = sampleGradient(
+          grad.stops,
+          (x + slot / 2) / W,
+          frame.styleTime,
+          grad.cycleColors,
+          grad.cycleSpeed,
+        )
+      } else {
+        color = firstColor
+      }
+      ctx.fillStyle = color
+      const bh = h * 2
+      const y = cy - h
+      if (roundness > 0.01) {
+        ctx.beginPath()
+        const r = Math.min(roundness * barW * 0.5, barW / 2, bh / 2)
+        if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, barW, bh, r)
+        else roundRectFallback(ctx, x, y, barW, bh, r)
+        ctx.fill()
+      } else {
+        ctx.fillRect(x, y, barW, bh)
+      }
+    }
+  }
+
+  // Bloom pass first (the Serato wave has a slight halo), then the core.
+  if (glow) {
+    const prevAlpha = ctx.globalAlpha
+    ctx.globalAlpha = prevAlpha * 0.3
+    drawPass(0.85, 1.4)
+    ctx.globalAlpha = prevAlpha
+  }
+  drawPass(1, 1)
+
+  // The needle — a white blade dead center with small deck flags top and
+  // bottom, riding over the strip like the turntable's tonearm marker.
+  const needleW = Math.max(2, 2 * S)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+  ctx.fillRect(cx - needleW / 2, cy - half, needleW, stripH)
+  const flagW = Math.max(6, 10 * S)
+  const flagH = Math.max(6, 10 * S)
+  ctx.beginPath()
+  ctx.moveTo(cx - needleW / 2 - flagW, cy - half)
+  ctx.lineTo(cx + needleW / 2, cy - half)
+  ctx.lineTo(cx + needleW / 2, cy - half + flagH)
+  ctx.closePath()
+  ctx.fill()
+  ctx.beginPath()
+  ctx.moveTo(cx + needleW / 2 + flagW, cy + half)
+  ctx.lineTo(cx - needleW / 2, cy + half)
+  ctx.lineTo(cx - needleW / 2, cy + half - flagH)
+  ctx.closePath()
+  ctx.fill()
 }
 
 /* ---------------------------------- sphere ----------------------------------- */

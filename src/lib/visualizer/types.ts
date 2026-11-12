@@ -33,7 +33,7 @@ export type GradientPresetId = 'sunset' | 'aurora' | 'ember' | 'neon' | 'mono'
 
 /* --------------------------------- Visualizer -------------------------------- */
 
-export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'perspective' | 'terrain' | 'sphere'
+export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'perspective' | 'terrain' | 'sphere' | 'serato'
 export type MirrorMode = 'none' | 'mirror' | 'center'
 
 export interface VisualizerConfig {
@@ -133,6 +133,16 @@ export interface VisualizerConfig {
    *  its own frequency band's energy (the bass equator surges, the treble
    *  poles crackle). 0 = the smooth pulsing shell, dots glued to the surface. */
   sphereQuills: number
+  /** Serato style — seconds of the track visible across the strip (4..30).
+   *  The turntable needle sits dead center and the whole-song waveform
+   *  scrolls under it; this dial zooms the strip in and out. */
+  seratoWindow: number
+  /** Serato style — strip height as a fraction of the canvas, 0.3..1. */
+  seratoHeight: number
+  /** Serato style — column coloring: 'rainbow' = Serato's spectral map
+   *  (bassy passages green, crisp ones pink), 'palette' = the gradient
+   *  sweeping across the strip, 'solid' = the palette's first stop. */
+  seratoColors: 'rainbow' | 'palette' | 'solid'
 }
 
 /* --------------------------------- Background -------------------------------- */
@@ -1054,6 +1064,9 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     terrainMirrorDrop: 0,
     sphereSpin: 0.35,
     sphereQuills: 0.6,
+    seratoWindow: 12,
+    seratoHeight: 0.62,
+    seratoColors: 'rainbow',
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 48,

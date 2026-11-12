@@ -28,6 +28,7 @@ import {
   releaseExportVideo,
   seekExportVideo,
 } from '../visualizer/animated-bg'
+import { bindSeratoSource, prepareSeratoEnvelope } from '../visualizer/serato'
 import type {
   ExportProgress,
   ExportQuality,
@@ -300,6 +301,14 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
 
   const fps = settings.fps
   const analyzer = new OfflineAnalyzer(audioBuffer, fps)
+
+  // Serato strip: the whole-song envelope must exist before frame 0 so the
+  // scroll is identical to the preview (see serato.ts). Binding also points
+  // the renderer's sync getter at THIS buffer during export.
+  if (config.visualizer.style === 'serato') {
+    bindSeratoSource(audioBuffer)
+    await prepareSeratoEnvelope(audioBuffer)
+  }
 
   const previewFrames =
     settings.length === '30s' ? 30 * fps : settings.length === '15s' ? 15 * fps : null

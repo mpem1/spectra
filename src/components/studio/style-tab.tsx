@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { AudioWaveform, BarChart3, Droplet, Grid3x3, Mountain, Move3d, Orbit, Radar, Sparkles, Wand2, Waves, Loader2 } from 'lucide-react'
+import { AudioWaveform, BarChart3, Disc3, Droplet, Grid3x3, Mountain, Move3d, Orbit, Radar, Sparkles, Wand2, Waves, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { VisualizerStyle } from '@/lib/visualizer/types'
 import { extractPaletteFromArt } from '@/lib/visualizer/palette'
@@ -28,6 +28,7 @@ const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] =
   { id: 'perspective', label: 'Perspective', icon: Move3d },
   { id: 'terrain', label: 'Terrain', icon: Mountain },
   { id: 'sphere', label: 'Sphere', icon: Orbit },
+  { id: 'serato', label: 'Serato', icon: Disc3 },
 ]
 
 /** Plain uppercase section label (VISUALIZER / GRADIENT / …) like the reference UI. */
@@ -148,7 +149,8 @@ export function StyleTab() {
         visualizer.style === 'ribbon' ||
         visualizer.style === 'perspective' ||
         visualizer.style === 'terrain' ||
-        visualizer.style === 'sphere' ? (
+        visualizer.style === 'sphere' ||
+        visualizer.style === 'serato' ? (
           <div className="space-y-1.5">
             <MicroLabel>Orientation</MicroLabel>
             <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
@@ -207,23 +209,27 @@ export function StyleTab() {
           </div>
         ) : null}
 
-        <SliderRow
-          label="Bar count"
-          value={visualizer.barCount}
-          min={16}
-          max={256}
-          step={8}
-          onChange={(barCount) => patchVisualizer({ barCount })}
-        />
-        <SliderRow
-          label="Smoothing"
-          value={visualizer.smoothing}
-          min={0}
-          max={0.95}
-          step={0.05}
-          onChange={(smoothing) => patchVisualizer({ smoothing })}
-          format={(v) => v.toFixed(2)}
-        />
+        {visualizer.style !== 'serato' ? (
+          <>
+            <SliderRow
+              label="Bar count"
+              value={visualizer.barCount}
+              min={16}
+              max={256}
+              step={8}
+              onChange={(barCount) => patchVisualizer({ barCount })}
+            />
+            <SliderRow
+              label="Smoothing"
+              value={visualizer.smoothing}
+              min={0}
+              max={0.95}
+              step={0.05}
+              onChange={(smoothing) => patchVisualizer({ smoothing })}
+              format={(v) => v.toFixed(2)}
+            />
+          </>
+        ) : null}
         {(visualizer.style === 'perspective' || visualizer.style === 'terrain') ? (
           <>
             {/* Horizon line height — where the road's up/down halves meet
@@ -365,6 +371,67 @@ export function StyleTab() {
             </p>
           </>
         ) : null}
+        {/* Serato — the turntable strip's own dressing */}
+        {visualizer.style === 'serato' ? (
+          <>
+            <SliderRow
+              label="Zoom"
+              value={visualizer.seratoWindow}
+              min={4}
+              max={30}
+              step={1}
+              onChange={(seratoWindow) => patchVisualizer({ seratoWindow })}
+              format={(v) => `${Math.round(v)}s window`}
+            />
+            <SliderRow
+              label="Strip height"
+              value={visualizer.seratoHeight}
+              min={0.3}
+              max={1}
+              step={0.02}
+              onChange={(seratoHeight) => patchVisualizer({ seratoHeight })}
+              format={(v) => `${Math.round(v * 100)}%`}
+            />
+            <div className="space-y-1.5">
+              <MicroLabel>Colors</MicroLabel>
+              <div className="grid grid-cols-3 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+                {(
+                  [
+                    { id: 'rainbow', label: 'Rainbow' },
+                    { id: 'palette', label: 'Palette' },
+                    { id: 'solid', label: 'Solid' },
+                  ] as const
+                ).map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    aria-pressed={visualizer.seratoColors === c.id}
+                    onClick={() => patchVisualizer({ seratoColors: c.id })}
+                    className={cn(
+                      'h-7 rounded-md text-xs transition-colors',
+                      visualizer.seratoColors === c.id
+                        ? 'bg-emerald-500 font-medium text-zinc-950'
+                        : 'text-zinc-300 hover:text-zinc-100',
+                    )}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-xs leading-relaxed text-zinc-500">
+              The DJ deck wave: your whole track scrolls under a fixed needle
+              dead center — past on the left, what&apos;s coming on the right.
+              Rainbow colors passages by their own frequency content (bassy
+              parts green, crisp parts pink) like the turntables do; Palette
+              sweeps your gradient across the strip; Solid paints one color.
+              Zoom sets how many seconds the window shows. Needs a loaded
+              track — the envelope is computed from your audio the moment the
+              style draws.
+            </p>
+          </>
+        ) : null}
+
         <SliderRow
           label="Sensitivity"
           value={visualizer.sensitivity}
@@ -385,7 +452,10 @@ export function StyleTab() {
             format={(v) => v.toFixed(2)}
           />
         ) : null}
-        {(visualizer.style !== 'ribbon' && visualizer.style !== 'terrain' && visualizer.style !== 'sphere') ? (
+        {(visualizer.style !== 'ribbon' &&
+          visualizer.style !== 'terrain' &&
+          visualizer.style !== 'sphere' &&
+          visualizer.style !== 'serato') ? (
           <SliderRow
             label="Gap"
             value={visualizer.gap}
@@ -397,11 +467,12 @@ export function StyleTab() {
           />
         ) : null}
 
-        {visualizer.style === 'sphere' ? (
+        {visualizer.style === 'sphere' || visualizer.style === 'serato' ? (
           // The planet reads best as one clean orb — its mirrored twin just
-          // doubled the dots into mush, so the sphere keeps no Mirror
-          // choice — just the glow switch. Every other style (including the
-          // road and the terrain) answers the full Mirror family below.
+          // doubled the dots into mush, so the sphere keeps no Mirror choice.
+          // The Serato strip is already symmetric around its needle, and the
+          // deck wave has no twin either — glow switch only. Every other
+          // style answers the full Mirror family below.
           <div className="space-y-1.5 pt-1">
             <MicroLabel>Glow</MicroLabel>
             <div className="flex h-8 items-center justify-end">

@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { getEngine } from '@/components/studio/engine-registry'
 import { useStudioStore } from '@/store/studio'
 import { formatTime } from '@/components/studio/controls'
+import { bindSeratoSource } from '@/lib/visualizer/serato'
 
 /**
  * Loads an audio File into the engine + store. Shared by the player-bar
@@ -17,6 +18,7 @@ export async function loadAudioFile(file: File): Promise<void> {
   }
   try {
     const meta = await engine.loadFile(file)
+    bindSeratoSource(engine.audioBuffer)
     engine.setVolume(useStudioStore.getState().volume)
     engine.setLoop(useStudioStore.getState().loop)
     useStudioStore.getState().setAudioMeta({ name: meta.name, duration: meta.duration })

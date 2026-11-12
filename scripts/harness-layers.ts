@@ -56,6 +56,7 @@
  */
 
 import { renderFrame } from '../src/lib/visualizer/renderer'
+import { bindSeratoSource, buildSeratoEnvelope } from '../src/lib/visualizer/serato'
 import { drawLyrics } from '../src/lib/visualizer/lyrics'
 import { DEFAULT_STUDIO_CONFIG, resolveLayersConfig } from '../src/lib/visualizer/types'
 import type { AudioFrame, RenderContext, StudioConfig } from '../src/lib/visualizer/types'
@@ -1919,6 +1920,145 @@ console.log('S15 sphere — the 3D dot-matrix planet')
     vOps === hOps && vFinite && JSON.stringify(quillsOf()) !== hQuills,
     `hOps=${hOps} vOps=${vOps} finite=${vFinite} moved=${JSON.stringify(quillsOf()) !== hQuills}`,
   )
+}
+
+/* ------------------- S17 the Serato turntable strip ------------------- */
+
+console.log('S17 serato — the whole-song strip scrolls under a fixed needle')
+{
+  // A deterministic 8 s fake track: a bassy 82 Hz passage (low ZCR → green),
+  // a crisp alternating square (high ZCR → magenta) and a silent gap —
+  // exactly the content spread the rainbow map needs to prove itself.
+  const RATE = 8000
+  const SECONDS = 8
+  const data = new Float32Array(RATE * SECONDS)
+  for (let i = 0; i < data.length; i++) {
+    const t = i / RATE
+    if (t >= 3 && t < 4.5) {
+      data[i] = 0 // the silent gap — the strip must print nothing there
+    } else if (t >= 4.5) {
+      data[i] = (i % 2 === 0 ? 0.7 : -0.7) * 0.6 // crisp: one crossing/sample
+    } else {
+      data[i] = Math.sin((2 * Math.PI * 82 * t)) * 0.8 // bassy
+    }
+  }
+  const fakeBuffer = {
+    sampleRate: RATE,
+    length: data.length,
+    numberOfChannels: 1,
+    getChannelData: () => data,
+  }
+
+  const env = buildSeratoEnvelope(fakeBuffer)
+  check('envelope columns track the hop rate (8000/512)', Math.abs(env.columnsPerSec - RATE / 512) < 1e-6, `got ${env.columnsPerSec}`)
+  check('envelope covers the whole track', Math.abs(env.seconds - SECONDS) < 1e-6, `got ${env.seconds}`)
+  const midCol = Math.floor(1.0 * env.columnsPerSec)
+  const crispCol = Math.floor(5.0 * env.columnsPerSec)
+  const gapCol = Math.floor(3.5 * env.columnsPerSec)
+  check('bassy passage reads quiet-on-crossings (green territory)', env.zcr[midCol] < 0.1, `zcr=${env.zcr[midCol].toFixed(3)}`)
+  check('crisp passage reads bright (pink territory)', env.zcr[crispCol] > 0.4, `zcr=${env.zcr[crispCol].toFixed(3)}`)
+  check('silent gap reads zero peak', env.peak[gapCol] === 0, `peak=${env.peak[gapCol]}`)
+  check('loudRef sits near the loudest passage', env.loudRef > 0.5, `loudRef=${env.loudRef.toFixed(2)}`)
+
+  const cfgSer = (over: Partial<StudioConfig['visualizer']> = {}): StudioConfig => {
+    const cfg = structuredClone(DEFAULT_STUDIO_CONFIG)
+    cfg.visualizer = { ...structuredClone(DEFAULT_STUDIO_CONFIG.visualizer), style: 'serato' as const, glow: false, ...over }
+    return cfg
+  }
+  bindSeratoSource(fakeBuffer)
+
+  // 1) The strip scrolls: different song times paint different fills.
+  renderOne(cfgSer(), 2.0)
+  const fillsAt2 = JSON.stringify(logOf(main).filter((r) => r.kind === 'fill').map((r) => [r.x, r.style]))
+  renderOne(cfgSer(), 2.5)
+  const fillsAt25 = JSON.stringify(logOf(main).filter((r) => r.kind === 'fill').map((r) => [r.x, r.style]))
+  check('the strip scrolls with song time (2.0s ≠ 2.5s)', fillsAt2 !== fillsAt25, 'same op stream at two times')
+
+  // 2) Determinism: the same time twice → byte-identical op stream.
+  renderOne(cfgSer(), 2.0)
+  const again = JSON.stringify(logOf(main))
+  renderOne(cfgSer(), 2.0)
+  check('serato renders deterministically (same frame → identical ops)', again === JSON.stringify(logOf(main)), 'op streams differ')
+
+  // 3) The needle exists and sits dead center in every frame.
+  renderOne(cfgSer(), 1.0)
+  const needle = logOf(main).filter((r) => r.kind === 'frect' && r.style === 'rgba(255, 255, 255, 0.92)')
+  const W = 320
+  check(
+    'the white needle paints dead center',
+    needle.length === 1 && Math.abs((needle[0].x ?? 0) + (needle[0].w ?? 0) / 2 - W / 2) < 2,
+    `count=${needle.length} x=${needle[0]?.x}`,
+  )
+
+  // 4) Color modes diverge (rainbow hsl vs palette rgba vs solid).
+  const styles = new Set<string>()
+  renderOne(cfgSer(), 2.0)
+  for (const r of logOf(main)) if (r.kind === 'fill' && typeof r.style === 'string' && r.style.startsWith('hsl')) styles.add('rainbow')
+  renderOne(cfgSer({ seratoColors: 'palette' as const }), 2.0)
+  for (const r of logOf(main)) if (r.kind === 'fill' && typeof r.style === 'string' && r.style.startsWith('rgba')) styles.add('palette')
+  renderOne(cfgSer({ seratoColors: 'solid' as const }), 2.0)
+  const solidStyles = new Set(logOf(main).filter((r) => r.kind === 'fill' && typeof r.style === 'string' && (r.style as string).startsWith('rgba')).map((r) => r.style))
+  check('rainbow mode paints hsl columns', styles.has('rainbow'), `styles=${[...styles].join()}`)
+  check('palette mode paints rgba columns', styles.has('palette'), `styles=${[...styles].join()}`)
+  check('solid mode paints ONE color', solidStyles.size === 1, `solidStyles=${[...solidStyles].join()}`)
+  check('the three color modes all differ', styles.has('rainbow') && styles.has('palette') && solidStyles.size === 1, 'modes collapsed together')
+
+  // 5) Zoom changes which slice of the song lands in the window. At t=5 the
+  //    4 s window sits on the crisp passage (pink slots dominate — its left
+  //    edge just grazes the silence boundary); the 30 s window reaches back
+  //    into the bass passage (green slots appear).
+  renderOne(cfgSer({ seratoWindow: 4 }), 5.0)
+  const zoomedIn = logOf(main)
+    .filter((r) => r.kind === 'fill' && typeof r.style === 'string' && r.style.startsWith('hsl'))
+    .map((r) => Number((r.style as string).match(/hsl\((\d+)/)?.[1]))
+  renderOne(cfgSer({ seratoWindow: 30 }), 5.0)
+  const zoomedOut = logOf(main)
+    .filter((r) => r.kind === 'fill' && typeof r.style === 'string' && r.style.startsWith('hsl'))
+    .map((r) => Number((r.style as string).match(/hsl\((\d+)/)?.[1]))
+  const greenCount = (hues: number[]): number => hues.filter((h) => h < 150).length
+  const pinkCount = (hues: number[]): number => hues.filter((h) => h > 250).length
+  check(
+    'the Zoom dial changes the visible slice (zoomed-in = crisp pink, zoomed-out brings the green bass in)',
+    pinkCount(zoomedIn) > 0 &&
+      greenCount(zoomedIn) < pinkCount(zoomedIn) &&
+      greenCount(zoomedOut) > greenCount(zoomedIn),
+    `in: green=${greenCount(zoomedIn)} pink=${pinkCount(zoomedIn)} · out: green=${greenCount(zoomedOut)} pink=${pinkCount(zoomedOut)}`,
+  )
+
+  // 6) Strip height dial scales the bars (bars paint as path fills at the
+  //    factory roundness — geometry rides the fill record's rects).
+  renderOne(cfgSer({ seratoHeight: 0.3 }), 2.0)
+  const shortBars = logOf(main)
+    .filter((r) => r.kind === 'fill' && typeof r.style === 'string' && r.style.startsWith('hsl'))
+    .flatMap((r) => r.rects ?? [])
+  renderOne(cfgSer({ seratoHeight: 1 }), 2.0)
+  const tallBars = logOf(main)
+    .filter((r) => r.kind === 'fill' && typeof r.style === 'string' && r.style.startsWith('hsl'))
+    .flatMap((r) => r.rects ?? [])
+  const maxShort = Math.max(...shortBars.map((rc) => rc.h), 0)
+  const maxTall = Math.max(...tallBars.map((rc) => rc.h), 0)
+  check('strip height scales the bars', maxTall > maxShort * 2, `short=${maxShort} tall=${maxTall}`)
+
+  // 7) Vertical orientation rolls the strip cleanly.
+  renderOne(cfgSer({ orientation: 'vertical' as const }), 2.0)
+  check('vertical orientation renders the strip', logOf(main).some((r) => r.kind === 'frect' || r.kind === 'fill'), 'no strip ops')
+
+  // 8) Placeholder: no bound source → the needle-only placeholder, still
+  //    deterministic (this is what shows before a track is loaded). Only the
+  //    needle fills are compared — the background's grain is time-seeded and
+  //    legitimately differs between song times.
+  bindSeratoSource(null)
+  renderOne(cfgSer(), 2.0)
+  const placeholderFrects = (): string =>
+    JSON.stringify(
+      logOf(main).filter((r) => r.kind === 'frect' && r.style === 'rgba(255, 255, 255, 0.55)'),
+    )
+  renderOne(cfgSer(), 9.9)
+  const at99 = JSON.parse(placeholderFrects())
+  check('placeholder keeps the needle when no envelope is ready', at99.length === 1, `count=${at99.length}`)
+  const at2 = placeholderFrects()
+  renderOne(cfgSer(), 9.9)
+  check('placeholder renders identically at any time', placeholderFrects() === at2, 'placeholder moved')
 }
 
 /* ----------------- S16 the Mirror family across every style ----------------- */
