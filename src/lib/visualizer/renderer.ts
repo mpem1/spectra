@@ -17,7 +17,7 @@ import type {
 } from './types'
 import { buildGradient, buildRadialGradient, gradientLine, sampleGradient, withAlpha } from './gradients'
 import { getBackgroundImage } from './image-cache'
-import { getBackgroundVideo, getGifAnimation, gifFrameAt, isGifSrc } from './animated-bg'
+import { getBackgroundMedia, getGifAnimation, gifFrameAt, isGifSrc } from './animated-bg'
 import { drawLyrics } from './lyrics'
 import { drawTitle } from './title'
 import { drawDisc } from './disc'
@@ -365,9 +365,9 @@ function drawBackground(
         }
       }
     } else if (src) {
-      const video = getBackgroundVideo(src)
-      if (video) {
-        drawMediaCover(ctx, video, video.videoWidth, video.videoHeight, bg, W, H, S, beat, frame.time)
+      const media = getBackgroundMedia(src)
+      if (media) {
+        drawMediaCover(ctx, media.media, media.width, media.height, bg, W, H, S, beat, frame.time)
         drawn = true
       }
     }

@@ -7,9 +7,10 @@
  *
  * - Video files (mp4/webm/mov): a muted, looping <video> drives the live
  *   preview on the wall clock (decorative motion, keeps playing while the
- *   track is paused — same philosophy as the vinyl spin). Exerts of the MP4
- *   pipeline get their OWN private element and seek it to `songTime % length`
- *   before every frame, so exported video is frame-exact.
+ *   track is paused — same philosophy as the vinyl spin). The last drawable
+ *   frame is held across the native loop seam so the wrap never flashes.
+ *   Exports of the MP4 pipeline get their OWN private element and seek it to
+ *   `songTime % length` before every frame, so exported video is frame-exact.
  *
  * - GIFs: <img> playback can't be seeked, so uploads are decoded ONCE into
  *   an array of frame canvases (omggif — pure JS, no wasm) plus per-frame
@@ -125,8 +126,25 @@ export function gifFrameAt(anim: GifAnimation, timeMs: number): HTMLCanvasElemen
 
 /* -------------------------------- Video cache -------------------------------- */
 
+/** What the renderer should draw for a video background: media + its size. */
+export interface BackgroundMedia {
+  media: CanvasImageSource
+  width: number
+  height: number
+}
+
+interface PreviewVideoEntry {
+  el: HTMLVideoElement
+  /** Last drawable frame, blitted here to hold across the loop seam. */
+  snap: HTMLCanvasElement | null
+  /** performance.now() of the last snapshot blit. */
+  snapAt: number
+  /** performance.now() of the last drawable observation. */
+  drawableAt: number
+}
+
 /** Live-preview elements: muted, looping, wall-clock playback. */
-const previewVideos = new Map<string, HTMLVideoElement>()
+const previewVideos = new Map<string, PreviewVideoEntry>()
 
 /** Export-private elements registered by the offline renderers (seek-driven). */
 const exportVideos = new Map<string, HTMLVideoElement>()
@@ -143,21 +161,81 @@ function createVideoElement(src: string, forExport: boolean): HTMLVideoElement {
   return v
 }
 
+// Loop-seam hold tuning: the native `loop` wrap re-seeks to frame 0 and the
+// element's ready state can dip for a frame — without a hold, that frame
+// paints the dark base and the user sees a flash at every loop point.
+// Refresh the held frame every ~120ms routinely and every frame during the
+// final approach to the end; hold it for at most 1s before admitting the
+// media is really gone (load failure → dark fallback as before).
+const HOLD_MS = 1000
+const SNAP_INTERVAL_MS = 120
+const SNAP_EDGE_MS = 300
+
+function blitSnapshot(entry: PreviewVideoEntry, now: number): void {
+  const v = entry.el
+  if (!entry.snap) entry.snap = document.createElement('canvas')
+  if (entry.snap.width !== v.videoWidth) entry.snap.width = v.videoWidth
+  if (entry.snap.height !== v.videoHeight) entry.snap.height = v.videoHeight
+  const g = entry.snap.getContext('2d')
+  if (!g) return
+  try {
+    g.drawImage(v, 0, 0)
+    entry.snapAt = now
+  } catch {
+    /* a torn draw just means the next blit retries */
+  }
+}
+
+function observePreviewVideo(entry: PreviewVideoEntry): BackgroundMedia | null {
+  const v = entry.el
+  const now = performance.now()
+  const drawable = v.readyState >= 2 && v.videoWidth > 0 && v.videoHeight > 0
+  if (drawable) {
+    // Keep the hold-frame fresh. A paused element never changes, so only its
+    // first blit matters; playing elements blit near the seam every frame.
+    const dur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0
+    const nearSeam = dur > 0 && dur - v.currentTime <= SNAP_EDGE_MS / 1000
+    if (!entry.snap || (!v.paused && (nearSeam || now - entry.snapAt >= SNAP_INTERVAL_MS))) {
+      blitSnapshot(entry, now)
+    }
+    entry.drawableAt = now
+    // Mid-seek (the loop wrap re-seeks to frame 0) some pipelines invalidate
+    // the presented frame — draw the held frame so the seam stays continuous.
+    if (v.seeking && entry.snap) {
+      return { media: entry.snap, width: entry.snap.width, height: entry.snap.height }
+    }
+    return { media: v, width: v.videoWidth, height: v.videoHeight }
+  }
+  // Ready state dipped at the seam or during a decode stall: hold the last
+  // frame briefly so the wrap never flashes the dark base. A genuinely dead
+  // media (load failure) times out of the hold and falls back to dark.
+  if (entry.snap && now - entry.drawableAt <= HOLD_MS) {
+    return { media: entry.snap, width: entry.snap.width, height: entry.snap.height }
+  }
+  return null
+}
+
 /**
- * The element the renderer should draw right now: the export's private
- * seek-driven one when an export is running, otherwise the looping preview
- * element (created lazily). Null while still loading (dark fallback frame).
+ * The media the renderer should draw right now: the export's private
+ * seek-driven element when an export is running (deterministic — no hold,
+ * the exporter awaits every seek), otherwise the looping preview element
+ * (created lazily) with a held frame across the loop seam so the wrap never
+ * flashes. Null while still loading (dark fallback frame).
  */
-export function getBackgroundVideo(src: string): HTMLVideoElement | null {
+export function getBackgroundMedia(src: string): BackgroundMedia | null {
   if (!src) return null
   const exp = exportVideos.get(src)
-  if (exp) return exp.readyState >= 2 ? exp : null
-  let v = previewVideos.get(src)
-  if (!v) {
-    v = createVideoElement(src, false)
-    previewVideos.set(src, v)
+  if (exp) {
+    return exp.readyState >= 2
+      ? { media: exp, width: exp.videoWidth, height: exp.videoHeight }
+      : null
   }
-  return v.readyState >= 2 ? v : null
+  let entry = previewVideos.get(src)
+  if (!entry) {
+    entry = { el: createVideoElement(src, false), snap: null, snapAt: 0, drawableAt: 0 }
+    previewVideos.set(src, entry)
+  }
+  return observePreviewVideo(entry)
 }
 
 /**
@@ -242,9 +320,9 @@ export function forgetAnimatedBackground(src: string): void {
   releaseExportVideo(src)
   const pv = previewVideos.get(src)
   if (pv) {
-    pv.pause()
-    pv.removeAttribute('src')
-    pv.load()
+    pv.el.pause()
+    pv.el.removeAttribute('src')
+    pv.el.load()
     previewVideos.delete(src)
   }
   gifCache.delete(src)
