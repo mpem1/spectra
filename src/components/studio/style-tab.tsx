@@ -298,9 +298,10 @@ export function StyleTab() {
             <p className="text-xs leading-relaxed text-zinc-500">
               The reference look: red bars above the line, blue below, streaming
               out of a vanishing point on the right while heights ride the music.
-              Echo trails redraw where each bar stood a moment ago. Mirror slides
-              a faded reflection out from under the road (Mirror offset moves its
-              water line); Center converges a twin tunnel dead ahead.
+              Echo trails redraw where each bar stood a moment ago. Mirror lays
+              a faded twin under the road — the bars&apos; exact 1:1 flip across
+              the water line (Mirror offset moves that line lower); Center
+              converges a twin tunnel dead ahead.
             </p>
           </>
         ) : null}
@@ -322,11 +323,12 @@ export function StyleTab() {
               rows bunch at the horizon, bass lifts the near hills, and the
               surface streams forward with Flow speed. The palette sweeps
               across the columns; Fill 0 is the pure glowing wireframe;
-              Mirror pulls the range onto a shore and lays a faded lake
-              below it (Mirror offset sinks the water line below the shore
-              or raises it into the range — high water), Center grows the
-              range both ways with its own hills below (Spread dials their
-              depth). Zero is always the factory look.
+              Mirror pulls the range onto a shore with a faded lake below —
+              Mirror offset slides the whole mirrored world (range and its
+              exact 1:1 reflection) up or down the canvas, and nothing ever
+              leaves the screen. Center grows the range both ways with its
+              own hills below (Spread dials their depth). Zero is always the
+              factory look.
             </p>
           </>
         ) : null}
@@ -458,11 +460,13 @@ export function StyleTab() {
         ) : null}
 
         {/* Terrain's dial answers both mirror modes, signed both ways from
-            the factory look at 0: Mirror offset slides the lake's water
-            line (positive sinks it below the shore, negative raises it into
-            the range — high water); Spread scales how deep the Center
-            underside grows. Perspective's road reflection keeps its own
-            one-way water line under the road. */}
+            the factory look at 0: Mirror offset slides the whole mirrored
+            world — the range on its shore and its exact 1:1 flipped lake
+            below — up or down the canvas as one rigid body (negative lifts
+            it high, positive sinks it low; clamped so everything stays on
+            screen and the reflection never distorts). Spread scales how
+            deep the Center underside grows. Perspective's road reflection
+            keeps its own one-way water line under the road. */}
         {visualizer.style === 'terrain' && visualizer.mirror !== 'none' ? (
           <SliderRow
             label={visualizer.mirror === 'mirror' ? 'Mirror offset' : 'Spread'}
