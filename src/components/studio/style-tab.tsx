@@ -322,9 +322,9 @@ export function StyleTab() {
               rows bunch at the horizon, bass lifts the near hills, and the
               surface streams forward with Flow speed. The palette sweeps
               across the columns; Fill 0 is the pure glowing wireframe;
-              Mirror lays a faded lake reflection (Mirror offset slides its
-              water line lower), Center grows the range both ways with its
-              own hills below.
+              Mirror pulls the range onto a shore and lays a faded lake
+              below it (Mirror offset slides the water line lower), Center
+              grows the range both ways with its own hills below.
             </p>
           </>
         ) : null}

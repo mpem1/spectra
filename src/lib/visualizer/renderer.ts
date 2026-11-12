@@ -1662,12 +1662,13 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
   const hy = H * clamp01(cfg.mirrorOffset ?? 0.5) // the vanishing line (Horizon dial)
   const flow = clamp(cfg.flowSpeed ?? 0.5, 0, 1)
   const fill = clamp01(cfg.terrainFill ?? 0.4)
-  // Mirror family: 'mirror' keeps the classic landscape and adds its faded
-  // lake reflection across a water line (the Mirror offset dial slides that
-  // line lower — capped at a fifth of the canvas so it never leaves the
-  // screen); 'center' grows the range symmetrically around each row's
-  // ground line with its OWN hills below (a phase-shifted noise field), so
-  // the two modes read completely differently.
+  // Mirror family: 'mirror' pulls the range up onto a shore and lays a true
+  // lake below it — the whole landscape flipped across ONE water line,
+  // faded and squashed to fit (the Mirror offset dial slides that line
+  // lower; the lake can never leave the screen); 'center' keeps the
+  // full-height range and grows it symmetrically around each row's ground
+  // line with its OWN hills below (a phase-shifted noise field), so the two
+  // modes read completely differently.
   const mirrorMode = cfg.mirror ?? 'none'
   const centerSym = mirrorMode === 'center'
   const reflect = mirrorMode === 'mirror'
@@ -1761,20 +1762,46 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
     }
   }
 
-  // Mirror offset (the Style tab's dial): the reflection normally folds
-  // exactly at each row's ground line — a perfect mirror lake hugging the
-  // hills. The dial slides the water line LOWER by up to a fifth of the
-  // canvas, so the mirrored landscape detaches and drops — clearly visible
-  // but never pushed off the screen. 0 (factory) keeps the fold exactly on
-  // the ground: the classic look, bit-identical to before the dial existed.
-  // Center mode pins its fold to the ground line — the dial answers Mirror
-  // only. Pure math → deterministic.
-  const drop = clamp01(cfg.terrainMirrorDrop ?? 0) * H * 0.2
-  /** The lower half's screen Y at (row, col): the faded reflection across
-   *  the water line in Mirror mode, the organic underside in Center mode. */
+  /* ---- Mirror mode: a true lake ----
+   * The classic landscape fills every row down past the bottom edge, so
+   * folding each row across its own ground line interleaves ghost ridges
+   * with the hills — the reflection reads as strokes laid ON TOP of the
+   * terrain (and the near rows — the tallest peaks — reflect off screen).
+   * A lake needs room: in Mirror mode the whole range is pulled up onto a
+   * shore (a vertical compression about the horizon that ends the near
+   * edge ~72% down the canvas), and the reflection is the entire range
+   * flipped across ONE water line in the freed space, squashed to fit so
+   * it can never leave the screen. The dial slides the water line lower,
+   * opening a gap between shore and lake without moving the range itself.
+   * Center mode keeps the full-height range and pins its fold to the
+   * ground line — the dial answers Mirror only. Pure math → deterministic. */
+  let rpy: Float64Array | null = null
+  let waterY = 0
+  let squash = 1
+  if (reflect) {
+    const gyNear = gy[ROWS] // the near edge — past the canvas bottom
+    const k = clamp((H * 0.72 - hy) / Math.max(1e-6, gyNear - hy), 0.12, 1)
+    for (let r = 0; r <= ROWS; r++) gy[r] = hy + (gy[r] - hy) * k
+    for (let i = 0; i < py.length; i++) py[i] = hy + (py[i] - hy) * k
+    // The water line: the shore plus the dial's drop — up to half of the
+    // free space below the shore, so the gap opens but never reaches the
+    // bottom edge.
+    waterY = gy[ROWS] + clamp01(cfg.terrainMirrorDrop ?? 0) * (H - gy[ROWS]) * 0.5
+    // Squash-to-fit: the flipped range always fits between the water line
+    // and the bottom edge, at any dial value and any Horizon setting.
+    let topY = Infinity
+    for (let i = 0; i < py.length; i++) topY = Math.min(topY, py[i])
+    squash = Math.min(1, (H - waterY) / Math.max(1e-6, waterY - topY))
+    rpy = new Float64Array(py.length)
+    for (let i = 0; i < py.length; i++) rpy[i] = waterY + (waterY - py[i]) * squash
+  }
+
+  /** The lower half's screen Y at (row, col): the lake reflection in Mirror
+   *  mode (the whole range flipped across the single water line), the
+   *  organic underside in Center mode. */
   const lowY = (r: number, c: number): number => {
     if (centerSym) return gy[r] + worldHLow(r, c) * uAt(r)
-    return 2 * (gy[r] + drop) - py[r * COLS + c]
+    return rpy ? rpy[r * COLS + c] : py[r * COLS + c]
   }
 
   const rowPath = (r: number): void => {
@@ -1807,6 +1834,23 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
       ctx.globalAlpha = la * fill * fade
       ctx.fillStyle = withAlpha(colColor(COLS >> 1), 0.24)
       ctx.fill()
+      if (reflect) {
+        // The lake: the same band flipped across the water line, faded so
+        // it reads as water. Far rows sit highest above the shore, so
+        // their inverted bands land deepest — an upside-down range.
+        ctx.beginPath()
+        for (let c = 0; c < COLS; c++) {
+          const idx = r * COLS + c
+          if (c === 0) ctx.moveTo(px[idx], lowY(r, c))
+          else ctx.lineTo(px[idx], lowY(r, c))
+        }
+        const flipGy = waterY + (waterY - gy[r]) * squash
+        ctx.lineTo(px[r * COLS + COLS - 1], flipGy)
+        ctx.lineTo(px[r * COLS], flipGy)
+        ctx.closePath()
+        ctx.globalAlpha = la * fill * fade * 0.55
+        ctx.fill()
+      }
     }
   }
 
@@ -1824,8 +1868,9 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
     }
     ctx.strokeStyle = colColor(c)
     ctx.stroke()
-    if (centerSym) {
-      // The lower half of the symmetric range — its own hills.
+    if (centerSym || reflect) {
+      // The lower copy: Center's own hills below the ground line, or the
+      // lake's inverted range below the water line.
       ctx.beginPath()
       for (let r = 0; r <= ROWS; r++) {
         const idx = r * COLS + c

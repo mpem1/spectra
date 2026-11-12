@@ -1574,10 +1574,10 @@ console.log('S14 terrain — the 3D wireframe landscape')
     `fills=${fills(main)} alphas=${[...fillAlphaSet()].join(',')}`,
   )
 
-  // 14) The Mirror family: 'mirror' keeps the landscape and adds its
-  //     wireframe reflection (the 2-pt ridge segments double, the curtains
-  //     stay), 'center' grows the symmetric range (the ROWS+1-pt curtain
-  //     polylines double too).
+  // 14) The Mirror family: 'mirror' pulls the range onto a shore and adds
+  //     its lake (the 2-pt ridge segments double, the ROWS+1-pt curtain
+  //     polylines double into the water too), 'center' grows the symmetric
+  //     range (the curtains double there as well).
   renderOne(structuredClone(cfgT), 0.5)
   const segs2 = (): OpRec[] => strokesOf().filter((r) => (r.pts?.length ?? 0) === 2)
   const curtainStrokes = (): OpRec[] => strokesOf().filter((r) => (r.pts?.length ?? 0) === ROWS + 1)
@@ -1590,8 +1590,8 @@ console.log('S14 terrain — the 3D wireframe landscape')
   const centerSegs = segs2().length
   const centerCurtains = curtainStrokes().length
   check(
-    'mirror adds the lake reflection (ridge segments double, curtains stay)',
-    mirrorSegs >= baseSegs * 2 && mirrorCurtains === baseCurtains,
+    'mirror lays the lake (ridge segments and curtains both double)',
+    mirrorSegs >= baseSegs * 2 && mirrorCurtains === baseCurtains * 2,
     `segs ${baseSegs}→${mirrorSegs} curtains ${baseCurtains}→${mirrorCurtains}`,
   )
   check(
@@ -1600,39 +1600,44 @@ console.log('S14 terrain — the 3D wireframe landscape')
     `segs ${baseSegs}→${centerSegs} curtains ${baseCurtains}→${centerCurtains}`,
   )
 
-  // 15) The Mirror offset dial: pass 4 paints each ridge segment and its
-  //     reflection back-to-back, so the 2-pt strokes alternate original /
-  //     reflection. The dial must leave the landscape's own segments
-  //     BIT-IDENTICAL while every reflection image drops by exactly
-  //     2 · drop · H · 0.2 — the image moves at twice the water line's speed
-  //     (a mirror image across an axis shifted by d moves by 2d), and the
-  //     water line itself is capped at a fifth of the canvas so it can
-  //     never leave the screen.
+  // 15) Mirror mode is a true lake: the range is pulled up onto a shore (a
+  //     vertical compression about the horizon that ends the near edge
+  //     ~72% down the canvas — above the bottom edge, unlike None mode
+  //     where the near rows overflow past it) and the reflection is the
+  //     whole range flipped across ONE water line in the freed space. The
+  //     dial slides the water line lower: the range's own segments stay
+  //     BIT-IDENTICAL, the reflection moves, and every reflection point
+  //     stays on the canvas (below the range, above the bottom edge) at
+  //     any dial value — the lake can never slide off screen.
   renderOne(
     { ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const } },
     0.5,
   )
   const orig0 = segs2().filter((_, i) => i % 2 === 0)
   const refl0 = segs2().filter((_, i) => i % 2 === 1)
-  const meanYOf = (rs: OpRec[]): number =>
-    rs.reduce((s, r) => s + meanY(r), 0) / Math.max(1, rs.length)
+  const ysOf = (rs: OpRec[]): number[] => rs.flatMap((r) => (r.pts ?? []).map((p) => p.y))
+  const origMaxY = Math.max(...ysOf(orig0))
   renderOne(
     {
       ...structuredClone(cfgT),
-      visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const, terrainMirrorDrop: 0.3 },
+      visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const, terrainMirrorDrop: 1 },
     },
     0.5,
   )
   const orig1 = segs2().filter((_, i) => i % 2 === 0)
   const refl1 = segs2().filter((_, i) => i % 2 === 1)
-  const reflShift = meanYOf(refl1) - meanYOf(refl0)
+  const reflMinY = Math.min(...ysOf(refl0), ...ysOf(refl1))
+  const reflMaxY = Math.max(...ysOf(refl0), ...ysOf(refl1))
   check(
-    'mirror offset slides the reflection, the landscape stays put',
+    'mirror lays the lake below the shore, fully on screen at any dial value',
     orig0.length > 200 &&
       orig0.length === orig1.length &&
       JSON.stringify(orig0) === JSON.stringify(orig1) &&
-      Math.abs(reflShift - 0.3 * H * 0.4) < 1,
-    `orig ${orig0.length}→${orig1.length} same=${JSON.stringify(orig0) === JSON.stringify(orig1)} shift=${reflShift.toFixed(1)} want=${(0.3 * H * 0.4).toFixed(1)}`,
+      origMaxY < H * 0.78 &&
+      reflMinY > origMaxY &&
+      reflMaxY <= H + 1 &&
+      JSON.stringify(refl0) !== JSON.stringify(refl1),
+    `orig ${orig0.length}→${orig1.length} same=${JSON.stringify(orig0) === JSON.stringify(orig1)} origMaxY=${origMaxY.toFixed(1)} refl=[${reflMinY.toFixed(1)}..${reflMaxY.toFixed(1)}] H=${H}`,
   )
 
   // 16) Center mode pins the symmetric range to the ground line — the
