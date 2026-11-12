@@ -1600,19 +1600,22 @@ console.log('S14 terrain — the 3D wireframe landscape')
     `segs ${baseSegs}→${centerSegs} curtains ${baseCurtains}→${centerCurtains}`,
   )
 
-  // 15) Mirror mode is a sliding true lake: the range is pulled up onto a
-  //     shore (a vertical compression about the horizon that ends the near
-  //     edge ~72% down the canvas — above the bottom edge, unlike None mode
-  //     where the near rows overflow past it) and the dial SLIDES the whole
-  //     mirrored world — the range riding on the water line, its flipped
-  //     twin below — up or down as ONE RIGID BODY. Three invariants are
-  //     pinned here: (a) the slide never distorts the range (every land
-  //     segment moves by the same constant dy), (b) the reflection is the
-  //     EXACT 1:1 flip of the land (refl.y + orig.y is one constant across
-  //     every segment pair — the old squash-to-fit is gone), and (c) every
-  //     point of both halves stays on the canvas at dial −1, 0 and +1. The
-  //     negative travel is decisively larger than the old 0.9·span dial:
-  //     at −1 the water line climbs above 40% of the canvas (high water).
+  // 15) Mirror mode is a true lake on its OWN axis: the range is pulled up
+  //     onto a shore (a vertical compression about the horizon that ends
+  //     the near edge ~72% down the canvas — above the bottom edge, unlike
+  //     None mode where the near rows overflow past it) and PINNED there —
+  //     the dial slides ONLY the water line. Four invariants are pinned
+  //     here: (a) the land NEVER moves with the dial (segment-for-segment
+  //     identical at −1, 0 and +1 — the mirror moves on its own axis, the
+  //     old rigid world-slide is gone), (b) the reflection is the EXACT
+  //     1:1 flip of the land above the line (refl.y + orig.y is one
+  //     constant per dial at 0 and +1 — no squash) and the line travels
+  //     decisively DOWN at +1, (c) at −1 the line cuts INTO the range —
+  //     high water that stops within 5% of the canvas of the highest
+  //     ridge, so something dry always remains to reflect — and (d) at 0
+  //     the whole flipped lake stays on the canvas (the positive dial may
+  //     honestly run the flipped peaks past the bottom edge — a lake
+  //     bigger than the frame, like a real shore shot).
   renderOne(
     { ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const } },
     0.5,
@@ -1620,11 +1623,23 @@ console.log('S14 terrain — the 3D wireframe landscape')
   const orig0 = segs2().filter((_, i) => i % 2 === 0)
   const refl0 = segs2().filter((_, i) => i % 2 === 1)
   const ysOf = (rs: OpRec[]): number[] => rs.flatMap((r) => (r.pts ?? []).map((p) => p.y))
-  const origMaxY = Math.max(...ysOf(orig0))
-  const dyOf = (a: OpRec[], b: OpRec[]): number[] | null => {
-    if (a.length !== b.length) return null
-    const dys = a.map((r, i) => (b[i]?.pts ?? []).map((p) => p.y - (r.pts ?? []).map((q) => q.y)[0])[0])
-    return dys.every((d) => Math.abs(d - dys[0]) < 0.5) ? [dys[0]] : null
+  const samePts = (a: OpRec[], b: OpRec[]): boolean =>
+    a.length === b.length &&
+    a.every((r, i) => {
+      const p = r.pts ?? []
+      const q = b[i]?.pts ?? []
+      return (
+        p.length === q.length &&
+        p.every(
+          (pt, j) =>
+            Math.abs(pt.x - (q[j]?.x ?? 1e9)) < 0.5 && Math.abs(pt.y - (q[j]?.y ?? 1e9)) < 0.5,
+        )
+      )
+    })
+  const sumConst = (orig: OpRec[], refl: OpRec[]): number | null => {
+    if (orig.length !== refl.length || orig.length === 0) return null
+    const sums = orig.map((r, i) => r.pts![0].y + refl[i].pts![0].y)
+    return sums.every((s) => Math.abs(s - sums[0]) < 0.5) ? sums[0] : null
   }
   renderOne(
     {
@@ -1644,41 +1659,32 @@ console.log('S14 terrain — the 3D wireframe landscape')
   )
   const origFlood = segs2().filter((_, i) => i % 2 === 0)
   const reflFlood = segs2().filter((_, i) => i % 2 === 1)
-  const reflMinY = Math.min(...ysOf(refl0), ...ysOf(refl1), ...ysOf(reflFlood))
-  const reflMaxY = Math.max(...ysOf(refl0), ...ysOf(refl1), ...ysOf(reflFlood))
+  const landFixed = samePts(orig0, orig1) && samePts(orig0, origFlood)
+  const c0 = sumConst(orig0, refl0)
+  const c1 = sumConst(orig1, refl1)
+  const landMinY = Math.min(...ysOf(orig0))
+  const landMaxY = Math.max(...ysOf(orig0))
+  // At −1 the submerged ridges fold flat ON the water line, so the
+  // reflection's minimum y IS the raised line.
   const floodMinY = Math.min(...ysOf(reflFlood))
-  const origAll = [orig0, orig1, origFlood]
-  const reflAll = [refl0, refl1, reflFlood]
-  // (b) exact flip: for every dial, refl.y + orig.y is ONE constant across
-  // all segment pairs (the fold line's 2·waterY), within half a pixel.
-  const flipConst = reflAll.every((refl, d) => {
-    const orig = origAll[d]
-    if (refl.length !== orig.length || refl.length === 0) return false
-    const sums = orig.map((r, i) => r.pts![0].y + refl[i].pts![0].y)
-    return sums.every((s) => Math.abs(s - sums[0]) < 0.5)
-  })
-  // (a) rigid slide: the land's dy between dials is one constant (down at
-  // +1, up at −1) — the range's shape never changes.
-  const slide1 = dyOf(orig0, orig1)
-  const slideF = dyOf(orig0, origFlood)
-  const rigid =
-    !!slide1 && !!slideF && slide1[0] > 0 && slideF[0] < 0 &&
-    orig1.every((r, i) => Math.abs(r.pts![0].x - orig0[i].pts![0].x) < 0.5) &&
-    origFlood.every((r, i) => Math.abs(r.pts![0].x - orig0[i].pts![0].x) < 0.5)
+  const refl0MaxY = Math.max(...ysOf(refl0))
+  const reflAllMinY = Math.min(...ysOf(refl0), ...ysOf(refl1), ...ysOf(reflFlood))
   check(
-    'mirror lake: rigid slide, exact 1:1 flip, on screen at -1/0/+1, high water at -1',
+    'mirror lake on its own axis: land fixed, exact 1:1 flip, line slides both ways, high water at -1',
     orig0.length > 200 &&
       orig0.length === orig1.length &&
-      orig0.length === origFlood.length &&
-      rigid &&
-      flipConst &&
-      origMaxY < H * 0.78 &&
-      reflMinY > 0 &&
-      reflMaxY <= H + 1 &&
-      JSON.stringify(refl0) !== JSON.stringify(refl1) &&
-      floodMinY < origMaxY &&
-      floodMinY < H * 0.4,
-    `n=${orig0.length} rigid=${JSON.stringify(slide1)}/${JSON.stringify(slideF)} flip=${flipConst} origMaxY=${origMaxY.toFixed(1)} refl=[${reflMinY.toFixed(1)}..${reflMaxY.toFixed(1)}] floodMin=${floodMinY.toFixed(1)} H=${H}`,
+      landFixed &&
+      c0 !== null &&
+      c1 !== null &&
+      Math.abs(c0 / 2 - H * 0.72) < H * 0.01 &&
+      c1 > c0 + H * 0.1 &&
+      floodMinY > landMinY + 1 &&
+      floodMinY < landMaxY &&
+      floodMinY - landMinY < H * 0.05 &&
+      reflAllMinY > 0 &&
+      refl0MaxY <= H + 1 &&
+      JSON.stringify(refl0) !== JSON.stringify(refl1),
+    `n=${orig0.length} fixed=${landFixed} c0=${c0?.toFixed(1)} c1=${c1?.toFixed(1)} land=[${landMinY.toFixed(1)}..${landMaxY.toFixed(1)}] floodMin=${floodMinY.toFixed(1)} refl0Max=${refl0MaxY.toFixed(1)} H=${H}`,
   )
 
   // 16) Center mode's dial (Spread) scales the depth of the range's OWN
