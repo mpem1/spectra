@@ -312,7 +312,7 @@ export function PreviewCanvas() {
             className="absolute inset-0 block h-full w-full"
             aria-label="Visualizer live preview"
           />
-          {/* Image-background move / resize surface (image mode only) */}
+          {/* Image/video-background move / resize surface (image + video modes) */}
           <BgImageTransform />
         </div>
 

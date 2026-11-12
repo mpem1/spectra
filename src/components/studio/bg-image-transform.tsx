@@ -16,14 +16,17 @@ type DragState =
   | { kind: 'scale'; px: number; py: number; cx: number; cy: number; startDist: number; scale: number }
 
 /**
- * Pointer surface over the preview while an image background is active:
- * drag anywhere to move the image, drag the corner handle (or scroll) to
- * zoom. Writes normalized x/y/scale back into the store, so exports at any
- * resolution reproduce the exact framing.
+ * Pointer surface over the preview while an image OR video/GIF background
+ * is active: drag anywhere to move the media, drag the corner handle (or
+ * scroll) to zoom. Writes normalized x/y/scale back into the store, so
+ * exports at any resolution reproduce the exact framing. The same x/y/scale
+ * drive both modes in the renderer (drawMediaCover), so one surface serves
+ * both.
  */
 export function BgImageTransform() {
   const mode = useStudioStore((s) => s.config.background.mode)
   const imageSrc = useStudioStore((s) => s.config.background.imageSrc)
+  const videoSrc = useStudioStore((s) => s.config.background.videoSrc)
   const patchBackground = useStudioStore((s) => s.patchBackground)
 
   const surfaceRef = useRef<HTMLDivElement | null>(null)
@@ -99,8 +102,8 @@ export function BgImageTransform() {
   }, [])
 
   /* Wheel zoom — needs a non-passive native listener to preventDefault.
-     NOTE: no deps array on purpose. The component mounts while mode !==
-     'image' (surfaceRef is null then), and the surface div only appears on
+     NOTE: no deps array on purpose. The component mounts while no media is
+     loaded (surfaceRef is null then), and the surface div only appears on
      a later render; re-running on every render keeps the listener on the
      live node. */
   useEffect(() => {
@@ -116,7 +119,9 @@ export function BgImageTransform() {
     return () => surface.removeEventListener('wheel', onWheel)
   })
 
-  if (mode !== 'image' || !imageSrc) return null
+  // Active for image mode (with an image) and video/GIF mode (with a clip).
+  const mediaReady = mode === 'image' ? !!imageSrc : mode === 'video' ? !!videoSrc : false
+  if (!mediaReady) return null
 
   return (
     <div
@@ -131,7 +136,7 @@ export function BgImageTransform() {
       <div
         className="absolute inset-0 cursor-move"
         onPointerDown={onPointerDownMove}
-        aria-label="Background image: drag to move, scroll to zoom"
+        aria-label="Background image or video: drag to move, scroll to zoom"
       />
 
       {/* Frame + handles become visible on hover or while dragging */}
@@ -147,7 +152,7 @@ export function BgImageTransform() {
       <div
         className="absolute -bottom-2 -right-2 flex size-11 cursor-nwse-resize items-center justify-center"
         onPointerDown={onPointerDownScale}
-        aria-label="Resize background image"
+        aria-label="Resize background image or video"
       >
         <span
           className={

@@ -416,8 +416,10 @@ function VideoBackgroundSection() {
       <MediaBackgroundControls />
 
       <p className="text-[11px] leading-snug text-zinc-500">
-        The clip loops automatically and stays muted behind your track. Videos
-        loop in real time; GIFs are decoded into frames so the exported MP4 is
+        The clip loops automatically and stays muted behind your track. On the
+        preview: drag the video to move it, drag the corner handle or scroll
+        to zoom — same framing controls as the image background. Videos loop
+        in real time; GIFs are decoded into frames so the exported MP4 is
         frame-exact. The shade fader keeps the visualizer readable.
       </p>
     </section>
