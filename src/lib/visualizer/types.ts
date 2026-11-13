@@ -838,6 +838,13 @@ export interface ContourFilterConfig {
   paperColor: string
   /** Glow 0..1 — the real halo radiating around the bright lines */
   glow: number
+  /** Static 0..1 — broken-signal grain materializing at the picture's
+   *  focal points (silhouette edges + bright cores), flickering like TV
+   *  noise and riding the weave */
+  static: number
+  /** Static spread 0..1 — how far that grain leaks out of the focal points
+   *  into the negative space around them */
+  staticSpread: number
   /** Strength 0..1 — how much of the frame the contour print takes over
    *  (below 1 the untouched frame fades back through) */
   strength: number
@@ -1536,6 +1543,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     inkColor: '#49b6ff',
     paperColor: '#030a24',
     glow: 0.6,
+    static: 0.5,
+    staticSpread: 0.6,
     strength: 1,
     beatReactive: false,
     beatStrength: 0.5,
