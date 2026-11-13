@@ -400,9 +400,27 @@ function paintInner(
   if (posX !== bw / 2 || posY !== bh / 2) {
     g.translate(posX - bw / 2, posY - bh / 2)
   }
+  // Vertical inner: the strip styles (bars / wave / grid / ribbon) rotate
+  // 90° counter-clockwise into a top→bottom column — the exact wrap the
+  // main drawVisualizer applies (translate to the bottom edge, rotate, hand
+  // the style a swapped H×W canvas). Bass stays at the bottom and the bars
+  // grow sideways from the box's right edge; the round styles (radial /
+  // particles / blob) ignore orientation, matching the main canvas. The
+  // anchor translate above already ran in canvas space, same composition
+  // order as the main layer (position first, rotation on top).
+  const vertical =
+    (cfg.imgvizInnerOrient ?? 'horizontal') === 'vertical' &&
+    (inner === 'bars' || inner === 'wave' || inner === 'grid' || inner === 'ribbon')
+  if (vertical) {
+    g.translate(0, bh)
+    g.rotate(-Math.PI / 2)
+  }
+  const stripRc: RenderContext = vertical
+    ? { ctx: g, width: bh, height: bw, frame: rc.frame }
+    : innerRc
   switch (inner) {
     case 'wave':
-      drawWave(innerRc, frame, innerCfg, innerS)
+      drawWave(stripRc, frame, innerCfg, innerS)
       break
     case 'radial':
       drawRadial(innerRc, frame, innerCfg, innerS)
@@ -414,13 +432,13 @@ function paintInner(
       drawBlob(innerRc, frame, innerCfg, innerS)
       break
     case 'grid':
-      drawGrid(innerRc, frame, innerCfg, innerS)
+      drawGrid(stripRc, frame, innerCfg, innerS)
       break
     case 'ribbon':
-      drawRibbon(innerRc, frame, innerCfg, innerS)
+      drawRibbon(stripRc, frame, innerCfg, innerS)
       break
     default:
-      drawBars(innerRc, frame, innerCfg, innerS)
+      drawBars(stripRc, frame, innerCfg, innerS)
       break
   }
   g.restore()

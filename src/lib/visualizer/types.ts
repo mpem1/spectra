@@ -165,6 +165,12 @@ export interface VisualizerConfig {
    *  (0..100, 50 = centered). Same anchor math as the main layer's
    *  Position Y. */
   imgvizInnerY: number
+  /** Image style — inner visualizer orientation for the strip styles
+   *  (bars / wave / grid / ribbon): horizontal = the classic left→right
+   *  strip, vertical = rotated 90° counter-clockwise into a top→bottom
+   *  column growing sideways from the box's right edge (bass at the
+   *  bottom). The round styles (radial / dots / blob) ignore it. */
+  imgvizInnerOrient: 'horizontal' | 'vertical'
   /** Image style — music motion on/off (swell, bob, sway and tilt driven
    *  by the bass/energy drive). Off pins the artwork still. */
   imgvizMotion: boolean
@@ -1122,6 +1128,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     imgvizInnerGain: 1,
     imgvizInnerX: 50,
     imgvizInnerY: 50,
+    imgvizInnerOrient: 'horizontal',
     imgvizMotion: true,
     imgvizMotionAmount: 0.5,
     imgvizGlow: true,

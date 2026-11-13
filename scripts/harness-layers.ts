@@ -2282,6 +2282,45 @@ console.log('S18 image-viz — the custom PNG style: inner spectrum, glowing edg
       Math.abs(movedXf[0].y - 0.35 * movedSc.height) < 0.5,
     `xlates=${movedXf.length} dx=${movedXf[0]?.x?.toFixed(1)} dy=${movedXf[0]?.y?.toFixed(1)}`,
   )
+
+  // 14) Inner orientation: the strip styles (bars / wave / grid / ribbon)
+  //     rotate 90° counter-clockwise when Inner orientation = vertical —
+  //     the same wrap the main drawVisualizer applies, visible in the mock
+  //     as a translate(0, boxH) op on the mask scratch. Horizontal (the
+  //     default) adds no rotation op.
+  check(
+    'inner orientation defaults to horizontal',
+    DEFAULT_STUDIO_CONFIG.visualizer.imgvizInnerOrient === 'horizontal',
+    `default=${DEFAULT_STUDIO_CONFIG.visualizer.imgvizInnerOrient}`,
+  )
+  renderWith(
+    loud,
+    cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizGlow: false, imgvizInner: 'bars', imgvizInnerOrient: 'vertical' }),
+  )
+  const vSc = maskScratch()
+  const vXf = xformsOf(vSc)
+  check(
+    'vertical inner rotates the strip (translate(0, boxH) recorded on the mask scratch)',
+    vSc !== undefined && vXf.length === 1 && vXf[0].x === 0 && Math.abs(vXf[0].y - vSc.height) < 0.5,
+    `xlates=${vXf.length} tx=${vXf[0]?.x} ty=${vXf[0]?.y} bh=${vSc?.height}`,
+  )
+  renderWith(
+    loud,
+    cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizGlow: false, imgvizInner: 'bars', imgvizInnerOrient: 'vertical', imgvizInnerX: 20 }),
+  )
+  const vxSc = maskScratch()
+  const vXf2 = xformsOf(vxSc)
+  check(
+    'vertical inner composes position before rotation (anchor shift + rotate wrap recorded)',
+    vxSc !== undefined && vXf2.length === 2 && Math.abs(vXf2[0].x + 0.3 * vxSc.width) < 0.5 && vXf2[1].x === 0,
+    `xlates=${vXf2.length} tx0=${vXf2[0]?.x?.toFixed(1)} tx1=${vXf2[1]?.x}`,
+  )
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizGlow: false, imgvizInner: 'radial', imgvizInnerOrient: 'vertical' }))
+  check(
+    'round inner styles ignore orientation (no rotation op)',
+    xformsOf(maskScratch()).length === 0,
+    `xlates=${xformsOf(maskScratch()).length}`,
+  )
 }
 
 /* ----------------- S16 the Mirror family across every style ----------------- */

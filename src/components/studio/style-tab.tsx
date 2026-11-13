@@ -265,6 +265,37 @@ export function StyleTab() {
               ))}
             </div>
           </div>
+          {visualizer.imgvizInner === 'bars' ||
+          visualizer.imgvizInner === 'wave' ||
+          visualizer.imgvizInner === 'grid' ||
+          visualizer.imgvizInner === 'ribbon' ? (
+            <div className="space-y-1.5">
+              <MicroLabel>Inner orientation</MicroLabel>
+              <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+                {(
+                  [
+                    { id: 'horizontal', label: 'Horizontal' },
+                    { id: 'vertical', label: 'Vertical' },
+                  ] as const
+                ).map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    aria-pressed={visualizer.imgvizInnerOrient === o.id}
+                    onClick={() => patchVisualizer({ imgvizInnerOrient: o.id })}
+                    className={cn(
+                      'h-7 rounded-md text-xs transition-colors',
+                      visualizer.imgvizInnerOrient === o.id
+                        ? 'bg-emerald-500 font-medium text-zinc-950'
+                        : 'text-zinc-300 hover:text-zinc-100',
+                    )}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <SliderRow
             label="Inner gain"
             value={visualizer.imgvizInnerGain}
