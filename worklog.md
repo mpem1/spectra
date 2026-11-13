@@ -2264,3 +2264,30 @@ New full-frame filter, LAST in the chain (re-quantizes everything incl. glitches
   (electric-blue dither dots on deep navy), B&W = clean 1-bit Mac, Color = quantized
   pink/orange retro, Custom duotone + pickers + 8px dots verified; whole card UI
   renders; 0 page errors; lint 0 errors (27 vendored). Pushed; Pages deploy pending.
+
+## 2026-11-13 — Dither blue glow recolorable: glow + paper pickers (0e609e1)
+User (IM): "can i have the option to change the colors of the blue glow one in dither?"
+The Blue glow palette's colors were hardcoded (BLUE_PAPER + BLUE_STOPS ladder). Now
+mode 'blue' shows two pickers — "Glow color" (blueInkColor) + "Paper color"
+(bluePaperColor), both defaulting to the original #49b6ff / #030a24:
+- Ladder rebuild: blueLadderFor(ink, paper) takes the canonical navy→royal→electric→
+  sky→ice ramp (BLUE_STOPS/BLUE_LUT unchanged as the shape source) and hue-rotates
+  every entry by (inkHue − hue(#49b6ff) ≈ 204°), saturation scaled by inkS/anchorS
+  (clamped 0..1.25) so deep/muted inks give deep/muted ramps. Achromatic picks
+  (white/gray/black, S<0.05) desaturate the whole ramp into glowing grays instead of
+  staying blue. Identity shortcut: |dh|<0.01° && sat≈1 → returns the canonical LUT
+  slice, so the default pick is byte-identical to the old hardcoded look (verified:
+  pixel sampling bluePct 60%→0% on #ff3355 pick, back to exactly 60% on restore).
+  Unlit cells paint the picked paper directly (no transform). Cached by "ink|paper"
+  (cleared >12 entries) — rebuilt only when the pick changes, not per frame.
+- Determinism/export: same draw function serves preview + offline export, so exports
+  bake the recolored ladder; share links carry the two new fields automatically
+  (old saves merge to defaults → identical look).
+- UI: pickers live in the Blue glow branch of the Dither card (grid like Custom's),
+  with hint lines ("The bright-dot shade ladder follows this hue." / "The dark cells
+  behind the dots."); B&W/Color unaffected.
+- E2E (agent-browser): enabled dither on the bars scene — #ff3355 pick → pink/red
+  dither poster (0% blue / 26% red-dominant pixels), paper #0e2b16 → 83% of dark
+  cells green-dominant behind the pink dots; default restore → exact 60% blue
+  baseline; Custom↔Blue toggle + reload clean; 0 page errors; lint 0 errors (27
+  vendored). Pushed; Pages deploy pending.
