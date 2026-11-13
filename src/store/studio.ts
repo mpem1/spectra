@@ -28,6 +28,7 @@ import {
   type AnaglyphFilterConfig,
   type DitherFilterConfig,
   type PhosphorFilterConfig,
+  type ContourFilterConfig,
 } from '@/lib/visualizer/types'
 import { exportMP4 } from '@/lib/export/exporter'
 import { getEngine, getPreviewControls } from '@/components/studio/engine-registry'
@@ -108,6 +109,8 @@ type StudioState = {
   patchDitherFilter: (partial: Partial<DitherFilterConfig>) => void
   /** Patches config.phosphorFilter */
   patchPhosphorFilter: (partial: Partial<PhosphorFilterConfig>) => void
+  /** Patches config.contourFilter */
+  patchContourFilter: (partial: Partial<ContourFilterConfig>) => void
   /** Patches config.layers (the layers-vs-filters options) */
   patchLayers: (partial: Partial<LayersConfig>) => void
   /** Adds an imported font file to the shared lyrics/title library */
@@ -256,6 +259,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, phosphorFilter: { ...s.config.phosphorFilter, ...partial } },
     })),
 
+  patchContourFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, contourFilter: { ...s.config.contourFilter, ...partial } },
+    })),
+
   patchLayers: (partial) =>
     set((s) => ({
       config: { ...s.config, layers: { ...s.config.layers, ...partial } },
@@ -350,6 +358,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         anaglyphFilter: { ...DEFAULT_STUDIO_CONFIG.anaglyphFilter, ...config.anaglyphFilter },
         ditherFilter: { ...DEFAULT_STUDIO_CONFIG.ditherFilter, ...config.ditherFilter },
         phosphorFilter: { ...DEFAULT_STUDIO_CONFIG.phosphorFilter, ...config.phosphorFilter },
+        contourFilter: { ...DEFAULT_STUDIO_CONFIG.contourFilter, ...config.contourFilter },
         // Layers-vs-filters options: new saves carry their own section; old
         // saves graduate the halftone's flip-gated "Layers stay colored".
         layers: resolveLayersConfig(config),

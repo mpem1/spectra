@@ -7,6 +7,7 @@ import { HalftoneFilterSection } from '@/components/studio/halftone-filter-secti
 import { GlitchFilterSection } from '@/components/studio/glitch-filter-section'
 import { AnaglyphFilterSection } from '@/components/studio/anaglyph-filter-section'
 import { PhosphorFilterSection } from '@/components/studio/phosphor-section'
+import { ContourFilterSection } from '@/components/studio/contour-filter-section'
 import { DitherFilterSection } from '@/components/studio/dither-filter-section'
 import { LayersSection } from '@/components/studio/layers-section'
 
@@ -47,6 +48,10 @@ export function FiltersTab() {
       {/* Phosphor monitor — the lo-fi sci-fi video tube: columns of glowing
           dashes on a dark tube, shade ladder recolorable */}
       <PhosphorFilterSection />
+
+      {/* Contour threads — the picture woven into glowing horizontal lines
+          that bend with its shapes and ripple with the music */}
+      <ContourFilterSection />
 
       {/* Retro dither — chunky Bayer dot patterns (glowing blue poster,
           1-bit B&W, retro color, or custom duotone) with a bright-dot bloom */}

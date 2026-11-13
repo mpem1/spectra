@@ -815,6 +815,39 @@ export interface PhosphorFilterConfig {
 }
 
 /**
+ * Contour filter — the woven-thread waveform look (glowing contour lines
+ * re-materialize the whole picture and ride the music like a waveform
+ * field).
+ */
+export interface ContourFilterConfig {
+  enabled: boolean
+  /** How many horizontal lines the picture is woven into (24..160) */
+  lines: number
+  /** Warp 0..1 — how strongly the picture's bright shapes bend the lines
+   *  around themselves (the contour/silhouette effect) */
+  warp: number
+  /** Drift 0..1 — how much the lines sway on their own between beats */
+  motion: number
+  /** Reactivity 0..1 — how hard the music ripples the lines (each line is
+   *  driven by its own frequency bin, so the field rides the spectrum) */
+  reactivity: number
+  /** The line ink as '#rrggbb' — the shade ladder rebuilds from this hue
+   *  (same ladder the dither/phosphor filters use) */
+  inkColor: string
+  /** The dark tube behind the lines as '#rrggbb' */
+  paperColor: string
+  /** Glow 0..1 — the real halo radiating around the bright lines */
+  glow: number
+  /** Strength 0..1 — how much of the frame the contour print takes over
+   *  (below 1 the untouched frame fades back through) */
+  strength: number
+  /** React to beat — the whole field swells on the song's low end */
+  beatReactive: boolean
+  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
+}
+
+/**
  * Glitch filter — digital corruption: short bursts of chunky pixel blocks
  * (some pixelated in place, some copied from the wrong spot, some tinted
  * with raw palette colors), picture slices shoved sideways and raw saturated
@@ -968,6 +1001,8 @@ export interface StudioConfig {
   ditherFilter: DitherFilterConfig
   /** Full-frame phosphor-monitor post-pass (vertical dash columns + bloom) */
   phosphorFilter: PhosphorFilterConfig
+  /** Full-frame contour post-pass (glowing woven-thread waveform lines) */
+  contourFilter: ContourFilterConfig
   /** How the moving layers interact with the full-frame filter chain */
   layers: LayersConfig
   /** Imported font library — shared by the lyrics and the title card */
@@ -1489,6 +1524,19 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     contrast: 0.5,
     strength: 1,
     glow: 0.55,
+    beatReactive: false,
+    beatStrength: 0.5,
+  },
+  contourFilter: {
+    enabled: false,
+    lines: 96,
+    warp: 0.55,
+    motion: 0.35,
+    reactivity: 0.6,
+    inkColor: '#49b6ff',
+    paperColor: '#030a24',
+    glow: 0.6,
+    strength: 1,
     beatReactive: false,
     beatStrength: 0.5,
   },

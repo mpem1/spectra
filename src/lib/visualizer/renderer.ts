@@ -33,6 +33,7 @@ import { drawGlitchFilter } from './glitch-filter'
 import { drawAnaglyphFilter } from './anaglyph-filter'
 import { drawDitherFilter } from './dither-filter'
 import { drawPhosphorFilter } from './phosphor-filter'
+import { drawContourFilter } from './contour-filter'
 import { getWork, resetWork } from './filter-utils'
 
 /* --------------------------------- Utilities -------------------------------- */
@@ -202,6 +203,11 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // glowing dashes on a dark tube. Before the dither, which stays the
   // outermost poster layer.
   drawPhosphorFilter(rc, config.phosphorFilter, frame, transparent)
+  // Contour threads — re-materializes the picture as glowing horizontal
+  // lines that bend around its bright shapes and ripple with the music (the
+  // woven waveform look). Before the dither, which stays the outermost
+  // poster layer.
+  drawContourFilter(rc, config.contourFilter, frame, transparent)
   // Retro dither last — it re-quantizes the finished picture (glitches
   // included) into chunky Bayer dot patterns, so it always reads as the
   // outermost poster layer.

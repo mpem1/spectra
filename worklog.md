@@ -2405,3 +2405,42 @@ between 3D glasses and Dither).
   mode shows soft halos radiating into the dark tube (reference-video
   look); dashes mode regression at sizes 3/5/8/12 → uniform dash grids, no
   streaks. 0 page errors, lint 0 errors.
+
+## 2026-11-13 — Contour filter: the picture becomes a woven waveform (this commit)
+
+- ASK: the Netflix 3 Body Problem poster + polygon1993 "Clair Obscur"
+  Instagram posts — "is it possible to use an image to have this style
+  become a wave form that moves?" Both references are the same core
+  technique: the image re-materialized as dense horizontal glowing lines
+  that bend around its bright shapes.
+- NEW full-frame filter "Contour" (contour-filter.ts, after phosphor /
+  before dither in the chain): the finished frame is resampled to a
+  cols×lines luminance grid (one tiny getImageData), and every row is
+  redrawn as a thin glowing polyline whose points displace by three summed
+  voices — the horizontal luminance GRADIENT (bright silhouettes warp the
+  lines around themselves, the contour effect) + a slight lift over bright
+  areas + a slow traveling drift weave (styleTime-driven, alive while
+  paused, deterministic in exports) + a music ripple where each line rides
+  its own frequency bin (bottom lines = low end), so a song turns the whole
+  field into a moving spectrum waveform. "React to beat" swells the ripple
+  + glow on the low end.
+- Rendering: 4 luminance-band strokes (one path per band across ALL lines —
+  ~4 strokes total, band 0 = faint deep threads with a >0.05 lum floor),
+  shade-ladder colors from the picked ink; the phosphor stack for tube/glow
+  (brightness-multiply tube, print, pure-ink silhouette halo at two blur
+  radii, 'lighter'); strength fades the untouched frame back; transparent
+  backgrounds skip. Config ContourFilterConfig (lines 24-160/96, warp
+  .55, drift .35, reactivity .6, glow .6, ink #49b6ff — the ladder anchor
+  hue, paper #030a24, strength, beat dials) with defaults + store
+  patchContourFilter + old-save merge; whole-config share-links carry it
+  for free. UI: cyan Contour card (line/tube color pickers, Lines/Warp/
+  Drift/Reactivity/Glow/Strength dials, beat punch) between Phosphor and
+  Dither.
+- E2E (agent-browser): AI-generated profile-face test image uploaded as the
+  background (exposed the hidden file input), filter enabled — the face
+  re-materializes as electric-blue glowing threads bending around the
+  silhouette (reference look at defaults). Motion verified: two frames
+  1.2s apart, mean pixel diff 18.7. Audio test (generated 3-sine mp3, plays
+  in the player): spectrum visibly ripples through the weave. Warp 100%
+  dial round-trips into dramatic bends. 60 fps with audio playing, 0 page
+  errors, lint 0 errors.
