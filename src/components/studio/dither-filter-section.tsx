@@ -11,10 +11,10 @@ import { cn } from '@/lib/utils'
 /**
  * Dither filter card — retro ordered dithering: the whole picture is
  * repainted as chunky dot patterns in a palette of your choosing (the
- * glowing "all shades of blue" poster, classic 1-bit black & white, retro
- * color, or your own two colors) with a bloom over the bright dots.
- * Deterministic, so every export bakes the identical look; skipped on
- * transparent backgrounds.
+ * glowing shades poster whose ladder follows your glow color, classic 1-bit
+ * black & white, retro color, or your own two colors) with a bloom over the
+ * bright dots. Deterministic, so every export bakes the identical look;
+ * skipped on transparent backgrounds.
  */
 export function DitherFilterSection() {
   const filter = useStudioStore((s) => s.config.ditherFilter)
@@ -38,8 +38,9 @@ export function DitherFilterSection() {
       </div>
       <p className="text-[11px] leading-snug text-zinc-600">
         Retro dither print — the whole picture becomes chunky glowing dots,
-        like old 1-bit screens and dither-poster art. Pick a palette, dial
-        the dot size and glow, and it bakes into every export.
+        like old 1-bit screens and dither-poster art. Pick a palette — the
+        glow ladder recolors to your pick — dial the dot size and glow, and
+        it bakes into every export.
       </p>
 
       {filter.enabled ? (
@@ -72,6 +73,37 @@ export function DitherFilterSection() {
               ))}
             </div>
           </div>
+
+          {filter.mode === 'blue' ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <div className="flex h-5 items-center justify-between">
+                  <MicroLabel>Glow color</MicroLabel>
+                  <ColorPickerButton
+                    value={filter.blueInkColor}
+                    onChange={(blueInkColor) => patchDitherFilter({ blueInkColor })}
+                    ariaLabel="Blue glow color"
+                  />
+                </div>
+                <p className="text-[10px] leading-snug text-zinc-600">
+                  The bright-dot shade ladder follows this hue.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex h-5 items-center justify-between">
+                  <MicroLabel>Paper color</MicroLabel>
+                  <ColorPickerButton
+                    value={filter.bluePaperColor}
+                    onChange={(bluePaperColor) => patchDitherFilter({ bluePaperColor })}
+                    ariaLabel="Blue glow paper color"
+                  />
+                </div>
+                <p className="text-[10px] leading-snug text-zinc-600">
+                  The dark cells behind the dots.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           {filter.mode === 'custom' ? (
             <div className="grid grid-cols-2 gap-3">

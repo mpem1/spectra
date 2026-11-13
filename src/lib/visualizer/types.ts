@@ -747,6 +747,13 @@ export interface DitherFilterConfig {
    *  retro per-channel quantization (3 levels each, Bayer-steered),
    *  'custom' = your own two colors */
   mode: 'blue' | 'mono' | 'color' | 'custom'
+  /** Blue glow palette: the glow color as '#rrggbb' (mode 'blue') — the
+   *  bright cells' shade ladder is rebuilt from this color's hue, so the
+   *  default pick reproduces the original all-blue ramp exactly */
+  blueInkColor: string
+  /** Blue glow palette: the dark paper behind the dots as '#rrggbb'
+   *  (mode 'blue') */
+  bluePaperColor: string
   /** Dither cell size in px on the 720p reference canvas (2..14) */
   cellSize: number
   /** Picture contrast 0..1 — 0.5 is the untouched picture, 1 doubles the
@@ -1421,6 +1428,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
   ditherFilter: {
     enabled: false,
     mode: 'blue',
+    blueInkColor: '#49b6ff',
+    bluePaperColor: '#030a24',
     cellSize: 4,
     contrast: 0.5,
     strength: 1,

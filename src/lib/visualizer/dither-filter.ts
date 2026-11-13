@@ -7,10 +7,11 @@
  * bright tone — brightness spreads across dot patterns exactly like old
  * 1-bit screens and dither-poster art. Four palettes:
  *
- *   · Blue glow — the "all shades of blue" poster: deep-navy paper, bright
- *     cells pick a shade from a navy → royal → electric → sky → ice ladder
- *     by their luminance, and a two-pass additive bloom makes the bright
- *     dots shine (the glowing look).
+ *   · Blue glow — the "all shades of one color" poster: your paper color
+ *     behind the dots, bright cells climb a shade ladder rebuilt from your
+ *     glow color (the canonical navy → royal → electric → sky → ice ramp,
+ *     rotated to the glow color's hue), and a two-pass additive bloom makes
+ *     the bright dots shine (the glowing look).
  *   · Black & white — the classic 1-bit Mac look: black paper, white ink.
  *   · Color — per-channel retro quantization: each RGB channel snaps to 3
  *     levels with the Bayer offset steering which way borderline values
@@ -58,11 +59,19 @@ const BAYER8 = (() => {
 
 /* ------------------------------- blue ladder ------------------------------- */
 
-/** The paper every unlit blue cell lands on (near-black navy). */
-const BLUE_PAPER: readonly [number, number, number] = [3, 10, 36]
+/** The default Blue glow ink — every custom glow color rotates the shade
+ *  ladder away from this anchor hue, so this exact pick reproduces the
+ *  original all-blue ramp byte-for-byte. */
+const BLUE_INK_CSS = '#49b6ff'
+const BLUE_INK_RGB: readonly [number, number, number] = [73, 182, 255]
 
-/** Bright-cell shade ladder (luminance stop → navy → royal → electric →
- *  sky → ice), the "all shades of blue" ramp. */
+/** The default paper behind the dots (near-black navy). */
+const BLUE_PAPER_CSS = '#030a24'
+const BLUE_PAPER_RGB: readonly [number, number, number] = [3, 10, 36]
+
+/** Bright-cell shade ladder stops (luminance → navy → royal → electric →
+ *  sky → ice), the canonical "all shades of blue" ramp. With a custom glow
+ *  color the whole ramp is hue-rotated to it (see blueLadderFor). */
 const BLUE_STOPS: Array<readonly [number, number, number, number]> = [
   [0.0, 10, 30, 82],
   [0.28, 20, 71, 200],
@@ -93,6 +102,125 @@ const BLUE_LUT: Array<readonly [number, number, number]> = (() => {
   }
   return lut
 })()
+
+/* --------------------------- recolorable ladder ---------------------------- */
+
+/** RGB → HSL (h in degrees 0..360, s/l in 0..1). */
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  const rr = r / 255
+  const gg = g / 255
+  const bb = b / 255
+  const max = Math.max(rr, gg, bb)
+  const min = Math.min(rr, gg, bb)
+  const l = (max + min) / 2
+  const d = max - min
+  let h = 0
+  let s = 0
+  if (d > 1e-6) {
+    s = Math.min(1, d / (1 - Math.abs(2 * l - 1)))
+    if (max === rr) h = 60 * (((gg - bb) / d) % 6)
+    else if (max === gg) h = 60 * ((bb - rr) / d + 2)
+    else h = 60 * ((rr - gg) / d + 4)
+    if (h < 0) h += 360
+  }
+  return [h, s, l]
+}
+
+/** HSL → RGB. */
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  h = ((h % 360) + 360) % 360
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = l - c / 2
+  let r = 0
+  let g = 0
+  let b = 0
+  if (h < 60) {
+    r = c
+    g = x
+  } else if (h < 120) {
+    r = x
+    g = c
+  } else if (h < 180) {
+    g = c
+    b = x
+  } else if (h < 240) {
+    g = x
+    b = c
+  } else if (h < 300) {
+    r = x
+    b = c
+  } else {
+    r = c
+    b = x
+  }
+  return [
+    Math.round((r + m) * 255),
+    Math.round((g + m) * 255),
+    Math.round((b + m) * 255),
+  ]
+}
+
+/** The ink hue/sat the canonical ramp is anchored to (from the default
+ *  '#49b6ff' pick, so picking it back gives a pure identity transform). */
+const ANCHOR_HSL = rgbToHsl(BLUE_INK_RGB[0], BLUE_INK_RGB[1], BLUE_INK_RGB[2])
+
+interface BlueLadder {
+  /** Bright-cell shade for each luminance step 0..63. */
+  lut: Array<readonly [number, number, number]>
+  /** The paper behind the unlit dots. */
+  paper: readonly [number, number, number]
+}
+
+/** Rebuilt ladders keyed by "ink|paper" — colors change rarely, frames
+ *  render 60×/s, so the ramp is only recomputed when the pick changes. */
+const ladderCache = new Map<string, BlueLadder>()
+
+/** One ramp color hue-rotated by `dh` degrees with its saturation scaled. */
+function rampColor(
+  c: readonly [number, number, number],
+  dh: number,
+  sat: number,
+): [number, number, number] {
+  const [h, s, l] = rgbToHsl(c[0], c[1], c[2])
+  return hslToRgb(h + dh, Math.min(1, s * sat), l)
+}
+
+/** The Blue glow ladder for the user's colors: the canonical navy → royal →
+ *  electric → sky → ice ramp hue-rotated from the default blue to the picked
+ *  glow color, with its saturation scaled to the pick's (clamped, so deep
+ *  or muted inks give deeper/muted ramps; near-neutral picks drop the whole
+ *  ramp to glowing grays), on the picked paper. Deterministic, and the
+ *  default pick rebuilds the canonical ramp exactly. */
+function blueLadderFor(inkCss: string, paperCss: string): BlueLadder {
+  const key = `${inkCss}|${paperCss}`
+  const hit = ladderCache.get(key)
+  if (hit) return hit
+  const inkRGB = parseHexRGB(inkCss) ?? [
+    BLUE_INK_RGB[0],
+    BLUE_INK_RGB[1],
+    BLUE_INK_RGB[2],
+  ]
+  const paperRGB = parseHexRGB(paperCss) ?? [
+    BLUE_PAPER_RGB[0],
+    BLUE_PAPER_RGB[1],
+    BLUE_PAPER_RGB[2],
+  ]
+  const [inkH, inkS] = rgbToHsl(inkRGB[0], inkRGB[1], inkRGB[2])
+  // Achromatic pick (white/gray/black): no hue to rotate to — desaturate the
+  // whole ramp into neutral grays instead of leaving it blue.
+  const achromatic = inkS < 0.05
+  const dh = achromatic ? 0 : inkH - ANCHOR_HSL[0]
+  const sat = achromatic ? 0 : Math.min(1.25, Math.max(0, inkS / ANCHOR_HSL[1]))
+  const identity = Math.abs(dh) < 0.01 && Math.abs(sat - 1) < 0.005
+  const ladder: BlueLadder = {
+    lut: identity ? BLUE_LUT.slice() : BLUE_LUT.map((c) => rampColor(c, dh, sat)),
+    paper: paperRGB,
+  }
+  if (ladderCache.size > 12) ladderCache.clear()
+  ladderCache.set(key, ladder)
+  return ladder
+}
 
 /* --------------------------------- helpers --------------------------------- */
 
@@ -151,8 +279,21 @@ export function drawDitherFilter(
   const glowAmt = glow * beatBoost(cfg, clamp01(frame.bass ?? 0), 1.2)
   const cellSize = Math.round(Math.min(14, Math.max(2, cfg.cellSize ?? 4)) * S)
   const cell = Math.max(2, cellSize)
-  const inkRGB = parseHexRGB(cfg.inkColor ?? '#49b6ff') ?? [73, 182, 255]
-  const paperRGB = parseHexRGB(cfg.paperColor ?? '#030a24') ?? [3, 10, 36]
+  const inkRGB = parseHexRGB(cfg.inkColor ?? BLUE_INK_CSS) ?? [
+    BLUE_INK_RGB[0],
+    BLUE_INK_RGB[1],
+    BLUE_INK_RGB[2],
+  ]
+  const paperRGB = parseHexRGB(cfg.paperColor ?? BLUE_PAPER_CSS) ?? [
+    BLUE_PAPER_RGB[0],
+    BLUE_PAPER_RGB[1],
+    BLUE_PAPER_RGB[2],
+  ]
+  // Blue glow ladder — rebuilt from the user's glow + paper picks (cached).
+  const ladder =
+    mode === 'blue'
+      ? blueLadderFor(cfg.blueInkColor ?? BLUE_INK_CSS, cfg.bluePaperColor ?? BLUE_PAPER_CSS)
+      : null
 
   const cols = Math.max(2, Math.ceil(W / cell))
   const rows = Math.max(2, Math.ceil(H / cell))
@@ -172,7 +313,7 @@ export function drawDitherFilter(
   // 2) The ordered-dither pass: one threshold decision per cell.
   const out = gridBuf(cols, rows)
   const d = out.data
-  const blue = mode === 'blue'
+  const blue = ladder !== null
   const mono = mode === 'mono'
   for (let j = 0; j < rows; j++) {
     const brow = (j % 8) * 8
@@ -190,7 +331,7 @@ export function drawDitherFilter(
         let pb: number
         if (lum > b) {
           if (blue) {
-            const c = BLUE_LUT[Math.min(63, (lum * 63) | 0)]
+            const c = ladder!.lut[Math.min(63, (lum * 63) | 0)]
             pr = c[0]
             pg = c[1]
             pb = c[2]
@@ -202,9 +343,10 @@ export function drawDitherFilter(
             pb = inkRGB[2]
           }
         } else if (blue) {
-          pr = BLUE_PAPER[0]
-          pg = BLUE_PAPER[1]
-          pb = BLUE_PAPER[2]
+          const p = ladder!.paper
+          pr = p[0]
+          pg = p[1]
+          pb = p[2]
         } else if (mono) {
           pr = pg = pb = 0
         } else {
