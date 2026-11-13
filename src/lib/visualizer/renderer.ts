@@ -628,7 +628,12 @@ function visualizerFill(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCon
 
 /* ------------------------------------ bars ---------------------------------- */
 
-function drawBars(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+/** The 7 strip/center styles below are also reused by the Image (PNG) style
+ *  as the inner visualizer (clipped to the artwork's alpha shape), so they
+ *  are exported. image-viz.ts imports them — a module cycle that is safe:
+ *  every cross-referenced binding is a hoisted function declaration used at
+ *  call time only, never at module-evaluation time. */
+export function drawBars(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
   const n = Math.max(1, Math.floor(cfg.barCount))
   const freq = frame.freq
@@ -683,7 +688,7 @@ function drawBars(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
 
 /* ------------------------------------ wave ---------------------------------- */
 
-function drawWave(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+export function drawWave(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
   const wave = frame.wave
   const count = wave.length
@@ -749,7 +754,7 @@ function drawWave(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S
 
 /* ----------------------------------- radial ---------------------------------- */
 
-function drawRadial(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+export function drawRadial(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
   // The Transparency dial's layer alpha — scales the inner ring pass below,
   // which otherwise pins its own absolute globalAlpha.
@@ -836,7 +841,7 @@ function drawRadial(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
 
 const PARTICLE_COUNT = 90
 
-function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+export function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
   const cx = W / 2
   const cy = H / 2
@@ -909,7 +914,7 @@ function drawParticles(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConf
  * phase derives from frame.styleTime (song time in exports, wall clock in
  * preview).
  */
-function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+export function drawBlob(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
   const cx = W / 2
   const cy = H / 2
@@ -1151,7 +1156,7 @@ function ribbonSmooth(src: Float32Array, dst: Float32Array): void {
   }
 }
 
-function drawRibbon(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+export function drawRibbon(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
   const t = frame.styleTime
   const g = cfg.gradient
@@ -1303,7 +1308,7 @@ function drawRibbon(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig,
  * reference screenshot). Dot colors come from the angle-based canvas
  * gradient; unlit cells are skipped entirely so the background shows through.
  */
-function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
+export function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig, S: number): void {
   const { ctx, width: W, height: H } = rc
   const cols = Math.round(clamp(cfg.barCount, 8, 256))
   const marginX = W * 0.045

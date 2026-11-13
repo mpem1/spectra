@@ -151,12 +151,19 @@ export interface VisualizerConfig {
   /** Image style — dim the artwork 0..1 so the inner visualizer reads
    *  (0 = the artwork shows at full brightness, 1 = silhouette only) */
   imgvizDim: number
-  /** Image style — which visualizer renders inside the silhouette */
-  imgvizInner: 'bars' | 'wave' | 'radial'
+  /** Image style — which visualizer renders inside the silhouette (the
+   *  real style renderers, clipped to the artwork's alpha shape) */
+  imgvizInner: 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon'
   /** Image style — inner visualizer amplitude gain 0.2..2 */
   imgvizInnerGain: number
-  /** Image style — glowing edges on/off (halo + rim light breathing with
-   *  the bass/energy drive) */
+  /** Image style — music motion on/off (swell, bob, sway and tilt driven
+   *  by the bass/energy drive). Off pins the artwork still. */
+  imgvizMotion: boolean
+  /** Image style — how far the motion travels 0..1 (0 barely moves,
+   *  1 full swell + drift) */
+  imgvizMotionAmount: number
+  /** Image style — glowing edges on/off (a contour band on the artwork's
+   *  alpha edge, tinted and bloomed per frame, breathing with the drive) */
   imgvizGlow: boolean
   /** Image style — glow color: the visualizer palette or its own */
   imgvizGlowMode: 'palette' | 'custom'
@@ -173,6 +180,8 @@ export interface VisualizerConfig {
   imgvizBoltColor: string
   /** Image style — bolt density 0..1 (how many bolts flicker per frame) */
   imgvizBoltDensity: number
+  /** Image style — bolt reach multiplier 0.3..2 (1 = factory length) */
+  imgvizBoltLength: number
 }
 
 /* --------------------------------- Background -------------------------------- */
@@ -1102,6 +1111,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     imgvizDim: 0.35,
     imgvizInner: 'bars',
     imgvizInnerGain: 1,
+    imgvizMotion: true,
+    imgvizMotionAmount: 0.5,
     imgvizGlow: true,
     imgvizGlowMode: 'palette',
     imgvizGlowColor: '#ffffff',
@@ -1110,6 +1121,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     imgvizBoltMode: 'palette',
     imgvizBoltColor: '#7df9ff',
     imgvizBoltDensity: 0.5,
+    imgvizBoltLength: 1,
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 48,

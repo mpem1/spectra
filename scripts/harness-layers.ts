@@ -2208,6 +2208,45 @@ console.log('S18 image-viz — the custom PNG style: inner spectrum, glowing edg
   renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizGlow: false, imgvizDim: 0.5 }))
   const halfAlpha = logOf(main).find((r) => r.kind === 'draw' && r.src === artwork)?.alpha
   check('artwork dim fades the picture (1 - dim)', fullAlpha === 1 && halfAlpha === 0.5, `full=${fullAlpha} half=${halfAlpha}`)
+
+  // 9) Motion: the React-to-music toggle gates the swell — loud swells the
+  //    box, silence and toggle-off both pin it at rest size.
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizGlow: false, imgvizMotion: true }))
+  const swellH = maskScratch()?.height ?? 0
+  renderWith(quiet, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizGlow: false, imgvizMotion: true }))
+  const swellQuietH = maskScratch()?.height ?? 0
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizGlow: false, imgvizMotion: false }))
+  const stillH = maskScratch()?.height ?? 0
+  check('motion swells the artwork with the drive', swellH > stillH, `swell=${swellH} still=${stillH}`)
+  check('motion off pins the artwork at rest (loud = quiet)', stillH === swellQuietH, `loud=${stillH} quiet=${swellQuietH}`)
+
+  // 10) The contour-band glow: wide bloom + inner spectrum + tight bloom +
+  //     crisp rim = 4 masked/canvas draws on the frame (artwork excluded).
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false }))
+  check(
+    'glow draws the contour band passes (wide bloom, tight bloom, crisp rim)',
+    canvasDraws(main).length === 4,
+    `layers=${canvasDraws(main).length}`,
+  )
+
+  // 11) Every inner mode paints into the mask scratch (the real style
+  //     renderers reused: particles, blob, grid, ribbon join bars/wave/radial).
+  for (const mode of ['particles', 'blob', 'grid', 'ribbon'] as const) {
+    renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizGlow: false, imgvizInner: mode }))
+    const sc = maskScratch()
+    check(
+      `inner ${mode} paints into the mask`,
+      !!sc && logOf(sc).some((r) => r.kind === 'fill' || r.kind === 'stroke'),
+      `${mode} left the scratch empty`,
+    )
+  }
+
+  // 12) Bolt reach: the length multiplier stretches the fractal channel —
+  //     same seed and count, different geometry (stroke points recorded).
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizGlow: false, imgvizBoltDensity: 1, imgvizBoltLength: 2 }))
+  const longBolts = streamFor(main)
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizGlow: false, imgvizBoltDensity: 1, imgvizBoltLength: 0.3 }))
+  check('bolt reach stretches the lightning (same storm, longer channels)', streamFor(main) !== longBolts, 'geometry unchanged')
 }
 
 /* ----------------- S16 the Mirror family across every style ----------------- */
