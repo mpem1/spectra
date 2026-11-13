@@ -44,30 +44,38 @@
  *                'sides' (default, the shipped look) shifts every copy
  *                of the whole frame by the SAME amount — one uniform
  *                depth, the classic paper-glasses window into the scene.
- *                'foreground' builds a per-strip depth field from the
- *                picture itself and shifts each strip on its own: bright,
- *                center-weighted rows count as NEAR and get CROSSED
- *                parallax (left-lens copy lands right of the right-lens
- *                copy) so they pop OUT toward the camera in front of the
- *                character, while darker rows fall behind the screen
- *                plane and recede. The subject detaches from its
- *                backdrop instead of the frame sliding sideways. A
- *                flipped kick turns the stage inside-out (near ↔ far);
- *                depth pop still flattens everything to the center line.
+ *                'foreground' reads a per-pixel depth field out of the
+ *                picture itself (bright, center-weighted pixels count as
+ *                NEAR, dark pixels as FAR, the outermost border is pinned
+ *                to the screen plane) and re-projects the frame once per
+ *                eye on a GPU warp, every pixel offset horizontally by
+ *                its OWN depth: near gets CROSSED parallax (the left-eye
+ *                copy lands right of the right-eye copy) and pops OUT
+ *                toward the camera in front of the character, far recedes
+ *                behind the screen plane. The subject detaches from its
+ *                backdrop in every direction instead of the frame sliding
+ *                sideways — no strips, no bands, no renormalization, so a
+ *                steady amp renders frame-stable (zero jitter). A flipped
+ *                kick turns the stage inside-out (near ↔ far); depth pop
+ *                still flattens everything to the center line. No WebGL →
+ *                uniform-spread fallback (warpDepthViews returns false).
  *
- * The un-overlapped strips at the frame edges keep tinted content (left
- * tints trail off the left edge, right tints off the right) instead of
- * black bars — the authentic anaglyph border fringe, now with the tracer
- * echos stepping outward through it. In 'foreground' mode each depth
- * strip exposes its own narrow fringe band, and the two lenses' gaps
- * mirror each other so their union always covers the full frame.
- * Deterministic: no Math.random / Date.now anywhere, same (frame, config)
- * → same pixels in preview, MP4 and PNG exports. Transparent backgrounds
- * skip the pass (alpha must stay clean).
+ * The un-overlapped edges keep tinted content (left tints trail off the
+ * left edge, right tints off the right) instead of black bars — the
+ * authentic anaglyph border fringe, with the tracer echos stepping
+ * outward through it. In 'foreground' mode the per-eye views come back
+ * complete and opaque (the GPU warp fills every pixel; the pinned depth
+ * border keeps the frame edges glued in place), so the fringes live only
+ * where depth actually changes — around the subject. Deterministic: no
+ * Math.random / Date.now anywhere, same (frame, config) → same pixels on
+ * a given machine in preview, MP4 and PNG exports (the GL warp runs the
+ * same path for both). Transparent backgrounds skip the pass (alpha must
+ * stay clean).
  */
 import type { AudioFrame, RenderContext, AnaglyphFilterConfig } from './types'
 import { getWork, resetWork } from './filter-utils'
 import { flipGate } from './halftone-filter'
+import { warpDepthViews } from './depth-warp'
 
 /** Tints per side — hard cap so a hand-edited project can't spawn 100 passes. */
 const MAX_TINTS = 4
@@ -100,11 +108,10 @@ function tintList(raw: string[] | undefined, side: 'left' | 'right'): string[] {
 
 /** Copy `snap` into `work` keeping only one tint (multiply by a color zeroes
  *  whatever the color doesn't pass — red passes red, cyan passes green+blue).
- *  Same trick as the CRT filter. `clipAlpha` (used by the foreground mode's
- *  per-strip displaced views, which carry transparent fringe bands where a
- *  strip shifted away) re-multiplies the result's alpha back down to the
- *  source's alpha via 'destination-in', so the gaps stay transparent and
- *  never paint raw lens color into the additive composite. */
+ *  Same trick as the CRT filter. The optional `clipAlpha` canvas re-multiplies
+ *  the result's alpha back down to its own via 'destination-in' (kept for
+ *  displaced views that carry transparent bands; the GPU depth views are
+ *  opaque and skip it). */
 function channelize(
   work: HTMLCanvasElement,
   snap: HTMLCanvasElement,
@@ -128,106 +135,114 @@ function channelize(
 
 /* ------------------------------ foreground mode ------------------------------ */
 
+/** Fixed depth anchors — they NEVER move between frames, so the stage can't
+ *  jitter: raw field at/below NEAR_LO reads fully far, at/above NEAR_LO +
+ *  NEAR_SPAN fully near, and DEPTH_SCREEN maps to zero parallax (the
+ *  border pin + the shader's screen plane must both use it). */
+const DEPTH_NEAR_LO = 0.14
+const DEPTH_NEAR_SPAN = 0.58
+const DEPTH_SCREEN = 0.375
+
+/** Separable box blur with clamped edges — the small-grid twin of the
+ *  contour filter's blurField. Blurs `src` in place, `dst` is scratch. */
+function blurGrid(src: Float32Array, dst: Float32Array, gw: number, gh: number, r: number): void {
+  const w = 2 * r + 1
+  for (let y = 0; y < gh; y++) {
+    const o = y * gw
+    for (let x = 0; x < gw; x++) {
+      let acc = 0
+      for (let k = -r; k <= r; k++) acc += src[o + Math.min(gw - 1, Math.max(0, x + k))]
+      dst[o + x] = acc / w
+    }
+  }
+  for (let y = 0; y < gh; y++) {
+    for (let x = 0; x < gw; x++) {
+      let acc = 0
+      for (let k = -r; k <= r; k++) acc += dst[Math.min(gh - 1, Math.max(0, y + k)) * gw + x]
+      src[y * gw + x] = acc / w
+    }
+  }
+}
+
+/** Reusable pixel buffer for the depth grid (keyed by grid size). */
+const depthPixels = new Map<string, ImageData>()
+
 /**
- * Build the per-strip depth field for the 'foreground' perspective from the
- * finished frame: the snap is downscaled into a thin grid (one cell column
- * strip), each cell's luminance is averaged across the strip with a
- * center-weighted falloff (a centered character dominates its rows — edges
- * barely vote), a small vertical-center profile lifts the middle bands
- * (where a face usually lives), the field is smoothed vertically, stretched
- * across its own full range (the nearest strip = full pop-out, the farthest
- * = full recession) and pushed through a smoothstep so subject vs
- * background contrast spreads apart.
+ * Build the per-pixel depth field for the 'foreground' perspective from the
+ * finished frame, into `depthCanvas` (R channel = depth 0..1, one cell per
+ * ~10px of width). Per cell: luminance × a soft center-weighted falloff (a
+ * centered character keeps its full brightness; the frame corners lean
+ * back), the field is box-blurred so depth ramps smoothly across
+ * silhouettes, remapped through the FIXED anchors above (dark reads far,
+ * bright reads near — no per-frame renormalization, which is what made the
+ * old strip field wobble frame to frame), and the outermost cell ring is
+ * pinned to the screen plane so the picture's border stays glued in place
+ * (zero parallax at the sample clamp — no edge smear).
  *
- * Deterministic: derived from frame pixels + config only — same frame, same
- * depth field, so preview and export agree.
+ * Deterministic: derived from frame pixels only — same frame, same field.
  */
-function buildStripDepth(
+function buildDepthField(
   snap: HTMLCanvasElement,
   W: number,
   H: number,
-  S: number,
   depthCanvas: HTMLCanvasElement,
-): { depth: Float32Array; strips: number; stripH: number } {
-  const stripH = Math.max(3, Math.round(4 * S))
-  const strips = Math.max(1, Math.ceil(H / stripH))
-  const gw = 32 // enough horizontal resolution for the center weighting
-  const dc = resetWork(depthCanvas.getContext('2d')!)
-  if (depthCanvas.width !== gw || depthCanvas.height !== strips) {
+): HTMLCanvasElement {
+  const gw = Math.min(144, Math.max(72, Math.round(W / 10)))
+  const gh = Math.max(24, Math.round((gw * H) / W))
+  if (depthCanvas.width !== gw || depthCanvas.height !== gh) {
     depthCanvas.width = gw
-    depthCanvas.height = strips
+    depthCanvas.height = gh
   }
+  const dc = depthCanvas.getContext('2d', { willReadFrequently: true })!
   dc.imageSmoothingEnabled = true
   dc.imageSmoothingQuality = 'medium'
-  dc.drawImage(snap, 0, 0, gw, strips)
-  const data = dc.getImageData(0, 0, gw, strips).data
+  dc.drawImage(snap, 0, 0, gw, gh)
+  const data = dc.getImageData(0, 0, gw, gh).data
 
-  // Center-weighted horizontal falloff — the middle columns carry the
-  // subject, the frame edges barely vote. Quadratic² profile with a small
-  // floor so a fully edge-hugging subject still shows up a little.
-  const weights = new Float32Array(gw)
-  let wsum = 0
-  for (let x = 0; x < gw; x++) {
-    const t = ((x + 0.5) / gw - 0.5) * 2 // −1 .. 1 across the frame
-    const w = (1 - t * t) * (1 - t * t) + 0.05
-    weights[x] = w
-    wsum += w
-  }
-
-  const depth = new Float32Array(strips)
-  for (let j = 0; j < strips; j++) {
-    let acc = 0
+  const field = new Float32Array(gw * gh)
+  const scratch = new Float32Array(gw * gh)
+  for (let y = 0; y < gh; y++) {
     for (let x = 0; x < gw; x++) {
-      const o = (j * gw + x) * 4
+      const o = (y * gw + x) * 4
       const lum = (0.2126 * data[o] + 0.7152 * data[o + 1] + 0.0722 * data[o + 2]) / 255
-      acc += weights[x] * lum
+      const cx = ((x + 0.5) / gw - 0.5) * 2
+      const cy = ((y + 0.5) / gh - 0.5) * 2
+      const center = Math.max(0, 1 - (cx * cx + cy * cy) / 1.3)
+      field[y * gw + x] = lum * (0.72 + 0.28 * center)
     }
-    const lumRow = acc / wsum
-    // Vertical-center profile — the middle bands step slightly forward
-    // (faces live there), the top and bottom edges lean back.
-    const vp = 1 - Math.abs((j + 0.5) / strips - 0.5) * 2
-    depth[j] = 0.82 * lumRow + 0.18 * vp
   }
+  blurGrid(field, scratch, gw, gh, 3)
+  blurGrid(field, scratch, gw, gh, 3)
 
-  // Vertical smooth — two 3-tap passes so adjacent strips never jump more
-  // than a pixel or two (kills strip-boundary tearing at the seams).
-  const tmp = new Float32Array(strips)
-  for (let pass = 0; pass < 2; pass++) {
-    for (let j = 0; j < strips; j++) {
-      const a = depth[Math.max(0, j - 1)]
-      const b = depth[j]
-      const c = depth[Math.min(strips - 1, j + 1)]
-      tmp[j] = 0.25 * a + 0.5 * b + 0.25 * c
+  for (let i = 0, n = gw * gh; i < n; i++) {
+    const t = Math.min(1, Math.max(0, (field[i] - DEPTH_NEAR_LO) / DEPTH_NEAR_SPAN))
+    field[i] = t * t * (3 - 2 * t)
+  }
+  // Pin the outermost ring to the screen plane, then one small blur blends
+  // the pin into the stage.
+  for (let y = 0; y < gh; y++) {
+    for (let x = 0; x < gw; x++) {
+      if (x === 0 || y === 0 || x === gw - 1 || y === gh - 1) field[y * gw + x] = DEPTH_SCREEN
     }
-    depth.set(tmp)
   }
+  blurGrid(field, scratch, gw, gh, 1)
 
-  // Stretch the smoothed field across the FULL depth range: the raw center-
-  // weighted luminance of a bright subject on a dark backdrop hovers well
-  // below 1 (the weights blend subject and background together), and without
-  // this the subject would sit near the screen plane while only the backdrop
-  // receded. Normalizing by the field's own min/max pins the nearest strip
-  // at full pop-out and the farthest at full recession. The smoothing above
-  // already suppresses one-off speckle outliers, so the anchors stay steady
-  // frame to frame (and stay deterministic — pure frame pixels).
-  let mn = Infinity
-  let mx = -Infinity
-  for (let j = 0; j < strips; j++) {
-    if (depth[j] < mn) mn = depth[j]
-    if (depth[j] > mx) mx = depth[j]
+  const pkey = `${gw}x${gh}`
+  let img = depthPixels.get(pkey)
+  if (!img) {
+    img = dc.createImageData(gw, gh)
+    depthPixels.set(pkey, img)
   }
-  const span = mx - mn
-  if (span > 0.04) {
-    for (let j = 0; j < strips; j++) depth[j] = (depth[j] - mn) / span
+  const px = img.data
+  for (let i = 0, n = gw * gh; i < n; i++) {
+    const v = Math.round(Math.min(1, Math.max(0, field[i])) * 255)
+    px[i * 4] = v
+    px[i * 4 + 1] = v
+    px[i * 4 + 2] = v
+    px[i * 4 + 3] = 255
   }
-
-  // Smoothstep — pushes the field apart so near reads NEARER and far reads
-  // FARTHER than the raw luminance would suggest.
-  for (let j = 0; j < strips; j++) {
-    const d = Math.min(1, Math.max(0, depth[j]))
-    depth[j] = d * d * (3 - 2 * d)
-  }
-  return { depth, strips, stripH }
+  dc.putImageData(img, 0, 0)
+  return depthCanvas
 }
 
 export function drawAnaglyphFilter(
@@ -331,18 +346,16 @@ export function drawAnaglyphFilter(
   // Nothing is averaged or diluted: added colors only extend the trail
   // outward, so the base layer keeps its full strength everywhere.
   //
-  // 'foreground': the frame is first re-projected into two per-eye views —
-  // the snap drawn strip by strip, each strip shifted by its OWN depth
-  // amount (near strips: the left-lens view lands RIGHT of the right-lens
-  // view = crossed parallax = in front of the screen plane; far strips:
-  // uncrossed = behind it). Each lens's tint list then channelizes its
-  // displaced view exactly like the sides mode — base tint on the displaced
-  // frame, extra tints one scalar step further out per lens — and the
-  // alpha clip in channelize keeps each strip's fringe band transparent so
-  // the other lens's copy fills it (their gaps mirror each other, so the
-  // union always covers the full frame). depthPop collapses every strip to
-  // the center line (clean recombine); a flipped kick inverts the field
-  // (near ↔ far, the stage turns inside-out).
+  // 'foreground': the snap is re-projected into two per-eye views on the
+  // GPU depth warp — every pixel offset horizontally by its own depth
+  // (near: crossed parallax, pops OUT in front of the screen plane; far:
+  // uncrossed, behind it; the pinned border stays glued). Each lens's
+  // tint list then channelizes its view exactly like the sides mode —
+  // base tint on the displaced frame, extra tints one scalar step further
+  // out per lens. The views come back complete, so there is no gap
+  // patching. depthPop collapses the whole stage to the center line
+  // (clean recombine); a flipped kick inverts the field (near ↔ far, the
+  // stage turns inside-out).
   const out = getWork('anaglyph:out', W, H)
   const oc = resetWork(out.getContext('2d')!)
   oc.fillStyle = '#000000'
@@ -350,39 +363,32 @@ export function drawAnaglyphFilter(
   oc.globalCompositeOperation = 'lighter'
   const tint = getWork('anaglyph:tint', W, H)
   if (fgMode) {
-    const { depth: stripDepth, strips, stripH } = buildStripDepth(
-      snap,
-      W,
-      H,
-      S,
-      getWork('anaglyph:depth', 32, 1),
-    )
-    // The two per-eye views of the depth stage. Each strip carries its own
-    // shift: depth 1 (near, the subject) = +dx crossed, depth 0 (far, the
-    // edges) = −dx recessed, the screen plane sits at depth 0.5. The +1px
-    // vertical overlap walks each strip one row into its neighbor so the
-    // per-strip seams never open, and adjacent shifts stay within a pixel
-    // or two thanks to the field's vertical smoothing.
+    // The depth stage: build the per-pixel depth field from the finished
+    // frame, then re-project it once per eye on the GPU warp (near pixels
+    // sample crossed — popped toward the camera; far pixels uncrossed —
+    // behind the screen plane; the pinned border stays glued). The two
+    // views come back opaque and complete, so the lenses channelize them
+    // exactly like the sides mode — no gap patching, no alpha clips.
+    const depthGrid = buildDepthField(snap, W, H, getWork('anaglyph:depth', 128, 72))
     const vl = getWork('anaglyph:vl', W, H)
-    const vlc = resetWork(vl.getContext('2d')!)
-    vlc.clearRect(0, 0, W, H)
     const vr = getWork('anaglyph:vr', W, H)
-    const vrc = resetWork(vr.getContext('2d')!)
-    vrc.clearRect(0, 0, W, H)
-    for (let j = 0; j < strips; j++) {
-      const y0 = j * stripH
-      const hh = Math.min(stripH + 1, H - y0)
-      if (hh <= 0) break
-      const s = Math.round((stripDepth[j] - 0.5) * 2 * dxPop * dir)
-      vlc.drawImage(snap, 0, y0, W, hh, s, y0, W, hh)
-      vrc.drawImage(snap, 0, y0, W, hh, -s, y0, W, hh)
+    const warped = warpDepthViews(snap, depthGrid, vl, vr, dxPop * dir)
+    if (!warped) {
+      // No WebGL on this device — fall back to the classic uniform spread
+      // so the glasses still read.
+      const vlc = resetWork(vl.getContext('2d')!)
+      vlc.clearRect(0, 0, W, H)
+      vlc.drawImage(snap, -Math.round(dxPop * dir), 0)
+      const vrc = resetWork(vr.getContext('2d')!)
+      vrc.clearRect(0, 0, W, H)
+      vrc.drawImage(snap, Math.round(dxPop * dir), 0)
     }
     leftTints.forEach((color, i) => {
-      channelize(tint, vl, color, W, H, vl)
+      channelize(tint, vl, color, W, H)
       oc.drawImage(tint, -i * dxPop * dir, 0)
     })
     rightTints.forEach((color, i) => {
-      channelize(tint, vr, color, W, H, vr)
+      channelize(tint, vr, color, W, H)
       oc.drawImage(tint, i * dxPop * dir, 0)
     })
   } else {

@@ -292,7 +292,7 @@ export function AnaglyphFilterSection() {
             </div>
             <p className="text-[10px] leading-snug text-zinc-600">
               {filter.depthMode === 'foreground'
-                ? 'The picture gains a real depth stage: bright, centered shapes (the character) cross and pop out toward the camera — in front of them — while the darker edges recede behind the screen plane. The subject detaches from its backdrop instead of the frame sliding sideways.'
+                ? 'The picture gains a real depth stage: bright, centered shapes (the character) pop out toward the camera — in front of the frame — while the darker edges settle behind the screen plane. The subject detaches from its backdrop in every direction instead of the frame sliding sideways.'
                 : 'The classic paper-glasses spread: every copy drifts sideways by the same amount, so the whole frame sits at one uniform depth — like looking through a window into the scene.'}
             </p>
           </div>
