@@ -959,14 +959,17 @@ export interface AnaglyphFilterConfig {
   /** Which perspective the depth separation reads as. 'sides' — every
    *  copy of the whole picture drifts uniformly left/right at ONE depth
    *  (the classic paper-glasses window into the scene, the shipped look).
-   *  'foreground' — the picture gains a real depth stage: a per-strip
-   *  depth field (bright, center-weighted shapes count as NEAR) drives
-   *  crossed parallax, so the subject pops OUT toward the camera while
-   *  the darker edges recede behind the screen plane — the character
-   *  stands in front of their backdrop instead of the frame sliding
-   *  sideways. Beat pop, Flip on kick and Depth pop all keep working in
-   *  both modes (a flipped kick turns the depth stage inside-out). Old
-   *  saves without this field load as 'sides'. */
+   *  'foreground' — Pop-out 3D: not a horizontal separation at all — a
+   *  saliency mask read off the picture (bright OR high-contrast,
+   *  center-weighted shapes) lifts the subject's light off the frame as
+   *  stacked additive trace layers that bloom outward from the screen
+   *  center, each scaled a step further toward the camera and a step
+   *  fainter — a smeared light-trail floating in front of the picture
+   *  while the picture itself stays sharp and unmoved. The layers cycle
+   *  through both lenses' merged tint palette. Beat pop, Flip on kick and
+   *  Depth pop all keep working in both modes (a flipped kick turns the
+   *  trace stage inside-out; depth pop flattens the traces). Old saves
+   *  without this field load as 'sides'. */
   depthMode: 'sides' | 'foreground'
   /** Blend 0..1 — full anaglyph (1) vs mixed back toward the original (0) */
   strength: number

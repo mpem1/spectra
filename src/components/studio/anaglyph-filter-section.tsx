@@ -154,12 +154,12 @@ export function AnaglyphFilterSection() {
       <p className="text-[11px] leading-snug text-zinc-600">
         The old-school paper 3D-glasses look — the whole picture is re-projected
         twice, once through each lens&apos;s colors. Depth perspective chooses
-        where the 3D reads: the classic left/right spread, or a real depth
-        stage where the character pops out toward the camera. Tint 1 is the
-        base layer; extra tints stack outward like a tracer trail instead of
-        blending in. Flip on kick swaps the look on every hit; Depth pop
-        flattens the 3D to zero on every hit and lets it bloom back out.
-        Baked into every export.
+        where the 3D reads: the classic left/right spread, or Pop-out 3D,
+        where the character&apos;s glow smears forward as light traces floating
+        in front of the frame. Tint 1 is the base layer; extra tints stack
+        outward like a tracer trail instead of blending in. Flip on kick
+        swaps the look on every hit; Depth pop flattens the 3D to zero on
+        every hit and lets it bloom back out. Baked into every export.
       </p>
 
       {filter.enabled ? (
@@ -285,14 +285,14 @@ export function AnaglyphFilterSection() {
               />
               <OptionChip
                 label="Pop-out 3D"
-                sub="exaggerated foreground"
+                sub="light-trace foreground"
                 active={filter.depthMode === 'foreground'}
                 onClick={() => patchAnaglyphFilter({ depthMode: 'foreground' })}
               />
             </div>
             <p className="text-[10px] leading-snug text-zinc-600">
               {filter.depthMode === 'foreground'
-                ? 'The picture gains a real depth stage, and the depth budget lives in the foreground: bright or high-contrast shapes (the character) cross hard toward the camera — several times the classic offset, well in front of the frame — while the darker backdrop settles gently behind the screen plane. Crank the Depth dial to push the subject further out; the stage is frame-stable, no wobble.'
+                ? 'No horizontal split at all: the subject\'s light peels off the picture as stacked, glowing trace layers that bloom outward from the center — each one a step bigger and a step fainter, like a light trail floating in front of the frame. The picture itself stays sharp and unmoved; the traces tint through the lens colors (red, cyan, red…) and die out before the frame edge.'
                 : 'The classic paper-glasses spread: every copy drifts sideways by the same amount, so the whole frame sits at one uniform depth — like looking through a window into the scene.'}
             </p>
           </div>
@@ -329,18 +329,20 @@ export function AnaglyphFilterSection() {
           <p className="text-[10px] leading-snug text-zinc-600">
             Depth sets how far apart the two base layers sit (100% is the
             classic paper-glasses amount, push it to 250% for a wide stereo
-            pop) — in Pop-out 3D the same dial drives a much bigger stage:
-            100% already crosses the subject at about three times the classic
-            offset, and 250% is an extreme foreground pop while the background
-            leans back. Beat pop pushes them wider on the song&apos;s low end
+            pop) — in Pop-out 3D the same dial drives the light traces:
+            100% lifts a clear glow off the subject, 250% smears it halfway
+            across the frame. Beat pop pushes them wider on the song&apos;s
+            low end
             when React to beat is on, Depth pop snaps them together to 0% on
             each detected kick before blooming back out, and Mix blends the
             glasses look back toward the untouched picture. Tint 1 on each
             lens is the base layer that builds the picture — it never gets
             diluted. Every added tint sits one separation-step further out,
             so the trail extends outward step by step (tint 2 at double,
-            tint 3 at triple the offset). Skipped on transparent backgrounds
-            so alpha recordings stay clean.
+            tint 3 at triple the offset). In Pop-out 3D both lenses&apos;
+            colors merge into one trace palette and the light layers cycle
+            through it as they stack outward. Skipped on transparent
+            backgrounds so alpha recordings stay clean.
           </p>
         </>
       ) : null}
