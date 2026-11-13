@@ -2481,3 +2481,49 @@ between 3D glasses and Dither).
   render (Static 50% / Static spread 60%). 0 page errors, lint 0 errors.
 - SHIP: commit 7703ea9, Pages deployment 7763962423 success, live bundle
   fingerprints confirmed (staticSpread + quadraticCurveTo in c1.js).
+
+## 2026-11-13 — Contour stillness + wave spread (this commit)
+
+- ASK: "i didnt mean literal static particles i meant partially stationary
+  around facial features and wider variance of waves from edges beyond the
+  visible image so maybe switch the static slider to that specific?" — the
+  static dials were the wrong concept: no particles wanted; the LINES
+  should hold still around the subject while the waves swing wider through
+  the negative space beyond it.
+- REWORK: removed the speckle layer entirely (and its hash01 helper).
+  Static/Static spread → Stillness/Wave spread (config stillness/waveSpread,
+  defaults .6/.6 — old saves merge from defaults). One blurred focal field
+  (silhouette edges + bright cores) drives both voices per cell:
+  motionK = (1 − 0.85·stillness·w) · (1 + 1.8·waveSpread·(1−w)) applied to
+  the drift/ripple displacement (the image bend stays — the contour shape
+  holds). field: energy = |gx|·3.4 + |gy|·1.6 + bl·0.55 + bl²·0.45, wide
+  blur (r = 2+8·spread, 2 passes), then PEAK-NORMALIZED (÷ max, ×1.15) —
+  the first attempt without normalization measured meanW 0.087 (flat) on a
+  dark portrait and the dial did nothing; peak normalization gives any
+  picture a full-contrast field.
+- PRINT REBUILD (found via in-browser replication + offline run-length
+  stats): the weave now layers a CONTINUOUS base fabric — every row one
+  unbroken smooth curve in the faint ladder shade — under the bright band
+  runs (BANDS 4→8, alphas feathered .42→1). Measured: 41% of bright runs
+  were ≤2 cells (shredded into invisible stubs = black tears); over the
+  fabric they read as dim threads instead. Bands read a banding-only
+  re-blurred luminance copy (r3/r2) so runs stay long; the bend keeps the
+  sharper field. Bend gradient: ±3 stencil + soft knee
+  gx·k/(k+|gx|), k=.22 (hard edges used to flip the gradient sign between
+  neighbor cells and tear the line), bendScale 52→68 compensates.
+- NOTE (env): the repo worktree was found checked out 12 commits behind
+  origin between turns (origin/main was correct); fast-forwarded to
+  c9b47e3 before this work. The old /tmp test image had been wiped —
+  regenerated a profile-portrait test image; also confirmed the earlier
+  A/B round ran against bare demo bars (bars hidden for the visual pass by
+  zeroing the gradient stops).
+- E2E (agent-browser, 675×380): freeze test — drift/reactivity/stillness/
+  spread all 0 → two-frame diff 0.06 (the displacement fully obeys config);
+  stillness 0→100 at 150ms sub-pixel sampling: face motion −25% (130.5→98.3);
+  wave spread 0→100 at 900ms: void motion +14% (29.6→33.8); screenshots —
+  face threads taut and calm over the features while the field sweeps in
+  wide waves beyond the silhouette (the exact ask). Face pops bright over
+  the fabric on a dark portrait via the p90 band normalization. 0 page
+  errors, lint 0 errors, no debug code left.
+- SHIP: commit a5c8a20, Pages deployment 7764941561 success, live bundle
+  fingerprints confirmed (stillness/waveSpread/motionK in c3.js).
