@@ -777,6 +777,40 @@ export interface DitherFilterConfig {
 }
 
 /**
+ * Phosphor monitor filter — the lo-fi sci-fi video-tube look: the whole
+ * picture is repainted as columns of short horizontal dashes (one sample per
+ * dash cell, tone → shade of the picked phosphor color via the shared glow
+ * ladder from shade-ladder.ts), over a dark tube built from the frame
+ * itself, with an additive bloom on the bright dashes. Skipped on
+ * transparent backgrounds.
+ */
+export interface PhosphorFilterConfig {
+  enabled: boolean
+  /** The phosphor glow color as '#rrggbb' — the dash shade ladder rebuilds
+   *  from this hue (same ladder the dither Blue glow uses) */
+  inkColor: string
+  /** The dark tube behind the dashes as '#rrggbb' */
+  paperColor: string
+  /** Dash cell size in px on the 720p reference canvas (3..12) */
+  cellSize: number
+  /** Spacing between dashes 0..0.6 — 0 melts the columns solid, higher
+   *  chews them into broken ticks */
+  gap: number
+  /** Picture contrast 0..1 — 0.5 is the untouched picture, 1 doubles the
+   *  punch (same semantics as the dither filter) */
+  contrast: number
+  /** Strength 0..1 — how much of the frame the monitor print takes over
+   *  (below 1 the untouched frame fades back through) */
+  strength: number
+  /** Glow 0..1 — the additive bloom over the bright dashes */
+  glow: number
+  /** React to beat — the bloom flares on the song's low end */
+  beatReactive: boolean
+  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
+}
+
+/**
  * Glitch filter — digital corruption: short bursts of chunky pixel blocks
  * (some pixelated in place, some copied from the wrong spot, some tinted
  * with raw palette colors), picture slices shoved sideways and raw saturated
@@ -928,6 +962,8 @@ export interface StudioConfig {
   anaglyphFilter: AnaglyphFilterConfig
   /** Full-frame retro-dither post-pass (Bayer dot patterns + glow bloom) */
   ditherFilter: DitherFilterConfig
+  /** Full-frame phosphor-monitor post-pass (vertical dash columns + bloom) */
+  phosphorFilter: PhosphorFilterConfig
   /** How the moving layers interact with the full-frame filter chain */
   layers: LayersConfig
   /** Imported font library — shared by the lyrics and the title card */
@@ -1436,6 +1472,18 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     glow: 0.55,
     inkColor: '#49b6ff',
     paperColor: '#030a24',
+    beatReactive: false,
+    beatStrength: 0.5,
+  },
+  phosphorFilter: {
+    enabled: false,
+    inkColor: '#3dff7c',
+    paperColor: '#03160c',
+    cellSize: 5,
+    gap: 0.4,
+    contrast: 0.5,
+    strength: 1,
+    glow: 0.55,
     beatReactive: false,
     beatStrength: 0.5,
   },

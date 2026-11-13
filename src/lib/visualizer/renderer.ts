@@ -32,6 +32,7 @@ import { drawHalftoneFilter, flipGate } from './halftone-filter'
 import { drawGlitchFilter } from './glitch-filter'
 import { drawAnaglyphFilter } from './anaglyph-filter'
 import { drawDitherFilter } from './dither-filter'
+import { drawPhosphorFilter } from './phosphor-filter'
 import { getWork, resetWork } from './filter-utils'
 
 /* --------------------------------- Utilities -------------------------------- */
@@ -197,6 +198,10 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   drawHalftoneFilter(rc, config.halftoneFilter, frame, transparent)
   drawGlitchFilter(rc, config.glitchFilter, frame, transparent)
   drawAnaglyphFilter(rc, config.anaglyphFilter, frame, transparent)
+  // Lo-fi phosphor monitor — repoints the finished picture into columns of
+  // glowing dashes on a dark tube. Before the dither, which stays the
+  // outermost poster layer.
+  drawPhosphorFilter(rc, config.phosphorFilter, frame, transparent)
   // Retro dither last — it re-quantizes the finished picture (glitches
   // included) into chunky Bayer dot patterns, so it always reads as the
   // outermost poster layer.

@@ -35,6 +35,12 @@
  */
 import type { AudioFrame, DitherFilterConfig, RenderContext } from './types'
 import { beatBoost, clamp01, getWork, resetWork } from './filter-utils'
+import {
+  ANCHOR_INK_RGB,
+  ANCHOR_PAPER_RGB,
+  buildShadeLadder,
+  parseHexRGB,
+} from './shade-ladder'
 
 /* ------------------------------ Bayer matrix ------------------------------ */
 
@@ -59,183 +65,15 @@ const BAYER8 = (() => {
 
 /* ------------------------------- blue ladder ------------------------------- */
 
-/** The default Blue glow ink — every custom glow color rotates the shade
- *  ladder away from this anchor hue, so this exact pick reproduces the
- *  original all-blue ramp byte-for-byte. */
+/** The Blue glow palette's default ink — the shared shade ladder (see
+ *  shade-ladder.ts) is anchored at exactly this blue, so this pick
+ *  reproduces the original all-blue ramp byte-for-byte. */
 const BLUE_INK_CSS = '#49b6ff'
-const BLUE_INK_RGB: readonly [number, number, number] = [73, 182, 255]
 
-/** The default paper behind the dots (near-black navy). */
+/** The Blue glow palette's default paper behind the dots (near-black navy). */
 const BLUE_PAPER_CSS = '#030a24'
-const BLUE_PAPER_RGB: readonly [number, number, number] = [3, 10, 36]
-
-/** Bright-cell shade ladder stops (luminance → navy → royal → electric →
- *  sky → ice), the canonical "all shades of blue" ramp. With a custom glow
- *  color the whole ramp is hue-rotated to it (see blueLadderFor). */
-const BLUE_STOPS: Array<readonly [number, number, number, number]> = [
-  [0.0, 10, 30, 82],
-  [0.28, 20, 71, 200],
-  [0.52, 47, 125, 255],
-  [0.74, 108, 196, 255],
-  [1.0, 217, 246, 255],
-]
-
-const BLUE_LUT: Array<readonly [number, number, number]> = (() => {
-  const lut: Array<readonly [number, number, number]> = new Array(64)
-  for (let k = 0; k < 64; k++) {
-    const t = k / 63
-    let a = BLUE_STOPS[0]
-    let b = BLUE_STOPS[BLUE_STOPS.length - 1]
-    for (let s = 0; s < BLUE_STOPS.length - 1; s++) {
-      if (t >= BLUE_STOPS[s][0] && t <= BLUE_STOPS[s + 1][0]) {
-        a = BLUE_STOPS[s]
-        b = BLUE_STOPS[s + 1]
-        break
-      }
-    }
-    const f = (t - a[0]) / Math.max(1e-6, b[0] - a[0])
-    lut[k] = [
-      Math.round(a[1] + (b[1] - a[1]) * f),
-      Math.round(a[2] + (b[2] - a[2]) * f),
-      Math.round(a[3] + (b[3] - a[3]) * f),
-    ]
-  }
-  return lut
-})()
-
-/* --------------------------- recolorable ladder ---------------------------- */
-
-/** RGB → HSL (h in degrees 0..360, s/l in 0..1). */
-function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
-  const rr = r / 255
-  const gg = g / 255
-  const bb = b / 255
-  const max = Math.max(rr, gg, bb)
-  const min = Math.min(rr, gg, bb)
-  const l = (max + min) / 2
-  const d = max - min
-  let h = 0
-  let s = 0
-  if (d > 1e-6) {
-    s = Math.min(1, d / (1 - Math.abs(2 * l - 1)))
-    if (max === rr) h = 60 * (((gg - bb) / d) % 6)
-    else if (max === gg) h = 60 * ((bb - rr) / d + 2)
-    else h = 60 * ((rr - gg) / d + 4)
-    if (h < 0) h += 360
-  }
-  return [h, s, l]
-}
-
-/** HSL → RGB. */
-function hslToRgb(h: number, s: number, l: number): [number, number, number] {
-  h = ((h % 360) + 360) % 360
-  const c = (1 - Math.abs(2 * l - 1)) * s
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
-  const m = l - c / 2
-  let r = 0
-  let g = 0
-  let b = 0
-  if (h < 60) {
-    r = c
-    g = x
-  } else if (h < 120) {
-    r = x
-    g = c
-  } else if (h < 180) {
-    g = c
-    b = x
-  } else if (h < 240) {
-    g = x
-    b = c
-  } else if (h < 300) {
-    r = x
-    b = c
-  } else {
-    r = c
-    b = x
-  }
-  return [
-    Math.round((r + m) * 255),
-    Math.round((g + m) * 255),
-    Math.round((b + m) * 255),
-  ]
-}
-
-/** The ink hue/sat the canonical ramp is anchored to (from the default
- *  '#49b6ff' pick, so picking it back gives a pure identity transform). */
-const ANCHOR_HSL = rgbToHsl(BLUE_INK_RGB[0], BLUE_INK_RGB[1], BLUE_INK_RGB[2])
-
-interface BlueLadder {
-  /** Bright-cell shade for each luminance step 0..63. */
-  lut: Array<readonly [number, number, number]>
-  /** The paper behind the unlit dots. */
-  paper: readonly [number, number, number]
-}
-
-/** Rebuilt ladders keyed by "ink|paper" — colors change rarely, frames
- *  render 60×/s, so the ramp is only recomputed when the pick changes. */
-const ladderCache = new Map<string, BlueLadder>()
-
-/** One ramp color hue-rotated by `dh` degrees with its saturation scaled. */
-function rampColor(
-  c: readonly [number, number, number],
-  dh: number,
-  sat: number,
-): [number, number, number] {
-  const [h, s, l] = rgbToHsl(c[0], c[1], c[2])
-  return hslToRgb(h + dh, Math.min(1, s * sat), l)
-}
-
-/** The Blue glow ladder for the user's colors: the canonical navy → royal →
- *  electric → sky → ice ramp hue-rotated from the default blue to the picked
- *  glow color, with its saturation scaled to the pick's (clamped, so deep
- *  or muted inks give deeper/muted ramps; near-neutral picks drop the whole
- *  ramp to glowing grays), on the picked paper. Deterministic, and the
- *  default pick rebuilds the canonical ramp exactly. */
-function blueLadderFor(inkCss: string, paperCss: string): BlueLadder {
-  const key = `${inkCss}|${paperCss}`
-  const hit = ladderCache.get(key)
-  if (hit) return hit
-  const inkRGB = parseHexRGB(inkCss) ?? [
-    BLUE_INK_RGB[0],
-    BLUE_INK_RGB[1],
-    BLUE_INK_RGB[2],
-  ]
-  const paperRGB = parseHexRGB(paperCss) ?? [
-    BLUE_PAPER_RGB[0],
-    BLUE_PAPER_RGB[1],
-    BLUE_PAPER_RGB[2],
-  ]
-  const [inkH, inkS] = rgbToHsl(inkRGB[0], inkRGB[1], inkRGB[2])
-  // Achromatic pick (white/gray/black): no hue to rotate to — desaturate the
-  // whole ramp into neutral grays instead of leaving it blue.
-  const achromatic = inkS < 0.05
-  const dh = achromatic ? 0 : inkH - ANCHOR_HSL[0]
-  const sat = achromatic ? 0 : Math.min(1.25, Math.max(0, inkS / ANCHOR_HSL[1]))
-  const identity = Math.abs(dh) < 0.01 && Math.abs(sat - 1) < 0.005
-  const ladder: BlueLadder = {
-    lut: identity ? BLUE_LUT.slice() : BLUE_LUT.map((c) => rampColor(c, dh, sat)),
-    paper: paperRGB,
-  }
-  if (ladderCache.size > 12) ladderCache.clear()
-  ladderCache.set(key, ladder)
-  return ladder
-}
 
 /* --------------------------------- helpers --------------------------------- */
-
-/** Parses #rgb / #rgba / #rrggbb / #rrggbbaa into RGB bytes (null if invalid). */
-function parseHexRGB(css: string): [number, number, number] | null {
-  let h = css.trim().replace(/^#/, '')
-  if (h.length === 3 || h.length === 4) h = h.split('').map((c) => c + c).join('')
-  if (h.length !== 6 && h.length !== 8) return null
-  if (!/^[0-9a-fA-F]+$/.test(h)) return null
-  return [
-    parseInt(h.slice(0, 2), 16),
-    parseInt(h.slice(2, 4), 16),
-    parseInt(h.slice(4, 6), 16),
-  ]
-}
 
 /** Grid-resolution ImageData cache — one write buffer per grid size. */
 const gridBuffers = new Map<string, ImageData>()
@@ -280,19 +118,20 @@ export function drawDitherFilter(
   const cellSize = Math.round(Math.min(14, Math.max(2, cfg.cellSize ?? 4)) * S)
   const cell = Math.max(2, cellSize)
   const inkRGB = parseHexRGB(cfg.inkColor ?? BLUE_INK_CSS) ?? [
-    BLUE_INK_RGB[0],
-    BLUE_INK_RGB[1],
-    BLUE_INK_RGB[2],
+    ANCHOR_INK_RGB[0],
+    ANCHOR_INK_RGB[1],
+    ANCHOR_INK_RGB[2],
   ]
   const paperRGB = parseHexRGB(cfg.paperColor ?? BLUE_PAPER_CSS) ?? [
-    BLUE_PAPER_RGB[0],
-    BLUE_PAPER_RGB[1],
-    BLUE_PAPER_RGB[2],
+    ANCHOR_PAPER_RGB[0],
+    ANCHOR_PAPER_RGB[1],
+    ANCHOR_PAPER_RGB[2],
   ]
-  // Blue glow ladder — rebuilt from the user's glow + paper picks (cached).
+  // Blue glow ladder — rebuilt from the user's glow + paper picks (cached,
+  // shared with the phosphor monitor filter).
   const ladder =
     mode === 'blue'
-      ? blueLadderFor(cfg.blueInkColor ?? BLUE_INK_CSS, cfg.bluePaperColor ?? BLUE_PAPER_CSS)
+      ? buildShadeLadder(cfg.blueInkColor ?? BLUE_INK_CSS, cfg.bluePaperColor ?? BLUE_PAPER_CSS)
       : null
 
   const cols = Math.max(2, Math.ceil(W / cell))
