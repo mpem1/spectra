@@ -2444,3 +2444,40 @@ between 3D glasses and Dither).
   in the player): spectrum visibly ripples through the weave. Warp 100%
   dial round-trips into dramatic bends. 60 fps with audio playing, 0 page
   errors, lint 0 errors.
+
+## 2026-11-13 — Contour silk + static (this commit)
+
+- ASK: "your lines seem to be too jagged not as smooth as the reference.
+  and some areas have more of a static affect in the focal points and
+  spread out in the negative space" (Netflix C5B1-AvO3Jf img_index=1).
+- FIX (smooth): jaggedness had four sources, all killed — (1) the luminance
+  field is now box-blurred (r2 horizontal / r1 vertical) BEFORE any voice
+  reads it, so silhouette noise never reaches the lines; (2) the gradient
+  stencil widened to ±2 cells on the blurred field; (3) the finished
+  displacement melts through one more blur pass; (4) the print strokes
+  glide through their sample midpoints as quadratic curves (C1-soft) —
+  plus the sampling grid densified (W/4.5, cap 280 cols) so the curves
+  have enough samples to be silk. bendScale 46→52 compensates the blur
+  softening the gradient.
+- NEW (static): broken-signal grain — per-cell focal energy = gradient
+  magnitude (edges) + bright cores, blurred wide (two box passes,
+  radius 3+13*spread cells) so it LEAKS out of the focal points into the
+  negative space; density = sharp*0.45 + wide*(0.55+1.35*spread), speckles
+  hashed per cell/index/flicker-step (deterministic, exports match
+  preview), re-scatter ~14 Hz like TV noise, ride the same displacement as
+  the lines, mixed dots + short broken dashes. Config ContourFilterConfig
+  +static/+staticSpread (defaults .5/.6 — old saves merge from defaults,
+  share links carry it free); Static + Static spread dials between Glow
+  and Strength on the cyan card.
+- E2E (agent-browser, 1478x831 canvas, face test image): curves visibly
+  silk around the silhouette; static A/B in-session — dark regions at
+  static 0: mean 1.0/0.4% lit, at 100% the rim halo measures 33.7 mean /
+  62% lit decaying to 9.4 at ~150px, far corners stay clean (concentric
+  falloff focal → negative space); frame sum +4.4% at 100% vs 0% (clean
+  toggle, returns to baseline); flicker verified — dark-region checksums
+  change per 150ms sample. fps 10 headless-software vs 8.7 on the previous
+  commit (no regression; static loop not the cost — 10 fps with static 0
+  too; previous session measured 60 fps at the smaller preview). UI dials
+  render (Static 50% / Static spread 60%). 0 page errors, lint 0 errors.
+- SHIP: commit 7703ea9, Pages deployment 7763962423 success, live bundle
+  fingerprints confirmed (staticSpread + quadraticCurveTo in c1.js).
