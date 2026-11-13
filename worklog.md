@@ -2206,3 +2206,30 @@ Work Log:
 Result: harness 109 + flip 18 + pop 13 + kick 20 + bg-flip 19 + transcribe 17 all
 green, tsc 33 = 33 baseline, lint 0 errors (27 vendored warnings), committed and
 pushed for Pages deploy.
+
+## 2026-11-13 — Glow intensity: the edge glow finally radiates (42b6372 + 806c39e)
+User (IM): "you got the glow section correct on that but it doesnt have much of a glow
+to it" — placement approved (f8fdc95), intensity rejected. Root cause: a single canvas
+shadow cast spreads a fixed amount of ink over a huge area — peak alpha near the band
+~0.3-0.45, and the per-pass draw alphas multiplied that down further (wide bloom ran at
+gs*breathe*0.55 ≈ 0.12 at rest). Image style fix (42b6372):
+- blurredCopy(src, blurPx, casts): stacked source-over shadow casts accumulate ink —
+  soft bloom ×2, wide bloom ×3; near-band alpha climbs toward opaque, falloff shape kept.
+- Per-pass alphas: wide 0.55 → 0.85, tight bloom gs*breathe (was ×0.8), rim band
+  0.7+0.65*drive (was 0.55+0.6*drive) with explicit Math.min(1, …) — globalAlpha >1
+  would be silently IGNORED by canvas (state unchanged), the old 1.15 peak relied on
+  that accident.
+- imgvizGlowStrength default 0.6 → 0.75 (types.ts + the two ?? fallbacks); old saves
+  keep their slider value but light up anyway from the denser masks + hotter passes.
+Pulse image parity (806c39e): glowEntryOf mask bakes 2 tight rim casts (0.06×size) +
+3 wide casts; per frame the tinted halo draws twice — source-over haze at s*0.45 (reads
+over bright art/backgrounds) then 'lighter' additive at s (the actual radiance); s =
+glowStrength × (0.8 + 0.25*drive) so the aura breathes with the music. New glowStrength
+field (default 0.7) + Glow strength slider in the panel; halo now builds whenever Glow
+is on — stroke dilation only when Outline is actually on (no-gap hug on the bare edge);
+SVGs without intrinsic size fall back to the classic soft shadow (aura && !halo).
+E2E (agent-browser): Image style + star SVG — rest-state neon rim + wide halo clearly
+visible with NO audio (drive 0), "Outside only" placement hugs strictly from outside
+with the interior untinted, pulse image star renders its own additive halo on top; no
+page errors, lint 0 errors (27 vendored ffmpeg warnings). Pages deploy green (badge
+passing) and live bundle fingerprinted: chunks now carry the glowStrength code path.
