@@ -220,8 +220,11 @@ function stampDisk(
 
 /** Shadow-trick blur: draw the mask with an opaque shadow → the canvas ends
  *  up holding the crisp mask plus its blurred halo (works in every browser,
- *  no ctx.filter needed). */
-function blurredCopy(src: HTMLCanvasElement, blurPx: number): { canvas: HTMLCanvasElement; pad: number } {
+ *  no ctx.filter needed). `casts` stacks the shadow that many times — each
+ *  source-over pass accumulates ink, so the region near the band climbs
+ *  toward opaque where a single cast spreads the same ink so thin the glow
+ *  reads as a faint tint. */
+function blurredCopy(src: HTMLCanvasElement, blurPx: number, casts = 1): { canvas: HTMLCanvasElement; pad: number } {
   const pad = Math.max(1, Math.ceil(blurPx * 0.75))
   const c = document.createElement('canvas')
   c.width = src.width + 2 * pad
@@ -230,7 +233,7 @@ function blurredCopy(src: HTMLCanvasElement, blurPx: number): { canvas: HTMLCanv
   if (g) {
     g.shadowColor = 'rgba(0,0,0,1)'
     g.shadowBlur = blurPx
-    g.drawImage(src, pad, pad)
+    for (let i = 0; i < Math.max(1, casts); i++) g.drawImage(src, pad, pad)
     g.shadowBlur = 0
   }
   return { canvas: c, pad }
@@ -298,8 +301,10 @@ function assetsOf(img: HTMLImageElement): EdgeAssets | null {
   // Two blooms baked ONCE from the band: a tight one (crisp core + small
   // blur) and a wide one — both inherit the band's contour, so even the
   // far glow follows the artwork's shape instead of reading as a sphere.
-  const soft = blurredCopy(rimC, band * 2.2)
-  const wide = blurredCopy(rimC, 0.085 * Math.max(w, h))
+  // Both bake dense: the stacked casts push the near-edge alpha up so the
+  // blooms actually radiate instead of washing out to a whisper.
+  const soft = blurredCopy(rimC, band * 2.2, 2)
+  const wide = blurredCopy(rimC, 0.085 * Math.max(w, h), 3)
 
   // The outside-only variants: each mask's interior half punched out with
   // the silhouette. The offsets account for every canvas's padding — the
@@ -736,12 +741,12 @@ export function drawImageViz(rc: RenderContext, frame: AudioFrame, cfg: Visualiz
   ctx.translate(-cx, -cy)
 
   // Glow color: the palette at the artwork's height, or its own.
-  const glowOn = !!cfg.imgvizGlow && (cfg.imgvizGlowStrength ?? 0.6) > 0.01
+  const glowOn = !!cfg.imgvizGlow && (cfg.imgvizGlowStrength ?? 0.75) > 0.01
   const aura =
     (cfg.imgvizGlowMode ?? 'palette') === 'custom'
       ? cfg.imgvizGlowColor || '#ffffff'
       : sampleGradient(grad.stops, cy / (H || 1), frame.styleTime, grad.cycleColors, grad.cycleSpeed)
-  const gs = clamp01(cfg.imgvizGlowStrength ?? 0.6)
+  const gs = clamp01(cfg.imgvizGlowStrength ?? 0.75)
   const breathe = 0.35 + 0.65 * drive
 
   // Placement: 'over' paints the classic halo (the band straddles the
@@ -756,7 +761,7 @@ export function drawImageViz(rc: RenderContext, frame: AudioFrame, cfg: Visualiz
   // 1) The wide bloom — blurred from the contour BAND, so even this far
   //    glow follows the artwork's actual edge (not a round cloud behind it).
   if (glowOn) {
-    drawGlowLayer(ctx, glowMasks.wide, img, assets.m, w, h, cx, cy, gs * breathe * 0.55, aura, 'lighter')
+    drawGlowLayer(ctx, glowMasks.wide, img, assets.m, w, h, cx, cy, gs * breathe * 0.85, aura, 'lighter')
   }
 
   // 2) The artwork itself — dimmed on the Artwork dial so the inner
@@ -779,8 +784,8 @@ export function drawImageViz(rc: RenderContext, frame: AudioFrame, cfg: Visualiz
   // 4) The edge glow itself — additive tight bloom + the crisp rim band ON
   //    the artwork's edge, pulsing with the drive.
   if (glowOn) {
-    drawGlowLayer(ctx, glowMasks.soft, img, assets.m, w, h, cx, cy, gs * breathe * 0.8, aura, 'lighter')
-    drawGlowLayer(ctx, glowMasks.band, img, assets.m, w, h, cx, cy, gs * (0.55 + 0.6 * drive), aura, 'lighter')
+    drawGlowLayer(ctx, glowMasks.soft, img, assets.m, w, h, cx, cy, Math.min(1, gs * breathe), aura, 'lighter')
+    drawGlowLayer(ctx, glowMasks.band, img, assets.m, w, h, cx, cy, Math.min(1, gs * (0.7 + 0.65 * drive)), aura, 'lighter')
   }
 
   // 5) The electricity — fractal bolts off the artwork's alpha edge with
