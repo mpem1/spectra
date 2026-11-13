@@ -2233,3 +2233,34 @@ visible with NO audio (drive 0), "Outside only" placement hugs strictly from out
 with the interior untinted, pulse image star renders its own additive halo on top; no
 page errors, lint 0 errors (27 vendored ffmpeg warnings). Pages deploy green (badge
 passing) and live bundle fingerprinted: chunks now carry the glowStrength code path.
+
+## 2026-11-13 — Dither filter: the retro glowing dot-print (c0b752e)
+User (IM): "under filters can you make a dither effect like this glowing image and the
+video here?" + two references. Identified via browser: the IG post is @polygon1993
+("All shades of blue" — the artist's signature blue dither-poster look), the YouTube
+link is Ben Marriott's "Instant Dither in After Effects" (retro ordered-dither recipe).
+New full-frame filter, LAST in the chain (re-quantizes everything incl. glitches):
+- Pipeline: GPU area-average downscale to one sample per cell (contrast conditioning
+  rides the same draw via CSS filter on the sample ctx) → tiny getImageData → per-cell
+  Bayer 8x8 threshold (tiled) → cached ImageData write → putImageData → nearest-
+  neighbor upscale (crisp chunky cells) → additive glow → strength blend.
+- Palettes: 'blue' (near-black navy paper #030a24 + 64-entry BLUE_LUT ladder
+  navy→royal→electric→sky→ice by lum), 'mono' (1-bit black/white), 'color'
+  (per-channel 3-level quantize3(c,b) = floor(c/255*2 + bayer) * 127.5 — the classic
+  ordered quantization formula; mid-gray maps exactly onto a level, values BETWEEN
+  levels dither), 'custom' (ink/paper pickers).
+- Glow: two CSS-filtered copies of the grid (brightness 1.6/1.7 + contrast 3/2.5 +
+  blur 1.1px/3px at grid resolution — tiny blurs bloom wide after upscale) drawn
+  'lighter' at glowAmt*0.65/0.45; glowAmt = glow * beatBoost(cfg, bass, 1.2).
+- Strength <1 snapshots the frame pre-dither and fades it back at (1-strength).
+- ctx.imageSmoothingEnabled=false only for the grid draw; glow upscales smooth.
+  globalAlpha clamped ≤1 throughout (canvas ignores >1).
+- Config: DitherFilterConfig (mode/cellSize 2-14 default 4/contrast .5/strength 1/
+  glow .55/ink+paper colors/beatReactive+beatStrength), defaults merged old-save-safe;
+  share links travel the field automatically. UI: cyan Dither card, 4-way palette row,
+  pickers only on Custom, Dot size/Contrast/Strength/Glow sliders, BeatPunchRow
+  ("Beat flare").
+- E2E (agent-browser): enabled on the bars scene — Blue glow = the polygon1993 poster
+  (electric-blue dither dots on deep navy), B&W = clean 1-bit Mac, Color = quantized
+  pink/orange retro, Custom duotone + pickers + 8px dots verified; whole card UI
+  renders; 0 page errors; lint 0 errors (27 vendored). Pushed; Pages deploy pending.
