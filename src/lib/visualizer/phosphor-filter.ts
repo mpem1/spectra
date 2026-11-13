@@ -20,10 +20,14 @@
  *      so the picture's structure survives as a deep paper-toned shadow.
  *   2. The print — the ladder-colored grid upscaled crisp (nearest
  *      neighbor) and masked by a cached gap grid ('destination-in').
- *   3. The bloom — two contrast-crushed blurred copies of the print drawn
- *      back additively (a tight one and a wide one), so only the bright
- *      lines/dashes radiate. "React to beat" flares the bloom on the low
- *      end.
+ *   3. The glow — REAL phosphor halo: the print's alpha filled with the
+ *      pure phosphor color, blurred at two radii and drawn back additively,
+ *      so the lines radiate soft halos of exactly the picked hue into the
+ *      dark tube. The halo never touches the print itself, so the Glow dial
+ *      only adds light AROUND the lines — it can't repaint the picture (the
+ *      old bloom brightened copies of the print, which read as the whole
+ *      image changing color instead of glowing). "React to beat" flares
+ *      the halo on the low end.
  *   4. Below 100% strength the untouched frame fades back through.
  *
  * How it stays fast & deterministic (pure canvas ops, one tiny getImageData):
@@ -236,24 +240,40 @@ export function drawPhosphorFilter(
   bctx.fillRect(0, 0, W, H)
   bctx.globalCompositeOperation = 'source-over'
 
-  // 5) Glow bake — full-res blurred, contrast-crushed copies of the print
-  //    (a tight one and a wide one): only the bright lines/dashes survive
-  //    the crush, and their blur radiates into soft halos. Scaled with the
-  //    cell size so the bloom breathes with the size dial.
+  // 5) Glow bake — REAL phosphor halo, in two layers:
+  //    · the ink silhouette — the print's exact alpha filled with the PURE
+  //      phosphor color (never a brightened copy of the print: brightness
+  //      pushes the ladder shades toward white, which read as the Glow dial
+  //      repainting the image instead of glowing);
+  //    · a tight blur hugging the lines plus a wide ambient one filling the
+  //      gaps — radii scale with the cell size and swell with the dial
+  //      (more energy = broader bloom, like a tube breathing), and the halo
+  //      is composited additively so it only ever ADDS light around the
+  //      print. The print itself stays byte-identical at every Glow setting.
   let glowA: HTMLCanvasElement | null = null
   let glowB: HTMLCanvasElement | null = null
   if (glowAmt > 0.004) {
+    const inkCssSafe = parseHexRGB(inkCss) ? inkCss : PHOSPHOR_INK_CSS
+    const ink = getWork('phosphor:ink', W, H)
+    const ictx = resetWork(ink.getContext('2d')!)
+    ictx.clearRect(0, 0, W, H)
+    ictx.fillStyle = inkCssSafe
+    ictx.fillRect(0, 0, W, H)
+    ictx.globalCompositeOperation = 'destination-in'
+    ictx.drawImage(dash, 0, 0)
+    ictx.globalCompositeOperation = 'source-over'
+    const spread = 0.7 + 0.6 * Math.min(1, glowAmt)
     glowA = getWork('phosphor:glowA', W, H)
     const actx = resetWork(glowA.getContext('2d')!)
     actx.clearRect(0, 0, W, H)
-    actx.filter = `brightness(1.55) contrast(2.6) blur(${Math.max(1, cell * 0.4).toFixed(2)}px)`
-    actx.drawImage(dash, 0, 0)
+    actx.filter = `blur(${Math.max(2, cell * 1.1 * spread).toFixed(2)}px)`
+    actx.drawImage(ink, 0, 0)
     actx.filter = 'none'
     glowB = getWork('phosphor:glowB', W, H)
     const gbctx = resetWork(glowB.getContext('2d')!)
     gbctx.clearRect(0, 0, W, H)
-    gbctx.filter = `brightness(1.65) contrast(2.2) blur(${Math.max(2, cell * 1.15).toFixed(2)}px)`
-    gbctx.drawImage(dash, 0, 0)
+    gbctx.filter = `blur(${Math.max(5, cell * 2.6 * spread).toFixed(2)}px)`
+    gbctx.drawImage(ink, 0, 0)
     gbctx.filter = 'none'
   }
 
@@ -277,9 +297,9 @@ export function drawPhosphorFilter(
     ctx.globalCompositeOperation = 'lighter'
     // Alpha clamps: canvas silently ignores globalAlpha > 1, and the beat
     // flare can push past 1 — saturate instead of no-op.
-    ctx.globalAlpha = Math.min(1, glowAmt * 0.65)
+    ctx.globalAlpha = Math.min(1, glowAmt * 1.0)
     ctx.drawImage(glowA, 0, 0)
-    ctx.globalAlpha = Math.min(1, glowAmt * 0.45)
+    ctx.globalAlpha = Math.min(1, glowAmt * 0.6)
     ctx.drawImage(glowB, 0, 0)
     ctx.globalCompositeOperation = 'source-over'
     ctx.globalAlpha = 1

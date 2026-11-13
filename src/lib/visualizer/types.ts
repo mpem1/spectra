@@ -805,9 +805,10 @@ export interface PhosphorFilterConfig {
   /** Strength 0..1 — how much of the frame the monitor print takes over
    *  (below 1 the untouched frame fades back through) */
   strength: number
-  /** Glow 0..1 — the additive bloom over the bright print */
+  /** Glow 0..1 — the real phosphor halo radiating around the print (the
+   *  print's own colors never change — the halo only adds light around it) */
   glow: number
-  /** React to beat — the bloom flares on the song's low end */
+  /** React to beat — the halo flares on the song's low end */
   beatReactive: boolean
   /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
   beatStrength: number

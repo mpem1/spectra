@@ -2377,3 +2377,31 @@ between 3D glasses and Dither).
   persisted → defaults). Headless quirk hit: getImageData on the preview
   canvas returned stale/black while toDataURL + screenshots were truth —
   analyzed screenshot PNGs with PIL instead. 0 page errors, lint 0 errors.
+
+## 2026-11-13 — Phosphor glow is REAL now: pure-ink halos, not a repaint (this commit)
+
+- REPORT: "the glow isnt actual glow on phosphor it just completely changes
+  the color" — the Glow dial washed the whole picture instead of making the
+  lines radiate.
+- ROOT CAUSE: the old "glow" was a BLOOM OF THE PRINT ITSELF — full-res
+  copies of the dash print pushed through brightness(1.55)/contrast(2.6)
+  and blurred at tiny radii (cell*0.4 / cell*1.15 ≈ 2-6px), drawn additively
+  over the frame at up to 65% alpha. Brightness+contrast push the ladder
+  shades toward white and the additive layer covered every lit cell of the
+  picture, so dialing Glow read as "the image changes color/brightness",
+  and the blur was far too tight to produce halos BETWEEN the lines.
+- FIX (real phosphor halo): the glow source is now the print's exact ALPHA
+  filled with the PURE phosphor color (fillRect ink + 'destination-in'
+  drawImage(dash)) — hue can never drift toward white because the print's
+  colors are never used. Two halo layers: a tight one (blur ≈ cell*1.1) and
+  a wide ambient one (blur ≈ cell*2.6), radii swelling with the dial
+  (spread = 0.7 + 0.6*glow — more energy = broader bloom), composited
+  'lighter' at alpha glow*1.0 / glow*0.6. The print itself is untouched at
+  every Glow setting — the dial only ADDS light around the lines.
+- E2E (agent-browser, 675x380 preview): pixel stats — glow 0%: gaps
+  [1,1,1] black + cores [40,240,154] pure ink green; 100%: gaps [11,43,23]
+  glowing green field + cores [104,255,255] still green-dominant → the dial
+  adds green light around the lines and never repaints the picture. Lines
+  mode shows soft halos radiating into the dark tube (reference-video
+  look); dashes mode regression at sizes 3/5/8/12 → uniform dash grids, no
+  streaks. 0 page errors, lint 0 errors.
