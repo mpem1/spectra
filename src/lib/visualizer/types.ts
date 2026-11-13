@@ -184,7 +184,8 @@ export interface VisualizerConfig {
   imgvizGlowMode: 'palette' | 'custom'
   /** Image style — glow color when imgvizGlowMode = 'custom' */
   imgvizGlowColor: string
-  /** Image style — glow strength 0..1 */
+  /** Image style — glow strength 0..1 (drives both bloom draw alphas; the
+   *  masks themselves bake dense so even mid strengths radiate) */
   imgvizGlowStrength: number
   /** Image style — where the edge glow paints: 'over' = the classic halo
    *  straddling the contour (its bloom also washes over the artwork's rim),
@@ -397,6 +398,9 @@ export interface PulseImageConfig {
   glowColorMode: 'palette' | 'custom'
   /** Glow color when glowColorMode = 'custom' (#rgb / #rrggbb / #rrggbbaa) */
   glowColor: string
+  /** Glow strength 0..1 — how hard the aura shines (bake density and the
+   *  additive pass both scale with it; missing on old saves → 0.7) */
+  glowStrength: number
   /** Beat color overlay strength 0..1 — washes the image in a color that
    *  shifts from `tintLow` at silence to `tintHigh` at the loudest level
    *  (0 = the artwork keeps its own colors) */
@@ -1140,7 +1144,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     imgvizGlow: true,
     imgvizGlowMode: 'palette',
     imgvizGlowColor: '#ffffff',
-    imgvizGlowStrength: 0.6,
+    imgvizGlowStrength: 0.75,
     imgvizGlowPlacement: 'over',
     imgvizBolt: true,
     imgvizBoltMode: 'palette',
@@ -1389,6 +1393,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     glow: true,
     glowColorMode: 'palette',
     glowColor: '#ffffff',
+    glowStrength: 0.7,
     tint: 0,
     tintLow: '#ff3b5c',
     tintHigh: '#2bffa8',

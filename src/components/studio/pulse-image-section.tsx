@@ -241,6 +241,15 @@ export function PulseImageSection() {
                   </button>
                 ))}
               </div>
+              <SliderRow
+                label="Glow strength"
+                value={pulseImage.glowStrength}
+                min={0}
+                max={1}
+                step={0.05}
+                onChange={(glowStrength) => patchPulseImage({ glowStrength })}
+                format={(v) => `${Math.round(v * 100)}%`}
+              />
             </div>
           ) : null}
 

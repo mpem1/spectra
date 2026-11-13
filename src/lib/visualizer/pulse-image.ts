@@ -9,8 +9,10 @@
  * band outside its edge, so the artwork keeps every pixel of detail at any
  * stroke width. With glow on, the aura is a halo blurred from the full
  * outlined shape and tinted per frame, so it radiates outward from the
- * outline and follows its contour. Deterministic: everything derives from
- * the AudioFrame + config.
+ * outline and follows its contour. The mask is baked from stacked shadow
+ * casts (a hot rim plus a dense wide falloff) and composited additively,
+ * scaled by the strength dial — a real shine, not a faint tint.
+ * Deterministic: everything derives from the AudioFrame + config.
  */
 import type { AudioFrame, GradientConfig, PulseImageConfig, RenderContext } from './types'
 import { getBackgroundImage } from './image-cache'
@@ -210,6 +212,9 @@ function outlineRing(img: HTMLImageElement, cfg: PulseImageConfig): HTMLCanvasEl
 
 const GLOW_WORK_MAX = 512 // halo mask max dimension, px
 const GLOW_HALO_SPAN = 0.7 // outward mask padding, ×larger dimension ≈ 3σ of the blur
+const GLOW_WIDE_CASTS = 3 // stacked wide-shadow passes → dense mid glow
+const GLOW_RIM_CASTS = 2 // stacked tight-shadow passes → hot rim at the edge
+const GLOW_RIM_SPAN = 0.06 // tight rim blur, ×larger dimension
 
 interface GlowEntry {
   mask: HTMLCanvasElement
@@ -225,12 +230,16 @@ function glowEntryOf(img: HTMLImageElement, cfg: PulseImageConfig): GlowEntry | 
   const nw = img.naturalWidth
   const nh = img.naturalHeight
   if (nw <= 0 || nh <= 0) return null // SVG without intrinsic size — skip
-  const strokePx = clamp01(cfg.outlineWidth ?? 0.4) * 0.1 * Math.max(nw, nh)
+  // The pad (dilation to the stroke) only applies when the outline is
+  // actually on — with the outline off the halo must hug the bare
+  // silhouette edge, not float a gap away from it.
+  const strokePx = cfg.outline ? clamp01(cfg.outlineWidth ?? 0.4) * 0.1 * Math.max(nw, nh) : 0
   const pad = Math.max(1, Math.ceil(strokePx))
   const cached = glowEntries.get(img)
   if (cached && cached.pad === pad) return cached
 
   const blurNat = 0.45 * Math.max(nw, nh) // the classic shadowBlur, in natural px
+  const rimNat = GLOW_RIM_SPAN * Math.max(nw, nh) // the hot-rim shadowBlur
   const haloNat = Math.ceil(blurNat * GLOW_HALO_SPAN)
   const totalW = nw + 2 * (pad + haloNat)
   const totalH = nh + 2 * (pad + haloNat)
@@ -261,7 +270,12 @@ function glowEntryOf(img: HTMLImageElement, cfg: PulseImageConfig): GlowEntry | 
   }
 
   // Blur the blob (the halo), then cut the blob back out — what remains is
-  // the outward-only glow hugging the outline's contour.
+  // the outward-only glow hugging the outline's contour. The shadow is cast
+  // several times per blur size: source-over stacking accumulates ink, so
+  // the near-edge region climbs toward opaque where a single cast spreads
+  // the same ink so thin it reads as a faint tint. The tight passes bake a
+  // hot rim right at the contour before the wide ones fade out — a real
+  // neon glow is dense at the edge and soft in the falloff.
   const mask = document.createElement('canvas')
   mask.width = Math.max(2, Math.ceil(totalW * m))
   mask.height = Math.max(2, Math.ceil(totalH * m))
@@ -269,8 +283,10 @@ function glowEntryOf(img: HTMLImageElement, cfg: PulseImageConfig): GlowEntry | 
   if (!mg) return null
   const offM = (pad + haloNat) * m
   mg.shadowColor = 'rgba(0,0,0,1)'
+  mg.shadowBlur = rimNat * m
+  for (let i = 0; i < GLOW_RIM_CASTS; i++) mg.drawImage(blob, offM, offM)
   mg.shadowBlur = blurNat * m
-  mg.drawImage(blob, offM, offM)
+  for (let i = 0; i < GLOW_WIDE_CASTS; i++) mg.drawImage(blob, offM, offM)
   mg.globalCompositeOperation = 'destination-out'
   mg.drawImage(blob, offM, offM)
   mg.globalCompositeOperation = 'source-over'
@@ -341,7 +357,7 @@ export function drawPulseImage(
   // artwork is drawn last, untouched, at full detail.
   const nw = img.naturalWidth || 1
   const nh = img.naturalHeight || 1
-  const entry = cfg.outline ? glowEntryOf(img, cfg) : null
+  const entry = cfg.glow ? glowEntryOf(img, cfg) : null
   const ring = cfg.outline ? outlineRing(img, cfg) : null
 
   ctx.save()
@@ -376,12 +392,28 @@ export function drawPulseImage(
   }
   if (halo) {
     // The halo carries the aura — painted first, spread freely around the
-    // outlined shape.
+    // outlined shape. Two passes: a normal-blend haze that keeps the color
+    // readable even over bright artwork or a light background, then an
+    // additive pass that makes the glow actually radiate on dark scenes
+    // (plain source-over caps the wash at its own alpha — additive light
+    // is what turns a tint into a shine). Strength follows the slider and
+    // breathes a little with the drive, so the aura pulses with the music.
     ctx.shadowColor = 'rgba(0,0,0,0)'
     ctx.shadowBlur = 0
-    ctx.drawImage(halo, -haloW / 2, -haloH / 2, haloW, haloH)
+    const s = Math.min(1, Math.max(0, (cfg.glowStrength ?? 0.7) * (0.8 + 0.25 * drive)))
+    if (s > 0.004) {
+      ctx.globalAlpha = s * 0.45
+      ctx.drawImage(halo, -haloW / 2, -haloH / 2, haloW, haloH)
+      ctx.globalAlpha = s
+      ctx.globalCompositeOperation = 'lighter'
+      ctx.drawImage(halo, -haloW / 2, -haloH / 2, haloW, haloH)
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.globalAlpha = 1
+    }
   }
-  if (aura) {
+  if (aura && !halo) {
+    // Fallback for images the halo can't be built for (SVGs without an
+    // intrinsic size): the artwork casts its own classic soft shadow.
     ctx.shadowColor = aura
     ctx.shadowBlur = Math.max(w, h) * 0.45
   }
