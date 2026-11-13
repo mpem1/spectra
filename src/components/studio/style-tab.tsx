@@ -274,6 +274,24 @@ export function StyleTab() {
             onChange={(imgvizInnerGain) => patchVisualizer({ imgvizInnerGain })}
             format={(v) => `${Math.round(v * 100)}%`}
           />
+          <SliderRow
+            label="Inner X"
+            value={visualizer.imgvizInnerX}
+            min={0}
+            max={100}
+            step={1}
+            onChange={(imgvizInnerX) => patchVisualizer({ imgvizInnerX })}
+            format={(v) => `${Math.round(v)}%`}
+          />
+          <SliderRow
+            label="Inner Y"
+            value={visualizer.imgvizInnerY}
+            min={0}
+            max={100}
+            step={1}
+            onChange={(imgvizInnerY) => patchVisualizer({ imgvizInnerY })}
+            format={(v) => `${Math.round(v)}%`}
+          />
           <div className="flex h-8 items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5">
             <MicroLabel>Glowing edges</MicroLabel>
             <Switch

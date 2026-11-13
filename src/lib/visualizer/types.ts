@@ -156,6 +156,15 @@ export interface VisualizerConfig {
   imgvizInner: 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon'
   /** Image style — inner visualizer amplitude gain 0.2..2 */
   imgvizInnerGain: number
+  /** Image style — inner visualizer X anchor across the artwork's box
+   *  (0..100, 50 = centered). Same anchor math as the main layer's
+   *  Position X: the inner renderer's center is re-anchored at this
+   *  fraction of the artwork's width. */
+  imgvizInnerX: number
+  /** Image style — inner visualizer Y anchor down the artwork's box
+   *  (0..100, 50 = centered). Same anchor math as the main layer's
+   *  Position Y. */
+  imgvizInnerY: number
   /** Image style — music motion on/off (swell, bob, sway and tilt driven
    *  by the bass/energy drive). Off pins the artwork still. */
   imgvizMotion: boolean
@@ -1111,6 +1120,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     imgvizDim: 0.35,
     imgvizInner: 'bars',
     imgvizInnerGain: 1,
+    imgvizInnerX: 50,
+    imgvizInnerY: 50,
     imgvizMotion: true,
     imgvizMotionAmount: 0.5,
     imgvizGlow: true,

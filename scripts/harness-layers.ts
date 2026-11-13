@@ -65,7 +65,7 @@ import type { AudioFrame, RenderContext, StudioConfig } from '../src/lib/visuali
 /* ------------------------------ mock canvas ------------------------------ */
 
 interface OpRec {
-  kind: 'draw' | 'fill' | 'frect' | 'text' | 'pimg' | 'stroke'
+  kind: 'draw' | 'fill' | 'frect' | 'text' | 'pimg' | 'stroke' | 'xform'
   src?: unknown
   x?: number
   y?: number
@@ -125,6 +125,11 @@ function makeCanvas(): HTMLCanvasElement {
     createPattern: () => null,
     drawImage: (src: unknown, x?: number) =>
       rec({ kind: 'draw', src, x: typeof x === 'number' ? x : 0, op: state.op, alpha: state.alpha }),
+    // translate ops record their offset — the mock ignores real transforms,
+    // but position dials (the image style's Inner X/Y re-anchoring) still
+    // need their anchor shifts visible to geometry assertions.
+    translate: (x?: number, y?: number) =>
+      rec({ kind: 'xform', x: typeof x === 'number' ? x : 0, y: typeof y === 'number' ? y : 0, op: state.op, alpha: state.alpha }),
     fillRect: (x?: number, y?: number, w?: number, h?: number) =>
       rec({
         kind: 'frect',
@@ -2247,6 +2252,36 @@ console.log('S18 image-viz — the custom PNG style: inner spectrum, glowing edg
   const longBolts = streamFor(main)
   renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizGlow: false, imgvizBoltDensity: 1, imgvizBoltLength: 0.3 }))
   check('bolt reach stretches the lightning (same storm, longer channels)', streamFor(main) !== longBolts, 'geometry unchanged')
+
+  // 13) Inner position: the Inner X / Inner Y dials re-anchor the inner
+  //     renderer's center across the artwork's box (same anchor math as the
+  //     main layer's Position X/Y). The mock records translate ops, so the
+  //     anchor shift lands in the mask scratch's log — and the centered
+  //     default (50/50) must issue NO shift at all.
+  check(
+    'inner position defaults to centered (50/50)',
+    DEFAULT_STUDIO_CONFIG.visualizer.imgvizInnerX === 50 && DEFAULT_STUDIO_CONFIG.visualizer.imgvizInnerY === 50,
+    `defaults=${DEFAULT_STUDIO_CONFIG.visualizer.imgvizInnerX}/${DEFAULT_STUDIO_CONFIG.visualizer.imgvizInnerY}`,
+  )
+  const xformsOf = (sc: HTMLCanvasElement | undefined): Array<{ x: number; y: number }> =>
+    sc ? logOf(sc).filter((r) => r.kind === 'xform').map((r) => ({ x: r.x ?? 0, y: r.y ?? 0 })) : []
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizGlow: false, imgvizInner: 'bars' }))
+  const centeredXf = xformsOf(maskScratch())
+  check('centered inner (50/50) issues no anchor translate', centeredXf.length === 0, `xlates=${centeredXf.length}`)
+  renderWith(
+    loud,
+    cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizGlow: false, imgvizInner: 'bars', imgvizInnerX: 15, imgvizInnerY: 85 }),
+  )
+  const movedSc = maskScratch()
+  const movedXf = xformsOf(movedSc)
+  check(
+    'inner X/Y re-anchor the spectrum (exact 35%-of-box shift toward the dials)',
+    movedSc !== undefined &&
+      movedXf.length === 1 &&
+      Math.abs(movedXf[0].x + 0.35 * movedSc.width) < 0.5 &&
+      Math.abs(movedXf[0].y - 0.35 * movedSc.height) < 0.5,
+    `xlates=${movedXf.length} dx=${movedXf[0]?.x?.toFixed(1)} dy=${movedXf[0]?.y?.toFixed(1)}`,
+  )
 }
 
 /* ----------------- S16 the Mirror family across every style ----------------- */

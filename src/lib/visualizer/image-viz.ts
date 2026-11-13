@@ -368,8 +368,10 @@ function paintInner(
   const bh = scratch.height
   const inner = cfg.imgvizInner ?? 'bars'
   // The inner render gets the shared dials (bar count, roundness, gap,
-  // gradient, glow) but a pinned layout: centered, horizontal, unmirrored,
-  // fully opaque — and the Inner gain folds into its sensitivity.
+  // gradient, glow) but a pinned layout: horizontal, unmirrored, fully
+  // opaque — and the Inner gain folds into its sensitivity. Position comes
+  // from the Inner X / Inner Y dials (see the translate below), not the
+  // main layer's Position dials.
   const innerCfg: VisualizerConfig = {
     ...cfg,
     style: inner,
@@ -385,6 +387,19 @@ function paintInner(
   }
   const innerRc: RenderContext = { ctx: g, width: bw, height: bh, frame: rc.frame }
   const innerS = Math.max(0.4, bh / 720)
+  // Inner position: the inner renderer's center is re-anchored at (X%, Y%)
+  // across the artwork's box — the exact anchor math of the main layer's
+  // Position X / Position Y (translate to the anchor, translate back from
+  // the center). Identity at the 50/50 default, so classic centered layouts
+  // render pixel-identical to before. Content that slides past the box edge
+  // is cut by the scratch bounds and then by the silhouette mask, so the
+  // inner spectrum always stays inside the artwork.
+  const posX = (clamp(cfg.imgvizInnerX ?? 50, 0, 100) / 100) * bw
+  const posY = (clamp(cfg.imgvizInnerY ?? 50, 0, 100) / 100) * bh
+  g.save()
+  if (posX !== bw / 2 || posY !== bh / 2) {
+    g.translate(posX - bw / 2, posY - bh / 2)
+  }
   switch (inner) {
     case 'wave':
       drawWave(innerRc, frame, innerCfg, innerS)
@@ -408,6 +423,7 @@ function paintInner(
       drawBars(innerRc, frame, innerCfg, innerS)
       break
   }
+  g.restore()
 
   // The mask cut: keep the spectrum only where the artwork is opaque.
   g.globalCompositeOperation = 'destination-in'
