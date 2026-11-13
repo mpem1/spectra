@@ -45,20 +45,23 @@
  *                of the whole frame by the SAME amount — one uniform
  *                depth, the classic paper-glasses window into the scene.
  *                'foreground' reads a per-pixel depth field out of the
- *                picture itself (bright, center-weighted pixels count as
- *                NEAR, dark pixels as FAR, the outermost border is pinned
- *                to the screen plane) and re-projects the frame once per
- *                eye on a GPU warp, every pixel offset horizontally by
- *                its OWN depth: near gets CROSSED parallax (the left-eye
- *                copy lands right of the right-eye copy) and pops OUT
- *                toward the camera in front of the character, far recedes
- *                behind the screen plane. The subject detaches from its
- *                backdrop in every direction instead of the frame sliding
- *                sideways — no strips, no bands, no renormalization, so a
- *                steady amp renders frame-stable (zero jitter). A flipped
- *                kick turns the stage inside-out (near ↔ far); depth pop
- *                still flattens everything to the center line. No WebGL →
- *                uniform-spread fallback (warpDepthViews returns false).
+ *                picture itself (bright OR high-contrast, center-weighted
+ *                pixels count as NEAR, dark flat pixels as FAR, the
+ *                outermost border is pinned to the screen plane) and
+ *                re-projects the frame once per eye on a GPU warp whose
+ *                depth budget lives in the foreground: the near range
+ *                climbs on a steep slope and runs at ~3× the classic warp
+ *                amp, so the subject crosses HARD and pops OUT toward the
+ *                camera, well in front of the character's backdrop, while
+ *                the dark flat backdrop leans back behind the screen
+ *                plane at a fraction of that. The subject detaches from
+ *                its backdrop in every direction instead of the frame
+ *                sliding sideways — no strips, no bands, no
+ *                renormalization, so a steady amp renders frame-stable
+ *                (zero jitter). A flipped kick turns the stage inside-out
+ *                (near ↔ far); depth pop still flattens everything to the
+ *                center line. No WebGL → uniform-spread fallback
+ *                (warpDepthViews returns false).
  *
  * The un-overlapped edges keep tinted content (left tints trail off the
  * left edge, right tints off the right) instead of black bars — the
@@ -138,10 +141,21 @@ function channelize(
 /** Fixed depth anchors — they NEVER move between frames, so the stage can't
  *  jitter: raw field at/below NEAR_LO reads fully far, at/above NEAR_LO +
  *  NEAR_SPAN fully near, and DEPTH_SCREEN maps to zero parallax (the
- *  border pin + the shader's screen plane must both use it). */
-const DEPTH_NEAR_LO = 0.14
-const DEPTH_NEAR_SPAN = 0.58
+ *  border pin + the shader's screen plane must both use it). The span is
+ *  deliberately TIGHT — the subject should saturate to full near instead
+ *  of idling at half-depth, which is what diluted the first pop-out into
+ *  a faint fringe. */
+const DEPTH_NEAR_LO = 0.16
+const DEPTH_NEAR_SPAN = 0.44
 const DEPTH_SCREEN = 0.375
+/** The pop-out stage's warp gain over the classic separation step: the GPU
+ *  amp is FG_WARP_GAIN× the base half-separation AND the shader's near
+ *  slope (2.2×) stacks on top, so a fully-near subject crosses at ~3.3×
+ *  the classic per-eye offset — the exaggerated foreground pop — while
+ *  the far slope (0.55×) keeps the backdrop's recession gentle. Tracer
+ *  tints keep stepping at the classic offset so multi-tint trails don't
+ *  smear off the frame. */
+const FG_WARP_GAIN = 2.4
 
 /** Separable box blur with clamped edges — the small-grid twin of the
  *  contour filter's blurField. Blurs `src` in place, `dst` is scratch. */
@@ -170,14 +184,17 @@ const depthPixels = new Map<string, ImageData>()
 /**
  * Build the per-pixel depth field for the 'foreground' perspective from the
  * finished frame, into `depthCanvas` (R channel = depth 0..1, one cell per
- * ~10px of width). Per cell: luminance × a soft center-weighted falloff (a
- * centered character keeps its full brightness; the frame corners lean
- * back), the field is box-blurred so depth ramps smoothly across
- * silhouettes, remapped through the FIXED anchors above (dark reads far,
- * bright reads near — no per-frame renormalization, which is what made the
- * old strip field wobble frame to frame), and the outermost cell ring is
- * pinned to the screen plane so the picture's border stays glued in place
- * (zero parallax at the sample clamp — no edge smear).
+ * ~10px of width). Per cell: a saliency cue — brightness OR local contrast
+ * (characters wear strong outlines and interior detail; backdrops are broad
+ * and flat, so a dark-outlined subject still reads near against a bright
+ * wall) — times a firm center-weighted falloff (a centered subject keeps
+ * nearly all of its cue; the frame corners lean back), the field is
+ * box-blurred so depth ramps smoothly across silhouettes, remapped through
+ * the FIXED anchors above (dark+flat reads far, bright/detailed reads fully
+ * near — no per-frame renormalization, which is what made the old strip
+ * field wobble frame to frame), and the outermost cell ring is pinned to
+ * the screen plane so the picture's border stays glued in place (zero
+ * parallax at the sample clamp — no edge smear).
  *
  * Deterministic: derived from frame pixels only — same frame, same field.
  */
@@ -199,20 +216,32 @@ function buildDepthField(
   dc.drawImage(snap, 0, 0, gw, gh)
   const data = dc.getImageData(0, 0, gw, gh).data
 
+  const raw = new Float32Array(gw * gh)
   const field = new Float32Array(gw * gh)
   const scratch = new Float32Array(gw * gh)
   for (let y = 0; y < gh; y++) {
     for (let x = 0; x < gw; x++) {
       const o = (y * gw + x) * 4
-      const lum = (0.2126 * data[o] + 0.7152 * data[o + 1] + 0.0722 * data[o + 2]) / 255
-      const cx = ((x + 0.5) / gw - 0.5) * 2
-      const cy = ((y + 0.5) / gh - 0.5) * 2
-      const center = Math.max(0, 1 - (cx * cx + cy * cy) / 1.3)
-      field[y * gw + x] = lum * (0.72 + 0.28 * center)
+      raw[y * gw + x] = (0.2126 * data[o] + 0.7152 * data[o + 1] + 0.0722 * data[o + 2]) / 255
     }
   }
-  blurGrid(field, scratch, gw, gh, 3)
-  blurGrid(field, scratch, gw, gh, 3)
+  // Local mean of the luminance — the gap between raw and mean is the
+  // cell's contrast, the cheapest subject detector there is.
+  field.set(raw)
+  blurGrid(field, scratch, gw, gh, 2)
+  for (let y = 0; y < gh; y++) {
+    const cy = ((y + 0.5) / gh - 0.5) * 2
+    for (let x = 0; x < gw; x++) {
+      const i = y * gw + x
+      const cx = ((x + 0.5) / gw - 0.5) * 2
+      const center = Math.max(0, 1 - (cx * cx + cy * cy) / 1.3)
+      const contrast = Math.abs(raw[i] - field[i])
+      const cue = Math.max(raw[i], Math.min(1, contrast * 2.4))
+      field[i] = cue * (0.64 + 0.36 * center)
+    }
+  }
+  blurGrid(field, scratch, gw, gh, 2)
+  blurGrid(field, scratch, gw, gh, 2)
 
   for (let i = 0, n = gw * gh; i < n; i++) {
     const t = Math.min(1, Math.max(0, (field[i] - DEPTH_NEAR_LO) / DEPTH_NEAR_SPAN))
@@ -258,9 +287,11 @@ export function drawAnaglyphFilter(
   const reactivity = Math.min(1, Math.max(0, cfg.reactivity ?? 0.5))
   const strength = Math.min(1, Math.max(0, cfg.strength ?? 1))
   // Depth perspective: 'sides' = the shipped uniform left/right drift, one
-  // depth for the whole frame; 'foreground' = per-strip crossed parallax
-  // built from the picture's own luminance (bright, centered shapes pop
-  // OUT toward the camera, dark edges recede behind the screen plane).
+  // depth for the whole frame; 'foreground' = a per-pixel crossed-parallax
+  // depth stage built from the picture's own saliency (bright or detailed,
+  // centered shapes cross HARD toward the camera — several times the
+  // classic offset — while dark flat edges recede gently behind the screen
+  // plane).
   const fgMode = (cfg.depthMode ?? 'sides') === 'foreground'
   if (depth <= 0.001 && reactivity <= 0.001) return
   if (strength <= 0.001) return
@@ -363,16 +394,20 @@ export function drawAnaglyphFilter(
   oc.globalCompositeOperation = 'lighter'
   const tint = getWork('anaglyph:tint', W, H)
   if (fgMode) {
-    // The depth stage: build the per-pixel depth field from the finished
-    // frame, then re-project it once per eye on the GPU warp (near pixels
-    // sample crossed — popped toward the camera; far pixels uncrossed —
-    // behind the screen plane; the pinned border stays glued). The two
-    // views come back opaque and complete, so the lenses channelize them
-    // exactly like the sides mode — no gap patching, no alpha clips.
+    // The depth stage: build the per-pixel saliency field from the finished
+    // frame, then re-project it once per eye on the GPU warp — amp at
+    // FG_WARP_GAIN× the classic half-separation with the shader's steep
+    // near slope on top, so a fully-near subject crosses at ~3.3× the
+    // classic per-eye offset (the exaggerated foreground pop) while the
+    // far slope keeps the backdrop's recession gentle; the pinned border
+    // stays glued. The two views come back opaque and complete, so the
+    // lenses channelize them exactly like the sides mode — no gap
+    // patching, no alpha clips. Tracer tints keep stepping at the classic
+    // dxPop so multi-tint trails stay on the frame.
     const depthGrid = buildDepthField(snap, W, H, getWork('anaglyph:depth', 128, 72))
     const vl = getWork('anaglyph:vl', W, H)
     const vr = getWork('anaglyph:vr', W, H)
-    const warped = warpDepthViews(snap, depthGrid, vl, vr, dxPop * dir)
+    const warped = warpDepthViews(snap, depthGrid, vl, vr, dxPop * FG_WARP_GAIN * dir)
     if (!warped) {
       // No WebGL on this device — fall back to the classic uniform spread
       // so the glasses still read.

@@ -4,14 +4,17 @@
  *
  * The finished frame is re-projected twice (once per eye) on a tiny WebGL
  * pass: every pixel samples the picture horizontally offset by ITS OWN
- * depth amount, read from a small luminance-derived depth map (see
- * buildDepthField in anaglyph-filter.ts). Near pixels get crossed
- * parallax — the left-eye view lands right of the right-eye view — so
- * they pop OUT toward the camera; far pixels get uncrossed parallax and
- * recede behind the screen plane. Because the warp is per-pixel the
- * subject detaches from its backdrop in every direction: no strips, no
- * bands, no sliding, no renormalization jitter — a still picture with a
- * steady amp renders byte-identical frames.
+ * depth amount, read from a saliency-derived depth map (see buildDepthField
+ * in anaglyph-filter.ts). The depth budget lives in the FOREGROUND: above
+ * the screen plane the near range climbs on a steep slope so near pixels
+ * cross at up to 1.375× the warp amp per eye — the left-eye view lands far
+ * right of the right-eye view and the subject shoots OUT toward the
+ * camera, several times the classic paper-glasses read — while below it
+ * the far range falls on a gentle slope, so the backdrop only leans back
+ * behind the screen plane. Because the warp is per-pixel the subject
+ * detaches from its backdrop in every direction: no strips, no bands, no
+ * sliding, no renormalization jitter — a still picture with a steady amp
+ * renders byte-identical frames.
  *
  * Determinism: the GL path runs on the same device for the live preview
  * and every export, and the same (frame, config) always feeds the same
@@ -53,8 +56,13 @@ uniform float uEye;
 uniform vec2 uTexel;
 void main() {
   float d = texture2D(uDepth, vUv).r;
-  float s = uAmp * (2.0 * d - 0.75);
-  vec2 uv = vec2(vUv.x + uEye * s * uTexel.x, vUv.y);
+  // Piecewise depth response, anchored to the screen plane at depth 0.375
+  // (the same constant buildDepthField pins the border ring to): the near
+  // range climbs on a 2.2× slope — the subject crosses HARD toward the
+  // camera — while the far range falls on a 0.55× slope so the backdrop
+  // only leans back. All the depth budget lives in the foreground.
+  float s = d >= 0.375 ? (d - 0.375) * 2.2 : (d - 0.375) * 0.55;
+  vec2 uv = vec2(vUv.x + uEye * uAmp * s * uTexel.x, vUv.y);
   gl_FragColor = vec4(texture2D(uSnap, uv).rgb, 1.0);
 }`
 
@@ -157,10 +165,10 @@ function evictWarps(keepKey: string): void {
 /**
  * Re-project `snap` into the two per-eye views `vl` / `vr` using the depth
  * map in `depth` (R channel, 0..1, same orientation). `ampPx` is the signed
- * warp amount in pixels: depth 1 samples ±1.25·amp per eye (crossed — pops
- * out), depth 0 samples ∓0.75·amp (recessed), depth 0.375 stays on the
- * screen plane. Returns false when WebGL is unavailable — the caller falls
- * back to a uniform spread.
+ * warp amount in pixels: depth 1 samples ±1.375·amp per eye (crossed — pops
+ * out hard), depth 0 samples ∓0.21·amp (gently recessed), depth 0.375 stays
+ * on the screen plane. Returns false when WebGL is unavailable — the caller
+ * falls back to a uniform spread.
  */
 export function warpDepthViews(
   snap: HTMLCanvasElement,

@@ -285,14 +285,14 @@ export function AnaglyphFilterSection() {
               />
               <OptionChip
                 label="Pop-out 3D"
-                sub="toward the camera"
+                sub="exaggerated foreground"
                 active={filter.depthMode === 'foreground'}
                 onClick={() => patchAnaglyphFilter({ depthMode: 'foreground' })}
               />
             </div>
             <p className="text-[10px] leading-snug text-zinc-600">
               {filter.depthMode === 'foreground'
-                ? 'The picture gains a real depth stage: bright, centered shapes (the character) pop out toward the camera — in front of the frame — while the darker edges settle behind the screen plane. The subject detaches from its backdrop in every direction instead of the frame sliding sideways.'
+                ? 'The picture gains a real depth stage, and the depth budget lives in the foreground: bright or high-contrast shapes (the character) cross hard toward the camera — several times the classic offset, well in front of the frame — while the darker backdrop settles gently behind the screen plane. Crank the Depth dial to push the subject further out; the stage is frame-stable, no wobble.'
                 : 'The classic paper-glasses spread: every copy drifts sideways by the same amount, so the whole frame sits at one uniform depth — like looking through a window into the scene.'}
             </p>
           </div>
@@ -329,8 +329,9 @@ export function AnaglyphFilterSection() {
           <p className="text-[10px] leading-snug text-zinc-600">
             Depth sets how far apart the two base layers sit (100% is the
             classic paper-glasses amount, push it to 250% for a wide stereo
-            pop) — in Pop-out 3D it scales the depth stage, so higher values
-            push the character further toward the camera while the background
+            pop) — in Pop-out 3D the same dial drives a much bigger stage:
+            100% already crosses the subject at about three times the classic
+            offset, and 250% is an extreme foreground pop while the background
             leans back. Beat pop pushes them wider on the song&apos;s low end
             when React to beat is on, Depth pop snaps them together to 0% on
             each detected kick before blooming back out, and Mix blends the
