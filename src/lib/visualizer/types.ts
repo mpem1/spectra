@@ -956,6 +956,18 @@ export interface AnaglyphFilterConfig {
    *  0.2 (0.4 s on the dial) matches the flip hold. Old saves without
    *  this field load as 0.2. */
   popHold: number
+  /** Which perspective the depth separation reads as. 'sides' — every
+   *  copy of the whole picture drifts uniformly left/right at ONE depth
+   *  (the classic paper-glasses window into the scene, the shipped look).
+   *  'foreground' — the picture gains a real depth stage: a per-strip
+   *  depth field (bright, center-weighted shapes count as NEAR) drives
+   *  crossed parallax, so the subject pops OUT toward the camera while
+   *  the darker edges recede behind the screen plane — the character
+   *  stands in front of their backdrop instead of the frame sliding
+   *  sideways. Beat pop, Flip on kick and Depth pop all keep working in
+   *  both modes (a flipped kick turns the depth stage inside-out). Old
+   *  saves without this field load as 'sides'. */
+  depthMode: 'sides' | 'foreground'
   /** Blend 0..1 — full anaglyph (1) vs mixed back toward the original (0) */
   strength: number
   /** Left-lens tint colors (1–4), ordered base → outward: tint 1 is the
@@ -1505,6 +1517,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     depthPop: false,
     popSensitivity: 0.1,
     popHold: 0.2,
+    depthMode: 'sides',
     strength: 1,
     leftColors: ['#ff0000'],
     rightColors: ['#00ffff'],

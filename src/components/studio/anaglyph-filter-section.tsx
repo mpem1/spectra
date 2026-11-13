@@ -13,9 +13,9 @@ import { cn } from '@/lib/utils'
  *  (each adds a full-frame multiply pass) and keeps the card compact. */
 const MAX_TINTS = 4
 
-/** One side of the Flip on kick chooser — which side of the swap the kick
- *  reveals. Compact chip, active side picks up the section's rose. */
-function FlipDirButton({
+/** One option in a compact chip chooser (the depth perspective and the flip
+ *  direction both use it) — active chip picks up the section's rose. */
+function OptionChip({
   label,
   sub,
   active,
@@ -153,11 +153,13 @@ export function AnaglyphFilterSection() {
       </div>
       <p className="text-[11px] leading-snug text-zinc-600">
         The old-school paper 3D-glasses look — the whole picture is re-projected
-        twice, once through each lens&apos;s colors, shifted apart so every edge
-        wears color fringes. Tint 1 is the base layer; extra tints stack
-        outward like a tracer trail instead of blending in. Flip on kick
-        swaps the look on every hit; Depth pop flattens the 3D to zero on
-        every hit and lets it bloom back out. Baked into every export.
+        twice, once through each lens&apos;s colors. Depth perspective chooses
+        where the 3D reads: the classic left/right spread, or a real depth
+        stage where the character pops out toward the camera. Tint 1 is the
+        base layer; extra tints stack outward like a tracer trail instead of
+        blending in. Flip on kick swaps the look on every hit; Depth pop
+        flattens the 3D to zero on every hit and lets it bloom back out.
+        Baked into every export.
       </p>
 
       {filter.enabled ? (
@@ -177,19 +179,19 @@ export function AnaglyphFilterSection() {
           {filter.beatFlip ? (
             <>
               <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="What the kick shows">
-                <FlipDirButton
+                <OptionChip
                   label="Around"
                   sub="stack mirrors"
                   active={filter.beatFlipTo === 'around'}
                   onClick={() => patchAnaglyphFilter({ beatFlipTo: 'around' })}
                 />
-                <FlipDirButton
+                <OptionChip
                   label="The picture"
                   sub="glasses between kicks"
                   active={filter.beatFlipTo === 'picture'}
                   onClick={() => patchAnaglyphFilter({ beatFlipTo: 'picture' })}
                 />
-                <FlipDirButton
+                <OptionChip
                   label="The print"
                   sub="picture between kicks"
                   active={filter.beatFlipTo === 'print'}
@@ -272,6 +274,28 @@ export function AnaglyphFilterSection() {
               </p>
             </>
           ) : null}
+          <div className="space-y-1.5">
+            <MicroLabel>Depth perspective</MicroLabel>
+            <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="Depth perspective">
+              <OptionChip
+                label="Left & right"
+                sub="classic spread"
+                active={filter.depthMode !== 'foreground'}
+                onClick={() => patchAnaglyphFilter({ depthMode: 'sides' })}
+              />
+              <OptionChip
+                label="Pop-out 3D"
+                sub="toward the camera"
+                active={filter.depthMode === 'foreground'}
+                onClick={() => patchAnaglyphFilter({ depthMode: 'foreground' })}
+              />
+            </div>
+            <p className="text-[10px] leading-snug text-zinc-600">
+              {filter.depthMode === 'foreground'
+                ? 'The picture gains a real depth stage: bright, centered shapes (the character) cross and pop out toward the camera — in front of them — while the darker edges recede behind the screen plane. The subject detaches from its backdrop instead of the frame sliding sideways.'
+                : 'The classic paper-glasses spread: every copy drifts sideways by the same amount, so the whole frame sits at one uniform depth — like looking through a window into the scene.'}
+            </p>
+          </div>
           <SliderRow
             label="Depth"
             value={filter.depth}
@@ -305,15 +329,17 @@ export function AnaglyphFilterSection() {
           <p className="text-[10px] leading-snug text-zinc-600">
             Depth sets how far apart the two base layers sit (100% is the
             classic paper-glasses amount, push it to 250% for a wide stereo
-            pop), Beat pop pushes them wider on the song&apos;s low end when
-            React to beat is on, Depth pop snaps them together to 0% on each
-            detected kick before blooming back out, and Mix blends the glasses
-            look back toward the untouched picture. Tint 1 on each lens is the
-            base layer that builds the picture — it never gets diluted. Every
-            added tint sits one separation-step further out, so the trail
-            extends outward step by step (tint 2 at double, tint 3 at triple
-            the offset). Skipped on transparent backgrounds so alpha
-            recordings stay clean.
+            pop) — in Pop-out 3D it scales the depth stage, so higher values
+            push the character further toward the camera while the background
+            leans back. Beat pop pushes them wider on the song&apos;s low end
+            when React to beat is on, Depth pop snaps them together to 0% on
+            each detected kick before blooming back out, and Mix blends the
+            glasses look back toward the untouched picture. Tint 1 on each
+            lens is the base layer that builds the picture — it never gets
+            diluted. Every added tint sits one separation-step further out,
+            so the trail extends outward step by step (tint 2 at double,
+            tint 3 at triple the offset). Skipped on transparent backgrounds
+            so alpha recordings stay clean.
           </p>
         </>
       ) : null}
