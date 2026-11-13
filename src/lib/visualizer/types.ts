@@ -730,6 +730,46 @@ export interface HalftoneFilterConfig {
 }
 
 /**
+ * Dither filter — retro ordered dithering over the whole frame: the picture
+ * is resampled onto a chunky grid, every cell is thresholded against a tiled
+ * 8×8 Bayer matrix, and each cell repaints either the dark tone or the bright
+ * tone, so brightness spreads into dot patterns like old 1-bit screens and
+ * dither-poster art. A two-pass additive bloom over the bright dots adds the
+ * glowing look. Deterministic (no randomness — same frame in, same pixels
+ * out), so exports match the preview frame-exactly. Skipped on transparent
+ * backgrounds.
+ */
+export interface DitherFilterConfig {
+  enabled: boolean
+  /** Palette: 'blue' = the "all shades of blue" glowing poster (deep-navy
+   *  paper, bright cells climb a navy → royal → electric → sky → ice ladder
+   *  by their luminance), 'mono' = classic 1-bit black & white, 'color' =
+   *  retro per-channel quantization (3 levels each, Bayer-steered),
+   *  'custom' = your own two colors */
+  mode: 'blue' | 'mono' | 'color' | 'custom'
+  /** Dither cell size in px on the 720p reference canvas (2..14) */
+  cellSize: number
+  /** Picture contrast 0..1 — 0.5 is the untouched picture, 1 doubles the
+   *  punch (maps to CSS contrast 0..2), applied before the screen reads the
+   *  tones so the dither follows the picture the user actually sees */
+  contrast: number
+  /** Dither strength 0..1 — how much of the frame the print takes over
+   *  (below 1 the untouched frame fades back through) */
+  strength: number
+  /** Glow 0..1 — the additive bloom over the bright dither dots */
+  glow: number
+  /** Custom palette: the bright dots' color as '#rrggbb' (mode 'custom') */
+  inkColor: string
+  /** Custom palette: the dark cells' color as '#rrggbb' (mode 'custom') */
+  paperColor: string
+  /** React to beat — the glow flares on the song's low end; between beats
+   *  the dither plays exactly as dialed in */
+  beatReactive: boolean
+  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
+}
+
+/**
  * Glitch filter — digital corruption: short bursts of chunky pixel blocks
  * (some pixelated in place, some copied from the wrong spot, some tinted
  * with raw palette colors), picture slices shoved sideways and raw saturated
@@ -879,6 +919,8 @@ export interface StudioConfig {
   glitchFilter: GlitchFilterConfig
   /** Full-frame anaglyph post-pass (red/cyan 3D-glasses re-projection) */
   anaglyphFilter: AnaglyphFilterConfig
+  /** Full-frame retro-dither post-pass (Bayer dot patterns + glow bloom) */
+  ditherFilter: DitherFilterConfig
   /** How the moving layers interact with the full-frame filter chain */
   layers: LayersConfig
   /** Imported font library — shared by the lyrics and the title card */
@@ -1375,6 +1417,18 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     strength: 1,
     leftColors: ['#ff0000'],
     rightColors: ['#00ffff'],
+  },
+  ditherFilter: {
+    enabled: false,
+    mode: 'blue',
+    cellSize: 4,
+    contrast: 0.5,
+    strength: 1,
+    glow: 0.55,
+    inkColor: '#49b6ff',
+    paperColor: '#030a24',
+    beatReactive: false,
+    beatStrength: 0.5,
   },
   layers: {
     stayColored: false,

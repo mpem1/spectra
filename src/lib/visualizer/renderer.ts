@@ -31,6 +31,7 @@ import { drawFilmFilter } from './film-filter'
 import { drawHalftoneFilter, flipGate } from './halftone-filter'
 import { drawGlitchFilter } from './glitch-filter'
 import { drawAnaglyphFilter } from './anaglyph-filter'
+import { drawDitherFilter } from './dither-filter'
 import { getWork, resetWork } from './filter-utils'
 
 /* --------------------------------- Utilities -------------------------------- */
@@ -196,6 +197,10 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   drawHalftoneFilter(rc, config.halftoneFilter, frame, transparent)
   drawGlitchFilter(rc, config.glitchFilter, frame, transparent)
   drawAnaglyphFilter(rc, config.anaglyphFilter, frame, transparent)
+  // Retro dither last — it re-quantizes the finished picture (glitches
+  // included) into chunky Bayer dot patterns, so it always reads as the
+  // outermost poster layer.
+  drawDitherFilter(rc, config.ditherFilter, frame, transparent)
   // Filter alpha: fade the unfiltered snapshot back over the finished chain
   // BEFORE the layer overlay returns, so the lifted layers/text (stayColored
   // / textClear) still land at full strength above the blend.
