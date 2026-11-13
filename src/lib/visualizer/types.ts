@@ -778,23 +778,26 @@ export interface DitherFilterConfig {
 
 /**
  * Phosphor monitor filter — the lo-fi sci-fi video-tube look: the whole
- * picture is repainted as columns of short horizontal dashes (one sample per
- * dash cell, tone → shade of the picked phosphor color via the shared glow
- * ladder from shade-ladder.ts), over a dark tube built from the frame
- * itself, with an additive bloom on the bright dashes. Skipped on
- * transparent backgrounds.
+ * picture is repainted as glowing vertical lines or columns of short
+ * horizontal dashes (one sample per cell, tone → shade of the picked
+ * phosphor color via the shared glow ladder from shade-ladder.ts), over a
+ * dark tube built from the frame itself, with an additive bloom on the
+ * bright print. Skipped on transparent backgrounds.
  */
 export interface PhosphorFilterConfig {
   enabled: boolean
-  /** The phosphor glow color as '#rrggbb' — the dash shade ladder rebuilds
+  /** Print style — 'lines' = continuous glowing vertical lines (the
+   *  scanline tube look), 'dashes' = columns of stacked glowing ticks */
+  mode: 'lines' | 'dashes'
+  /** The phosphor glow color as '#rrggbb' — the shade ladder rebuilds
    *  from this hue (same ladder the dither Blue glow uses) */
   inkColor: string
-  /** The dark tube behind the dashes as '#rrggbb' */
+  /** The dark tube behind the print as '#rrggbb' */
   paperColor: string
-  /** Dash cell size in px on the 720p reference canvas (3..12) */
+  /** Line/dash cell size in px on the 720p reference canvas (3..12) */
   cellSize: number
-  /** Spacing between dashes 0..0.6 — 0 melts the columns solid, higher
-   *  chews them into broken ticks */
+  /** Spacing between the lines/dashes 0..0.6 — 0 melts the columns solid,
+   *  higher thins the print apart */
   gap: number
   /** Picture contrast 0..1 — 0.5 is the untouched picture, 1 doubles the
    *  punch (same semantics as the dither filter) */
@@ -802,7 +805,7 @@ export interface PhosphorFilterConfig {
   /** Strength 0..1 — how much of the frame the monitor print takes over
    *  (below 1 the untouched frame fades back through) */
   strength: number
-  /** Glow 0..1 — the additive bloom over the bright dashes */
+  /** Glow 0..1 — the additive bloom over the bright print */
   glow: number
   /** React to beat — the bloom flares on the song's low end */
   beatReactive: boolean
@@ -1477,6 +1480,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
   },
   phosphorFilter: {
     enabled: false,
+    mode: 'lines',
     inkColor: '#3dff7c',
     paperColor: '#03160c',
     cellSize: 5,
