@@ -2332,3 +2332,48 @@ between 3D glasses and Dither).
   sliders); stacked with dither = blue Bayer poster over the dash print, no crash; toggles
   + reload clean; 0 page errors, console clean, lint 0 errors (27 vendored). Pushed; Pages
   deploy pending.
+
+## 2026-11-13 — Phosphor streak fix + glowing vertical lines style (4f3fa7d)
+
+- BUG ("strange streak going through the image in different sections" when
+  changing dash size): buildDashMask carved each gap with two independent
+  Math.round calls on FRACTIONAL cell pitches (cellWf = W/ceil(W/cell) is
+  rarely integer). When the true gap (cellWf*gap*0.55 vertical /
+  cellHf*gap horizontal) was sub-pixel, some boundaries' two rounds landed
+  on the same integer → w/h = 0 → the break was silently skipped → two
+  dashes merged into a full-height strip / full-width band. WHICH
+  boundaries failed depended on the fractional drift of i*cellWf, so every
+  dash-size setting scattered the streaks differently — exactly the report.
+- FIX (pitch-snapped print): the grid now upscales at an INTEGER scale —
+  drawImage(grid, 0,0, cols,rows, 0,0, cols*cell, rows*cell), canvas clips
+  the overshoot (cols*cell >= W since cols = ceil(W/cell)) — so print
+  columns occupy exactly the bands [i*cell,(i+1)*cell) under ANY
+  nearest-neighbor convention (integer scale is convention-independent).
+  buildGapMask carves gaps at the SAME constant offsets inside every band
+  (dashW = round(cell*(1-gap*0.55)), dashH = round(cell*(1-gap)), gap=0 →
+  no carves → solid). No drift, no zero-width gaps, uniform at any size.
+  Mask key now includes the mode.
+- NEW 'lines' style (what the reference video actually wanted — "vertical
+  green lines that have a glow"): mode: 'lines' | 'dashes' on
+  PhosphorFilterConfig, default 'lines'. Lines = only the thin vertical
+  gaps between columns are cut (no horizontal breaks) + dark cells keep a
+  faint alpha floor (max(ramp, 36)) so every column stays ONE continuous
+  glowing vertical line whose brightness rides the picture; faint
+  scanline field persists over the dark tube. Dashes = the original
+  stacked ticks (kept — user likes it), no floor.
+- UI: Style toggle (Lines/Dashes, green active) at the top of the phosphor
+  card; dial label flips "Line size"/"Dash size"; copy updated. Config
+  merge supplies mode for old saves/share links (missing → 'lines').
+- E2E (agent-browser, 675x380 preview, S=0.53 so dial maps to device cell
+  = round(dial*S) clamped >=3): pixel run-length histograms on screenshots
+  (glow dialed to 0 for clean thresholds, PIL scanline analysis x0=120..
+  x1=786): cell 4 @ gap .4 → B3/D1 perfectly periodic (the OLD code's
+  guaranteed-streak geometry: 675/169 = 3.994 fractional pitch → ~20
+  collapsed gaps); cell 5 @ .4 → B4/D1; cell 6 @ .4 → B4-5/D1-2; cell 6 @
+  .2 (old worst case, f-d ≈ 0.66px) → B5/D1 EXACT — zero bright runs >=
+  2*cell anywhere = no merged dashes. Lines mode: continuous vertical
+  glowing lines + faint scanlines in the dark tube (alpha floor), glow
+  bloom radiates. Style toggle round-trips; reload clean (config not
+  persisted → defaults). Headless quirk hit: getImageData on the preview
+  canvas returned stale/black while toDataURL + screenshots were truth —
+  analyzed screenshot PNGs with PIL instead. 0 page errors, lint 0 errors.
