@@ -2185,6 +2185,84 @@ console.log('S18 image-viz — the custom PNG style: inner spectrum, glowing edg
   renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizGlow: false }))
   check('glow off skips the halo/rim passes', canvasDraws(main).length === 1, `canvas draws=${canvasDraws(main).length}`)
 
+  // 5b) Glow placement: 'over' paints the classic straddling halo; 'outside'
+  //     swaps in mask variants whose interior half is punched out with the
+  //     artwork's alpha silhouette (a destination-out draw of the sil canvas)
+  //     so no pass can tint the picture itself. The punch is baked at asset
+  //     build time — dimensions, draw order and alphas stay identical — and
+  //     the frame-level stream can't see it, so the check walks the mask
+  //     graph: each glow tint composited onto the frame sources one mask
+  //     canvas, and only the outside placement's masks carry a punch whose
+  //     source directly paints the artwork (the silhouette). Two dedicated
+  //     artworks make the build-time ops observable: the mock wipes every
+  //     canvas log at the start of each renderWith, so artwork A's assets
+  //     build during its OVER render (over masks readable) and artwork B's
+  //     during its OUTSIDE render (punch ops readable). The mock ctx also
+  //     has no save/restore state tracking — composite/alpha compound across
+  //     ops — so each capture resets the state machine first, making both
+  //     streams start from the identical clean state.
+  check(
+    'glow placement defaults to over (classic halo)',
+    DEFAULT_STUDIO_CONFIG.visualizer.imgvizGlowPlacement === 'over',
+    `default=${DEFAULT_STUDIO_CONFIG.visualizer.imgvizGlowPlacement}`,
+  )
+  const isCanvasSrc = (src: unknown): src is HTMLCanvasElement =>
+    !!src && typeof src === 'object' && '__log' in (src as object)
+  const silPunched = (mask: HTMLCanvasElement, art: HTMLImageElement): boolean =>
+    logOf(mask).some(
+      (r) =>
+        r.kind === 'draw' &&
+        r.op === 'destination-out' &&
+        isCanvasSrc(r.src) &&
+        logOf(r.src).some((q) => q.kind === 'draw' && q.src === art),
+    )
+  const glowMasksInFrame = (): HTMLCanvasElement[] => {
+    const tints = logOf(main)
+      .filter((r) => r.kind === 'draw' && r.op === 'lighter' && isCanvasSrc(r.src))
+      .map((r) => r.src as HTMLCanvasElement)
+    return tints.flatMap((t) =>
+      logOf(t)
+        .filter((r) => r.kind === 'draw' && isCanvasSrc(r.src))
+        .map((r) => r.src as HTMLCanvasElement),
+    )
+  }
+  const fakeSrcA = 'data:image/png;base64,FAKEIMGVIZA'
+  const fakeSrcB = 'data:image/png;base64,FAKEIMGVIZB'
+  const artworkA = await loadBackgroundImage(fakeSrcA)
+  const artworkB = await loadBackgroundImage(fakeSrcB)
+  const resetMainState = (): void => {
+    const c = main.getContext('2d') as unknown as { globalAlpha: number; globalCompositeOperation: string } | null
+    if (c) {
+      c.globalAlpha = 1
+      c.globalCompositeOperation = 'source-over'
+    }
+  }
+  const renderClean = (config: StudioConfig): void => {
+    resetMainState()
+    renderWith(loud, config)
+  }
+  renderClean(cfgImg({ imgvizSrc: fakeSrcA, imgvizBolt: false }))
+  const overStream = streamFor(main)
+  const overMasks = glowMasksInFrame()
+  check(
+    'over placement: glow masks carry no silhouette punch',
+    overMasks.length === 3 && overMasks.every((m) => !silPunched(m, artworkA)),
+    `masks=${overMasks.length} punched=${overMasks.filter((m) => silPunched(m, artworkA)).length}`,
+  )
+  renderClean(cfgImg({ imgvizSrc: fakeSrcB, imgvizBolt: false, imgvizGlowPlacement: 'outside' }))
+  const outsideStream = streamFor(main)
+  const outMasks = glowMasksInFrame()
+  check(
+    'outside placement: every glow mask is punched out with the silhouette',
+    outMasks.length === 3 && outMasks.every((m) => silPunched(m, artworkB)),
+    `masks=${outMasks.length} punched=${outMasks.filter((m) => silPunched(m, artworkB)).length}`,
+  )
+  check(
+    'placement only swaps masks (same halo geometry + alphas on the frame)',
+    outsideStream === overStream,
+    'frame stream changed with placement',
+  )
+
   // 6) The inner visualizer modes paint different geometry into the mask.
   renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizInner: 'bars' }))
   const barsScratch = maskScratch()

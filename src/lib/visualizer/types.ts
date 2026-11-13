@@ -186,6 +186,12 @@ export interface VisualizerConfig {
   imgvizGlowColor: string
   /** Image style — glow strength 0..1 */
   imgvizGlowStrength: number
+  /** Image style — where the edge glow paints: 'over' = the classic halo
+   *  straddling the contour (its bloom also washes over the artwork's rim),
+   *  'outside' = the interior half of every glow pass is punched out with
+   *  the artwork's own alpha silhouette, so the halo hugs the PNG strictly
+   *  from outside without ever covering the picture */
+  imgvizGlowPlacement: 'over' | 'outside'
   /** Image style — electricity on/off (jagged bolts flickering off the
    *  artwork's alpha edge with the music) */
   imgvizBolt: boolean
@@ -1135,6 +1141,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     imgvizGlowMode: 'palette',
     imgvizGlowColor: '#ffffff',
     imgvizGlowStrength: 0.6,
+    imgvizGlowPlacement: 'over',
     imgvizBolt: true,
     imgvizBoltMode: 'palette',
     imgvizBoltColor: '#7df9ff',

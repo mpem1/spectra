@@ -334,6 +334,32 @@ export function StyleTab() {
           {visualizer.imgvizGlow ? (
             <>
               <div className="space-y-1.5">
+                <MicroLabel>Glow placement</MicroLabel>
+                <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+                  {(
+                    [
+                      { id: 'over', label: 'Over image' },
+                      { id: 'outside', label: 'Outside only' },
+                    ] as const
+                  ).map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      aria-pressed={visualizer.imgvizGlowPlacement === p.id}
+                      onClick={() => patchVisualizer({ imgvizGlowPlacement: p.id })}
+                      className={cn(
+                        'h-7 rounded-md text-xs transition-colors',
+                        visualizer.imgvizGlowPlacement === p.id
+                          ? 'bg-emerald-500 font-medium text-zinc-950'
+                          : 'text-zinc-300 hover:text-zinc-100',
+                      )}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1.5">
                 <div className="flex h-5 items-center justify-between">
                   <MicroLabel>Glow color</MicroLabel>
                   {visualizer.imgvizGlowMode === 'custom' ? (

@@ -11,6 +11,10 @@
  *    widths (tight + wide, both blurred from the band itself, so the glow
  *    hugs the artwork's actual edge instead of sitting behind it as a
  *    round cloud). All three passes breathe with the bass/energy drive.
+ *    Two placements: 'over' paints the classic halo straddling the contour
+ *    (the bloom also washes over the artwork's rim); 'outside' punches the
+ *    interior half of every pass out with the artwork's own alpha, so the
+ *    halo hugs the PNG strictly from outside and never covers the picture.
  *  · Electricity — fractal lightning (recursive midpoint displacement,
  *    with branching forks and thin surface crackle arcs) spawning from
  *    points sampled on the artwork's alpha edge with their OUTWARD NORMALS
@@ -84,6 +88,12 @@ interface EdgeAssets {
   rimSoft: GlowLayer
   /** Wide bloom: the band blurred far — a cloud that still follows the edge. */
   rimWide: GlowLayer
+  /** Outside-only variants of the three passes: the interior half of each
+   *  mask is punched out with the alpha silhouette (destination-out), so
+   *  drawing them can never tint the picture — only its surroundings. */
+  rimOut: GlowLayer
+  rimSoftOut: GlowLayer
+  rimWideOut: GlowLayer
   /** The silhouette→layers build scale (work px per natural px). */
   m: number
   /** Bolt spawn points (with outward normals) in NATURAL image coordinates. */
@@ -291,15 +301,44 @@ function assetsOf(img: HTMLImageElement): EdgeAssets | null {
   const soft = blurredCopy(rimC, band * 2.2)
   const wide = blurredCopy(rimC, 0.085 * Math.max(w, h))
 
+  // The outside-only variants: each mask's interior half punched out with
+  // the silhouette. The offsets account for every canvas's padding — the
+  // band canvas holds the sil at (pad, pad), and the blurred copies add
+  // their own padding around that (blurredCopy returns its pad).
+  const rimOut = outsideLayer(rimC, sil, pad, pad)
+  const rimSoftOut = outsideLayer(soft.canvas, sil, pad + soft.pad, pad + soft.pad)
+  const rimWideOut = outsideLayer(wide.canvas, sil, pad + wide.pad, pad + wide.pad)
+
   const built: EdgeAssets = {
     rim: glowLayerOf(rimC),
     rimSoft: glowLayerOf(soft.canvas),
     rimWide: glowLayerOf(wide.canvas),
+    rimOut,
+    rimSoftOut,
+    rimWideOut,
     m,
     anchors: extractAnchors(img),
   }
   edgeAssets.set(img, built)
   return built
+}
+
+/** Builds an outside-only glow layer: a copy of `mask` with the silhouette
+ *  stamped over it in 'destination-out' at the mask's internal (offX, offY)
+ *  offset — every pixel the artwork occupies loses its glow, the transparent
+ *  surroundings keep it. The result hugs the PNG's real contour from outside. */
+function outsideLayer(src: HTMLCanvasElement, sil: HTMLCanvasElement, offX: number, offY: number): GlowLayer {
+  const c = document.createElement('canvas')
+  c.width = src.width
+  c.height = src.height
+  const g = c.getContext('2d')
+  if (g) {
+    g.drawImage(src, 0, 0)
+    g.globalCompositeOperation = 'destination-out'
+    g.drawImage(sil, offX, offY)
+    g.globalCompositeOperation = 'source-over'
+  }
+  return glowLayerOf(c)
 }
 
 /** Recolors a layer's colorless mask with this frame's color into its scratch. */
@@ -705,10 +744,19 @@ export function drawImageViz(rc: RenderContext, frame: AudioFrame, cfg: Visualiz
   const gs = clamp01(cfg.imgvizGlowStrength ?? 0.6)
   const breathe = 0.35 + 0.65 * drive
 
+  // Placement: 'over' paints the classic halo (the band straddles the
+  // contour and the blooms also wash over the artwork's rim); 'outside'
+  // swaps in the punched-out mask variants, so no pass can tint the
+  // picture itself. Same geometry, same alphas — only the masks differ.
+  const glowMasks =
+    (cfg.imgvizGlowPlacement ?? 'over') === 'outside'
+      ? { wide: assets.rimWideOut, soft: assets.rimSoftOut, band: assets.rimOut }
+      : { wide: assets.rimWide, soft: assets.rimSoft, band: assets.rim }
+
   // 1) The wide bloom — blurred from the contour BAND, so even this far
   //    glow follows the artwork's actual edge (not a round cloud behind it).
   if (glowOn) {
-    drawGlowLayer(ctx, assets.rimWide, img, assets.m, w, h, cx, cy, gs * breathe * 0.55, aura, 'lighter')
+    drawGlowLayer(ctx, glowMasks.wide, img, assets.m, w, h, cx, cy, gs * breathe * 0.55, aura, 'lighter')
   }
 
   // 2) The artwork itself — dimmed on the Artwork dial so the inner
@@ -731,8 +779,8 @@ export function drawImageViz(rc: RenderContext, frame: AudioFrame, cfg: Visualiz
   // 4) The edge glow itself — additive tight bloom + the crisp rim band ON
   //    the artwork's edge, pulsing with the drive.
   if (glowOn) {
-    drawGlowLayer(ctx, assets.rimSoft, img, assets.m, w, h, cx, cy, gs * breathe * 0.8, aura, 'lighter')
-    drawGlowLayer(ctx, assets.rim, img, assets.m, w, h, cx, cy, gs * (0.55 + 0.6 * drive), aura, 'lighter')
+    drawGlowLayer(ctx, glowMasks.soft, img, assets.m, w, h, cx, cy, gs * breathe * 0.8, aura, 'lighter')
+    drawGlowLayer(ctx, glowMasks.band, img, assets.m, w, h, cx, cy, gs * (0.55 + 0.6 * drive), aura, 'lighter')
   }
 
   // 5) The electricity — fractal bolts off the artwork's alpha edge with
