@@ -10,10 +10,10 @@ import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/
 /**
  * Contour filter card — the woven-thread waveform look: the whole picture
  * re-materializes as glowing smooth lines that bend around its bright
- * shapes, ripple with the music (each line rides its own frequency bin)
- * and flicker with static grain around the focal points. Deterministic, so
- * every export bakes the identical look; skipped on transparent
- * backgrounds.
+ * shapes and ripple with the music (each line rides its own frequency
+ * bin) — holding still around the focal features while the waves swing
+ * wider through the space beyond. Deterministic, so every export bakes
+ * the identical look; skipped on transparent backgrounds.
  */
 export function ContourFilterSection() {
   const filter = useStudioStore((s) => s.config.contourFilter)
@@ -37,9 +37,10 @@ export function ContourFilterSection() {
       </div>
       <p className="text-[11px] leading-snug text-zinc-600">
         Woven waveform — the picture becomes glowing smooth lines that bend
-        around its bright shapes, ripple with the music, and flicker with
-        static grain around its focal points. Put a picture behind it
-        (Background tab) for the full contour look.
+        around its bright shapes and ripple with the music. They hold still
+        around the focal features while the waves swing wider through the
+        empty space beyond. Put a picture behind it (Background tab) for
+        the full contour look.
       </p>
 
       {filter.enabled ? (
@@ -119,21 +120,21 @@ export function ContourFilterSection() {
             format={(v) => `${Math.round(v * 100)}%`}
           />
           <SliderRow
-            label="Static"
-            value={filter.static}
+            label="Stillness"
+            value={filter.stillness}
             min={0}
             max={1}
             step={0.05}
-            onChange={set('static')}
+            onChange={set('stillness')}
             format={(v) => `${Math.round(v * 100)}%`}
           />
           <SliderRow
-            label="Static spread"
-            value={filter.staticSpread}
+            label="Wave spread"
+            value={filter.waveSpread}
             min={0}
             max={1}
             step={0.05}
-            onChange={set('staticSpread')}
+            onChange={set('waveSpread')}
             format={(v) => `${Math.round(v * 100)}%`}
           />
           <SliderRow
