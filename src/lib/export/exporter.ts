@@ -277,6 +277,15 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
       onNotice?.('Pulse image could not be loaded — exporting without it.')
     }
   }
+  // Image visualizer style — the whole style renders around this artwork,
+  // so frame 0 needs it decoded too.
+  if (config.visualizer.style === 'imgviz' && config.visualizer.imgvizSrc) {
+    try {
+      await loadBackgroundImage(config.visualizer.imgvizSrc)
+    } catch {
+      onNotice?.('Image visualizer artwork could not be loaded — the style shows its placeholder.')
+    }
+  }
   // Imported fonts (lyrics / title) — registered before frame 0 so every
   // frame uses the same faces (broken files silently fall back).
   await registerCustomFonts(config.fonts)

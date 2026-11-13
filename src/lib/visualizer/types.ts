@@ -33,7 +33,7 @@ export type GradientPresetId = 'sunset' | 'aurora' | 'ember' | 'neon' | 'mono'
 
 /* --------------------------------- Visualizer -------------------------------- */
 
-export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'perspective' | 'terrain' | 'sphere' | 'serato'
+export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'perspective' | 'terrain' | 'sphere' | 'serato' | 'imgviz'
 export type MirrorMode = 'none' | 'mirror' | 'center'
 
 export interface VisualizerConfig {
@@ -143,6 +143,36 @@ export interface VisualizerConfig {
    *  (bassy passages green, crisp ones pink), 'palette' = the gradient
    *  sweeping across the strip, 'solid' = the palette's first stop. */
   seratoColors: 'rainbow' | 'palette' | 'solid'
+  /** Image style — the uploaded artwork (data URL) the whole style renders
+   *  around. Transparency strongly recommended. */
+  imgvizSrc: string
+  /** Image style — rest size as % of canvas height (15..100) */
+  imgvizSize: number
+  /** Image style — dim the artwork 0..1 so the inner visualizer reads
+   *  (0 = the artwork shows at full brightness, 1 = silhouette only) */
+  imgvizDim: number
+  /** Image style — which visualizer renders inside the silhouette */
+  imgvizInner: 'bars' | 'wave' | 'radial'
+  /** Image style — inner visualizer amplitude gain 0.2..2 */
+  imgvizInnerGain: number
+  /** Image style — glowing edges on/off (halo + rim light breathing with
+   *  the bass/energy drive) */
+  imgvizGlow: boolean
+  /** Image style — glow color: the visualizer palette or its own */
+  imgvizGlowMode: 'palette' | 'custom'
+  /** Image style — glow color when imgvizGlowMode = 'custom' */
+  imgvizGlowColor: string
+  /** Image style — glow strength 0..1 */
+  imgvizGlowStrength: number
+  /** Image style — electricity on/off (jagged bolts flickering off the
+   *  artwork's alpha edge with the music) */
+  imgvizBolt: boolean
+  /** Image style — bolt color: the visualizer palette or its own */
+  imgvizBoltMode: 'palette' | 'custom'
+  /** Image style — bolt color when imgvizBoltMode = 'custom' */
+  imgvizBoltColor: string
+  /** Image style — bolt density 0..1 (how many bolts flicker per frame) */
+  imgvizBoltDensity: number
 }
 
 /* --------------------------------- Background -------------------------------- */
@@ -1067,6 +1097,19 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     seratoWindow: 12,
     seratoHeight: 0.62,
     seratoColors: 'rainbow',
+    imgvizSrc: '',
+    imgvizSize: 55,
+    imgvizDim: 0.35,
+    imgvizInner: 'bars',
+    imgvizInnerGain: 1,
+    imgvizGlow: true,
+    imgvizGlowMode: 'palette',
+    imgvizGlowColor: '#ffffff',
+    imgvizGlowStrength: 0.6,
+    imgvizBolt: true,
+    imgvizBoltMode: 'palette',
+    imgvizBoltColor: '#7df9ff',
+    imgvizBoltDensity: 0.5,
     gradient: {
       stops: [...GRADIENT_PRESETS.sunset.stops.map((s) => ({ ...s }))],
       angle: 48,

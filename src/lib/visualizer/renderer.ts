@@ -19,6 +19,7 @@ import { buildGradient, buildRadialGradient, gradientLine, sampleGradient, withA
 import { getBackgroundImage } from './image-cache'
 import { getBackgroundMedia, getGifAnimation, gifFrameAt, isGifSrc } from './animated-bg'
 import { currentSeratoEnvelope } from './serato'
+import { drawImageViz } from './image-viz'
 import { drawLyrics } from './lyrics'
 import { drawTitle } from './title'
 import { drawDisc } from './disc'
@@ -536,6 +537,11 @@ function drawVisualizer(
     }
     case 'sphere':
       drawSphere(rc, frame, cfg, S)
+      break
+    case 'imgviz':
+      // The custom PNG style — centered artwork + inner spectrum mask, glow
+      // and bolts. Not a strip: it skips the vertical-orientation branch.
+      drawImageViz(rc, frame, cfg, S)
       break
     case 'radial':
       drawRadial(rc, frame, cfg, S)

@@ -57,6 +57,7 @@
 
 import { renderFrame } from '../src/lib/visualizer/renderer'
 import { bindSeratoSource, buildSeratoEnvelope } from '../src/lib/visualizer/serato'
+import { loadBackgroundImage } from '../src/lib/visualizer/image-cache'
 import { drawLyrics } from '../src/lib/visualizer/lyrics'
 import { DEFAULT_STUDIO_CONFIG, resolveLayersConfig } from '../src/lib/visualizer/types'
 import type { AudioFrame, RenderContext, StudioConfig } from '../src/lib/visualizer/types'
@@ -260,6 +261,18 @@ const baseOf = new WeakMap<object, Record<string, unknown>>()
     this.width = width
     this.height = height
   }
+}
+// The image-viz style (S18) reads uploaded artwork through the shared image
+// cache — bun has no DOM Image, so a minimal stand-in stands in: complete +
+// natural size from the start (like an already-decoded data URL).
+;(globalThis as { Image?: unknown }).Image = class MockImage {
+  complete = true
+  naturalWidth = 64
+  naturalHeight = 64
+  decoding = 'sync'
+  onload: unknown = null
+  onerror: unknown = null
+  src = ''
 }
 
 const logOf = (c: HTMLCanvasElement): OpRec[] => (c as unknown as { __log: OpRec[] }).__log
@@ -2059,6 +2072,142 @@ console.log('S17 serato — the whole-song strip scrolls under a fixed needle')
   const at2 = placeholderFrects()
   renderOne(cfgSer(), 9.9)
   check('placeholder renders identically at any time', placeholderFrects() === at2, 'placeholder moved')
+}
+
+/* ------------------- S18 the Image (PNG) visualizer ------------------- */
+
+console.log('S18 image-viz — the custom PNG style: inner spectrum, glowing edges, electricity')
+{
+  const cfgImg = (over: Partial<StudioConfig['visualizer']> = {}): StudioConfig => {
+    const cfg = structuredClone(DEFAULT_STUDIO_CONFIG)
+    cfg.visualizer = { ...structuredClone(DEFAULT_STUDIO_CONFIG.visualizer), style: 'imgviz' as const, ...over }
+    return cfg
+  }
+  /** One measured frame from an explicit AudioFrame (the drive powers the
+   *  glow and the bolts, so these modes only diverge with real audio). */
+  const renderWith = (frame: AudioFrame, config: StudioConfig): void => {
+    for (const c of [main, ...created]) logOf(c).length = 0
+    renderFrame(rc, frame, config)
+  }
+  /** Canvas-identity-free op stream — safe to stringify (canvas srcs tag
+   *  as 'canvas', the artwork as 'artwork', other images as 'img') and
+   *  stable across identical renders (fresh scratch canvases tag alike). */
+  const streamFor = (c: HTMLCanvasElement): string =>
+    JSON.stringify(
+      logOf(c).map((r) => {
+        const srcTag =
+          r.src === artwork ? 'artwork'
+          : r.src && typeof r.src === 'object' && '__log' in (r.src as object) ? 'canvas'
+          : (r.src as { src?: string } | null)?.src?.startsWith('data:') ? 'img'
+          : r.src ?? null
+        return [r.kind, r.op, Number(r.alpha.toFixed(4)), srcTag, r.style ?? null, r.rects ?? null]
+      }),
+    )
+  const canvasDraws = (c: HTMLCanvasElement): OpRec[] =>
+    logOf(c).filter((r) => r.kind === 'draw' && r.src && typeof r.src === 'object' && '__log' in (r.src as object))
+  const maskScratch = (): HTMLCanvasElement | undefined =>
+    created.find((c) => logOf(c).some((r) => r.kind === 'draw' && r.op === 'destination-in'))
+
+  // A loud frame — the drive (bass/energy) powers glow + bolts; a silent
+  // frame for the gating checks.
+  const loud = {
+    ...frameAt(0.5),
+    freq: Float32Array.from({ length: 64 }, (_, i) => 0.2 + 0.8 * Math.exp(-i / 14)),
+    wave: Float32Array.from({ length: 2048 }, (_, i) => Math.sin(i / 11) * 0.8),
+    bass: 0.8,
+    energy: 0.7,
+    treble: 0.2,
+  }
+  const quiet = {
+    ...frameAt(0.5),
+    freq: new Float32Array(64),
+    wave: new Float32Array(2048),
+    bass: 0,
+    energy: 0,
+    treble: 0,
+    sub: 0,
+  }
+
+  // 1) Placeholder: no artwork → the dashed hint, deterministic in shape.
+  renderWith(frameAt(0.5), cfgImg())
+  check('placeholder hints for a PNG (text op recorded)', logOf(main).some((r) => r.kind === 'text'), 'no text op')
+  const hintA = JSON.stringify(logOf(main).filter((r) => r.kind === 'text'))
+  renderWith(frameAt(9.9), cfgImg())
+  check('placeholder renders identically at any time', JSON.stringify(logOf(main).filter((r) => r.kind === 'text')) === hintA, 'placeholder moved')
+
+  // Load the fake artwork into the shared image cache (the Image stub is
+  // born decoded: complete + natural size from the start).
+  const fakeSrc = 'data:image/png;base64,FAKEIMGVIZ'
+  const artwork = await loadBackgroundImage(fakeSrc)
+
+  // 2) The artwork paints + the inner spectrum gets masked to its shape.
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc }))
+  const drawSrcs = draws(main).map((r) => r.src)
+  check('the artwork paints onto the frame', drawSrcs.includes(artwork), 'no artwork draw')
+  const maskCanvas = maskScratch()
+  check('the inner spectrum is clipped to the silhouette (destination-in mask)', !!maskCanvas, 'no masked scratch canvas')
+  check('the masked spectrum composites onto the frame', !!maskCanvas && drawSrcs.includes(maskCanvas), 'mask result not drawn')
+
+  // 3) Determinism: the same frame twice → identical canvas-free streams.
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc }))
+  const again = streamFor(main)
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc }))
+  check('image-viz renders deterministically (same frame → identical ops)', again === streamFor(main), 'op streams differ')
+
+  // 4) Electricity: bolts stroke the FRAME (they live outside the mask),
+  //    vanish at silence, and the density dial scales the storm.
+  const boltStrokes = logOf(main).filter((r) => r.kind === 'stroke')
+  check('electricity sparks bolts off the artwork (stroke passes on the frame)', boltStrokes.length >= 2, `strokes=${boltStrokes.length}`)
+  renderWith(quiet, cfgImg({ imgvizSrc: fakeSrc }))
+  check('silence grounds the electricity (no bolts)', logOf(main).every((r) => r.kind !== 'stroke'), 'bolts at silence')
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBoltDensity: 0.1 }))
+  const fewBolts = logOf(main).filter((r) => r.kind === 'stroke').length
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBoltDensity: 1 }))
+  const manyBolts = logOf(main).filter((r) => r.kind === 'stroke').length
+  check('bolt density scales the electric storm', manyBolts > fewBolts, `few=${fewBolts} many=${manyBolts}`)
+
+  // 5) Glowing edges: the halo rides the drive (loud breathes harder than
+  //    silence) and strength 0 skips the pass entirely.
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false }))
+  const loudGlow = canvasDraws(main).map((r) => r.alpha)
+  renderWith(quiet, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false }))
+  const quietGlow = canvasDraws(main).map((r) => r.alpha)
+  check(
+    'glow breathes with the music (halo alpha rides the drive)',
+    loudGlow.length > 0 && quietGlow.length > 0 && loudGlow[0] > quietGlow[0],
+    `loud=${loudGlow[0]} quiet=${quietGlow[0]}`,
+  )
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizGlow: false }))
+  check('glow off skips the halo/rim passes', canvasDraws(main).length === 1, `canvas draws=${canvasDraws(main).length}`)
+
+  // 6) The inner visualizer modes paint different geometry into the mask.
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizInner: 'bars' }))
+  const barsScratch = maskScratch()
+  const barFills = barsScratch ? logOf(barsScratch).filter((r) => r.kind === 'fill').length : 0
+  check('bars mode paints fills into the mask scratch', barFills > 0, `fills=${barFills}`)
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizInner: 'wave' }))
+  check('wave mode strokes a line into the mask scratch', created.some((c) => logOf(c).some((r) => r.kind === 'stroke')), 'no wave stroke')
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizInner: 'radial' }))
+  check('radial mode strokes spokes into the mask scratch', created.some((c) => logOf(c).some((r) => r.kind === 'stroke')), 'no radial strokes')
+
+  // 7) Sensitivity drives the inner bars; the size dial scales the box.
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizInner: 'bars', sensitivity: 0.4 }))
+  const shortH = Math.max(...(maskScratch() ? logOf(maskScratch()!).filter((r) => r.kind === 'fill').flatMap((r) => r.rects ?? []).map((rc) => rc.h) : [0]))
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizInner: 'bars', sensitivity: 2.4 }))
+  const tallH = Math.max(...(maskScratch() ? logOf(maskScratch()!).filter((r) => r.kind === 'fill').flatMap((r) => r.rects ?? []).map((rc) => rc.h) : [0]))
+  check('sensitivity drives the inner spectrum', tallH > shortH * 2, `short=${shortH.toFixed(1)} tall=${tallH.toFixed(1)}`)
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizInner: 'bars', imgvizSize: 20 }))
+  const smallW = maskScratch()?.width ?? 0
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizInner: 'bars', imgvizSize: 80 }))
+  const bigW = maskScratch()?.width ?? 0
+  check('artwork size scales the box', bigW > smallW * 2, `small=${smallW} big=${bigW}`)
+
+  // 8) Artwork dim: 0 keeps the picture full strength, 0.5 halves it.
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizGlow: false, imgvizDim: 0 }))
+  const fullAlpha = logOf(main).find((r) => r.kind === 'draw' && r.src === artwork)?.alpha
+  renderWith(loud, cfgImg({ imgvizSrc: fakeSrc, imgvizBolt: false, imgvizGlow: false, imgvizDim: 0.5 }))
+  const halfAlpha = logOf(main).find((r) => r.kind === 'draw' && r.src === artwork)?.alpha
+  check('artwork dim fades the picture (1 - dim)', fullAlpha === 1 && halfAlpha === 0.5, `full=${fullAlpha} half=${halfAlpha}`)
 }
 
 /* ----------------- S16 the Mirror family across every style ----------------- */

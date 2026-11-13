@@ -97,6 +97,15 @@ export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResu
       // Fall through — the pulse image is skipped.
     }
   }
+  // Image visualizer style — the whole style renders around this artwork,
+  // so frame 0 needs it decoded too.
+  if (config.visualizer.style === 'imgviz' && config.visualizer.imgvizSrc) {
+    try {
+      await loadBackgroundImage(config.visualizer.imgvizSrc)
+    } catch {
+      // Fall through — the style paints its placeholder.
+    }
+  }
   // Imported fonts (lyrics / title) — registered before frame 0 so every
   // frame uses the same faces (broken files silently fall back).
   await registerCustomFonts(config.fonts)

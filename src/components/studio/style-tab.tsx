@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
-import { AudioWaveform, BarChart3, Disc3, Droplet, Grid3x3, Mountain, Move3d, Orbit, Radar, Sparkles, Wand2, Waves, Loader2 } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { AudioWaveform, BarChart3, Disc3, Droplet, Grid3x3, ImagePlus, Loader2, Mountain, Move3d, Orbit, Radar, Sparkles, Trash2, Wand2, Waves } from 'lucide-react'
 import { toast } from 'sonner'
 import type { VisualizerStyle } from '@/lib/visualizer/types'
 import { extractPaletteFromArt } from '@/lib/visualizer/palette'
 import { useStudioStore } from '@/store/studio'
+import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
@@ -29,6 +30,7 @@ const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] =
   { id: 'terrain', label: 'Terrain', icon: Mountain },
   { id: 'sphere', label: 'Sphere', icon: Orbit },
   { id: 'serato', label: 'Serato', icon: Disc3 },
+  { id: 'imgviz', label: 'Image', icon: ImagePlus },
 ]
 
 /** Plain uppercase section label (VISUALIZER / GRADIENT / …) like the reference UI. */
@@ -87,6 +89,22 @@ export function StyleTab() {
   const visualizer = useStudioStore((s) => s.config.visualizer)
   const patchVisualizer = useStudioStore((s) => s.patchVisualizer)
   const patchGradient = useStudioStore((s) => s.patchGradient)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+
+  const handleImageFile = (file: File | undefined): void => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('That file is not an image')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      patchVisualizer({ imgvizSrc: String(reader.result) })
+      toast.success('Image set — press play and watch it light up')
+    }
+    reader.onerror = () => toast.error('Could not read that image')
+    reader.readAsDataURL(file)
+  }
 
   return (
     <div className="space-y-5">
@@ -137,6 +155,238 @@ export function StyleTab() {
       {/* Shape & motion */}
       <section className={sectionShell('amber')}>
         <SectionLabel accent="amber">SHAPE &amp; MOTION</SectionLabel>
+
+        {/* Image — the custom PNG style's own dressing */}
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/png,image/webp,image/jpeg,image/svg+xml"
+          className="hidden"
+          aria-label="Image visualizer file"
+          onChange={(e) => {
+            handleImageFile(e.target.files?.[0])
+            e.target.value = ''
+          }}
+        />
+        {visualizer.style === 'imgviz' ? (
+          <>
+            {visualizer.imgvizSrc ? (
+              <div className="space-y-2">
+                <img
+                  src={visualizer.imgvizSrc}
+                  alt="Image visualizer artwork preview"
+                  className="h-16 w-full rounded-lg border border-zinc-800 bg-[repeating-conic-gradient(#27272a_0%_25%,#18181b_0%_50%)] bg-[length:16px_16px] object-contain p-1"
+                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 flex-1 border-zinc-800 text-xs text-zinc-300 hover:border-zinc-600"
+                    onClick={() => imageInputRef.current?.click()}
+                  >
+                    <ImagePlus className="size-3.5" aria-hidden />
+                    Replace image
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-zinc-500 hover:text-red-400"
+                    aria-label="Remove image visualizer artwork"
+                    onClick={() => patchVisualizer({ imgvizSrc: '' })}
+                  >
+                    <Trash2 className="size-4" aria-hidden />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="flex h-16 w-full flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/40 text-zinc-400 transition-colors hover:border-emerald-500/60 hover:text-emerald-400"
+                onClick={() => imageInputRef.current?.click()}
+              >
+                <ImagePlus className="size-4" aria-hidden />
+                <span className="text-xs font-medium">Upload your PNG</span>
+              </button>
+            )}
+            <SliderRow
+              label="Artwork size"
+              value={visualizer.imgvizSize}
+              min={15}
+              max={100}
+              step={1}
+              onChange={(imgvizSize) => patchVisualizer({ imgvizSize })}
+              format={(v) => `${Math.round(v)}%`}
+            />
+            <SliderRow
+              label="Artwork dim"
+              value={visualizer.imgvizDim}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={(imgvizDim) => patchVisualizer({ imgvizDim })}
+              format={(v) => `${Math.round(v * 100)}%`}
+            />
+            <div className="space-y-1.5">
+              <MicroLabel>Inner visualizer</MicroLabel>
+              <div className="grid grid-cols-3 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+                {(
+                  [
+                    { id: 'bars', label: 'Bars' },
+                    { id: 'wave', label: 'Wave' },
+                    { id: 'radial', label: 'Radial' },
+                  ] as const
+                ).map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    aria-pressed={visualizer.imgvizInner === m.id}
+                    onClick={() => patchVisualizer({ imgvizInner: m.id })}
+                    className={cn(
+                      'h-7 rounded-md text-xs transition-colors',
+                      visualizer.imgvizInner === m.id
+                        ? 'bg-emerald-500 font-medium text-zinc-950'
+                        : 'text-zinc-300 hover:text-zinc-100',
+                    )}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <SliderRow
+              label="Inner gain"
+              value={visualizer.imgvizInnerGain}
+              min={0.2}
+              max={2}
+              step={0.05}
+              onChange={(imgvizInnerGain) => patchVisualizer({ imgvizInnerGain })}
+              format={(v) => `${Math.round(v * 100)}%`}
+            />
+            <div className="flex h-8 items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5">
+              <MicroLabel>Glowing edges</MicroLabel>
+              <Switch
+                aria-label="Toggle glowing edges"
+                checked={visualizer.imgvizGlow}
+                onCheckedChange={(imgvizGlow) => patchVisualizer({ imgvizGlow })}
+              />
+            </div>
+            {visualizer.imgvizGlow ? (
+              <>
+                <div className="space-y-1.5">
+                  <div className="flex h-5 items-center justify-between">
+                    <MicroLabel>Glow color</MicroLabel>
+                    {visualizer.imgvizGlowMode === 'custom' ? (
+                      <ColorPickerButton
+                        value={visualizer.imgvizGlowColor}
+                        onChange={(imgvizGlowColor) => patchVisualizer({ imgvizGlowColor })}
+                        showAlpha
+                        ariaLabel="Glow color"
+                      />
+                    ) : null}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+                    {(
+                      [
+                        { id: 'palette', label: 'Match scene' },
+                        { id: 'custom', label: 'Custom' },
+                      ] as const
+                    ).map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        aria-pressed={visualizer.imgvizGlowMode === m.id}
+                        onClick={() => patchVisualizer({ imgvizGlowMode: m.id })}
+                        className={cn(
+                          'h-7 rounded-md text-xs transition-colors',
+                          visualizer.imgvizGlowMode === m.id
+                            ? 'bg-emerald-500 font-medium text-zinc-950'
+                            : 'text-zinc-300 hover:text-zinc-100',
+                        )}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <SliderRow
+                  label="Glow strength"
+                  value={visualizer.imgvizGlowStrength}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  onChange={(imgvizGlowStrength) => patchVisualizer({ imgvizGlowStrength })}
+                  format={(v) => `${Math.round(v * 100)}%`}
+                />
+              </>
+            ) : null}
+            <div className="flex h-8 items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5">
+              <MicroLabel>Electricity</MicroLabel>
+              <Switch
+                aria-label="Toggle electricity"
+                checked={visualizer.imgvizBolt}
+                onCheckedChange={(imgvizBolt) => patchVisualizer({ imgvizBolt })}
+              />
+            </div>
+            {visualizer.imgvizBolt ? (
+              <>
+                <div className="space-y-1.5">
+                  <div className="flex h-5 items-center justify-between">
+                    <MicroLabel>Bolt color</MicroLabel>
+                    {visualizer.imgvizBoltMode === 'custom' ? (
+                      <ColorPickerButton
+                        value={visualizer.imgvizBoltColor}
+                        onChange={(imgvizBoltColor) => patchVisualizer({ imgvizBoltColor })}
+                        showAlpha
+                        ariaLabel="Bolt color"
+                      />
+                    ) : null}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+                    {(
+                      [
+                        { id: 'palette', label: 'Match scene' },
+                        { id: 'custom', label: 'Custom' },
+                      ] as const
+                    ).map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        aria-pressed={visualizer.imgvizBoltMode === m.id}
+                        onClick={() => patchVisualizer({ imgvizBoltMode: m.id })}
+                        className={cn(
+                          'h-7 rounded-md text-xs transition-colors',
+                          visualizer.imgvizBoltMode === m.id
+                            ? 'bg-emerald-500 font-medium text-zinc-950'
+                            : 'text-zinc-300 hover:text-zinc-100',
+                        )}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <SliderRow
+                  label="Bolt density"
+                  value={visualizer.imgvizBoltDensity}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  onChange={(imgvizBoltDensity) => patchVisualizer({ imgvizBoltDensity })}
+                  format={(v) => `${Math.round(v * 100)}%`}
+                />
+              </>
+            ) : null}
+            <p className="text-xs leading-relaxed text-zinc-500">
+              Your own PNG becomes the visualizer: the inner spectrum is
+              clipped to the artwork&apos;s own shape (Bars, Wave or Radial —
+              Artwork dim clears space for it), Glowing edges breathe a halo
+              around the outline, and Electricity sparks jagged bolts off its
+              edges with the music. PNG with transparency works best. Bar
+              count, Roundness and Gap dress the inner bars; the Layout
+              section below moves and resizes the whole thing.
+            </p>
+          </>
+        ) : null}
 
         {/* Orientation — the long strip styles can run left→right or top→bottom
             (the perspective road rotates with them: vertical points its
@@ -467,12 +717,13 @@ export function StyleTab() {
           />
         ) : null}
 
-        {visualizer.style === 'sphere' || visualizer.style === 'serato' ? (
+        {visualizer.style === 'sphere' || visualizer.style === 'serato' || visualizer.style === 'imgviz' ? (
           // The planet reads best as one clean orb — its mirrored twin just
           // doubled the dots into mush, so the sphere keeps no Mirror choice.
           // The Serato strip is already symmetric around its needle, and the
-          // deck wave has no twin either — glow switch only. Every other
-          // style answers the full Mirror family below.
+          // deck wave has no twin either. The image style is one freeform
+          // artwork — glow switch only. Every other style answers the full
+          // Mirror family below.
           <div className="space-y-1.5 pt-1">
             <MicroLabel>Glow</MicroLabel>
             <div className="flex h-8 items-center justify-end">
