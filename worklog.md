@@ -2291,3 +2291,44 @@ mode 'blue' shows two pickers — "Glow color" (blueInkColor) + "Paper color"
   cells green-dominant behind the pink dots; default restore → exact 60% blue
   baseline; Custom↔Blue toggle + reload clean; 0 page errors; lint 0 errors (27
   vendored). Pushed; Pages deploy pending.
+
+## 2026-11-13 — Phosphor monitor filter: the lo-fi sci-fi video tube (2df02c2)
+User (IM): "can you add these vertical styles aswell https://www.youtube.com/watch?v=-8eDk8aCJlY
+i dont know if it should be under dither or its own filter?" — video identified via oEmbed:
+Texturelabs "Advanced After Effects // Analogue Retro-Futuristic Monitor" (the lo-fi sci-fi
+video monitor: the picture shredded into vertical columns of small glowing dashes on a dark
+phosphor tube). Decision: its OWN filter — the geometry (fine dash columns) and controls
+(spacing) are unrelated to dither's square Bayer cells. Named "Phosphor" (green accent card
+between 3D glasses and Dither).
+- Pipeline (phosphor-filter.ts): GPU area-average downscale to one sample per dash cell
+  (contrast rides the draw, same as dither) → tiny getImageData → per-cell tone → shared
+  glow ladder shade (NO Bayer threshold — the tube renders continuous tones as dash
+  brightness) → putImageData → nearest-neighbor upscale → 'destination-in' with a cached
+  dash-gap mask (rows horizontal breaks + cols vertical breaks, ~cols+rows fills, rebuilt
+  only when W/H/cell/gap change — no per-dash fillRects) → composite over a "dark tube"
+  (frame brightness(0.36) + multiply by tube color — picture structure survives as a
+  paper-toned shadow) → additive bloom (two full-res contrast-crushed blurred copies of
+  the dash print, blur radii scale with cell size) → strength fade. NEW vs dither: shadow
+  floor — near-black cells (lum ≤0.07, soft ramp to 0.15) go TRANSPARENT so shadows sink
+  into the bare tube like the reference (dither paints every cell). globalAlpha clamped
+  Math.min(1, …) on the glow passes (beat flare can exceed 1).
+- Shared ladder: extracted dither's blue-ladder machinery into shade-ladder.ts
+  (parseHexRGB, ANCHOR_INK/PAPER_RGB, CANON_STOPS/LUT, rgbToHsl/hslToRgb,
+  buildShadeLadder(ink,paper) with the same #49b6ff anchor + identity shortcut + 12-slot
+  cache). Dither now imports it (behavior unchanged — default blue pick still
+  byte-identical); phosphor default ink #3dff7c / tube #03160c rides the same rotation.
+- Config: PhosphorFilterConfig (inkColor/paperColor/cellSize 3-12 default 5/gap 0-0.6
+  default 0.4/contrast .5/strength 1/glow .55/beatReactive+beatStrength) — colors
+  recolorable FROM DAY ONE (lesson from the dither request). patchPhosphorFilter in the
+  store; setConfig merges defaults (old saves safe); share links carry the field
+  automatically. Chain: phosphor runs BEFORE dither — dither stays the outermost poster
+  layer (stacking both = dither re-quantizes the dashes).
+- UI: phosphor-section.tsx — green card, Glow color + Tube color pickers with hint lines,
+  Dash size/Spacing/Contrast/Strength/Glow sliders, BeatPunchRow "Beat flare", transparent
+  note. Spacing semantics: 0 = solid glowing columns, 0.6 = sparse dot ticks.
+- E2E (agent-browser): green default → dash columns + dark tube, bars glow mint on black,
+  67% green-dominant pixels; pink #ff5fb0 → 33% pink / 0% green, ladder rebuilt around the
+  hue; spacing Home→0% = solid columns, End→60% = sparse ticks (keyboard-driven Radix
+  sliders); stacked with dither = blue Bayer poster over the dash print, no crash; toggles
+  + reload clean; 0 page errors, console clean, lint 0 errors (27 vendored). Pushed; Pages
+  deploy pending.
