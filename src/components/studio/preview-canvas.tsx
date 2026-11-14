@@ -37,7 +37,9 @@ function isTypingTarget(target: EventTarget | null): boolean {
  *
  * The rAF loop below runs unconditionally (even while paused) so config
  * tweaks repaint instantly; the frame source switches between the
- * AudioEngine analyser and a synthetic idle pattern in demo mode.
+ * AudioEngine analyser, the same analyser driven only by the background
+ * clip's own audio (opt-in, no track loaded), and a synthetic idle pattern
+ * in demo mode.
  * Also hosts drop-anywhere audio loading and Space / ←→ shortcuts.
  */
 export function PreviewCanvas() {
@@ -279,6 +281,16 @@ export function PreviewCanvas() {
       const currentConfig = configRef.current
       const loaded = engine?.isLoaded ?? false
 
+      // The background clip's own clock — the video element the renderer
+      // draws, so it advances exactly while the picture (and its opt-in
+      // audio) is rolling. 0 when nothing video-ish is playing.
+      const videoClock = (): number => {
+        const bg = currentConfig.background
+        const el =
+          bg.mode === 'video' && bg.videoSrc ? getPreviewVideoElement(bg.videoSrc) : null
+        return el && !el.paused ? el.currentTime : 0
+      }
+
       let frame: AudioFrame
       if (loaded && engine) {
         frame = engine.getLiveFrame()
@@ -289,6 +301,27 @@ export function PreviewCanvas() {
           playingRef.current = engine.isPlaying
           setPlaying(engine.isPlaying)
         }
+        // Track paused but the background clip's sound is live: keep the
+        // song-time fields on the video's clock so the time-epoch filter
+        // animations (VHS tracking, film dust, glitch slices) roll with the
+        // picture instead of freezing on the parked song position.
+        if (!engine.isPlaying && engine.isVideoAudioLive) {
+          frame.time = videoClock() || frame.time
+        }
+      } else if (engine?.isVideoAudioLive) {
+        // No track loaded at all, but the background clip's own sound is
+        // live: analyse it so the bars and audio-reactive filters follow
+        // the video (VHS / film / glitch read the same frame). The
+        // song-time fields ride the video's clock for the same reason.
+        if (playingRef.current) {
+          demoTimeRef.current = (demoTimeRef.current + dt) % DEMO_DURATION
+        }
+        currentTimeRef.current = demoTimeRef.current
+        durationRef.current = DEMO_DURATION
+        // Decorative clock (cycle colors, wobbles) free-runs on the wall
+        // clock so styling stays alive even while the demo clock is paused.
+        frame = engine.getLiveFrame()
+        frame.time = videoClock() || demoTimeRef.current
       } else {
         // Demo mode: synthetic idle pattern driven by a clock that only
         // advances while "playing".

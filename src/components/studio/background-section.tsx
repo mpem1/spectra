@@ -425,8 +425,9 @@ function VideoBackgroundSection() {
             onCheckedChange={(videoAudio) => patchBackground({ videoAudio })}
           />
           <p className="text-[10px] leading-snug text-zinc-600">
-            Play the clip's own sound through the audio engine — it mixes
-            with your track and drives the visualizer together with it.
+            Play the clip's own sound through the audio engine — it drives
+            the visualizer and audio-reactive filters with or without a
+            track loaded, and mixes with your track when one is playing.
             Off by default, so clips stay silent until you ask for sound.
             Exports keep your track's audio.
           </p>
