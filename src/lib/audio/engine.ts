@@ -8,6 +8,13 @@
  *
  * All analysis options (barCount / smoothing) are pushed in from the UI via
  * setAnalysisOptions so the preview reacts to settings changes live.
+ *
+ * Background-video audio (opt-in): a looping background clip's own sound can
+ * be routed into the same graph — attachVideoElement binds the render element
+ * with a MediaElementSource into the shared analyser, so the visualizer
+ * reacts to the video and the track together and both play through the
+ * master gain. Detaching disconnects the bind (created binds are kept per
+ * element — an element can only ever be bound once per context).
  */
 import type { AudioFrame } from '../visualizer/types'
 import {
@@ -39,6 +46,13 @@ export class AudioEngine {
   private gain: GainNode | null = null
   private buffer: AudioBuffer | null = null
   private source: AudioBufferSourceNode | null = null
+
+  /** Background-video audio binds, per media element. Created once per
+   *  element (a second createMediaElementSource would throw) and kept so a
+   *  re-attach is just a connect(). */
+  private videoSources = new Map<HTMLMediaElement, MediaElementAudioSourceNode>()
+  /** The currently routed video element (null = video audio off). */
+  private videoEl: HTMLMediaElement | null = null
 
   private trackName = ''
   private trackDuration = 0
@@ -181,6 +195,70 @@ export class AudioEngine {
     return this.trackName
   }
 
+  /* --------------------------- Background video audio ----------------------- */
+
+  /**
+   * Route a background video element's audio into the engine: the sound is
+   * analysed together with the track (the visualizer reacts to both) and
+   * plays through the master gain. Unmute the element (`el.muted = false`)
+   * before/after calling — a muted element delivers silence to the graph.
+   * Safe to call repeatedly with the same element; attaching a different one
+   * disconnects the previous bind.
+   */
+  attachVideoElement(el: HTMLMediaElement): void {
+    const ctx = this.ensureContext()
+    if (this.videoEl === el) return
+    if (this.videoEl) {
+      try {
+        this.videoSources.get(this.videoEl)?.disconnect()
+      } catch {
+        /* already disconnected */
+      }
+    }
+    this.videoEl = el
+    let bind = this.videoSources.get(el)
+    if (!bind) {
+      try {
+        bind = ctx.createMediaElementSource(el)
+      } catch {
+        // Element can't feed the graph (unsupported/cross-tainted) — leave
+        // everything unrouted; the element keeps its own mute state.
+        this.videoEl = null
+        return
+      }
+      this.videoSources.set(el, bind)
+    }
+    // Duplicate connects are ignored (not an error), the try is belt+braces.
+    try {
+      bind.connect(this.analyser!)
+    } catch {
+      /* already connected */
+    }
+    if (ctx.state === 'suspended') {
+      void ctx.resume().catch(() => undefined)
+    }
+  }
+
+  /** Unroute the video audio (toggle off / video replaced / mode switch).
+   *  The bind stays in the map so a later re-attach is a plain connect. */
+  detachVideoElement(): void {
+    const el = this.videoEl
+    if (!el) return
+    try {
+      this.videoSources.get(el)?.disconnect()
+    } catch {
+      /* already disconnected */
+    }
+    this.videoEl = null
+  }
+
+  /** True while the routed video element is actually delivering audio into
+   *  the graph (attached, unmuted, playing, decodable). */
+  get isVideoAudioLive(): boolean {
+    const el = this.videoEl
+    return !!el && !el.paused && !el.muted && el.readyState >= 2
+  }
+
   /* -------------------------------- Analysis -------------------------------- */
 
   setAnalysisOptions(opts: Partial<AnalysisOptions>): void {
@@ -208,7 +286,10 @@ export class AudioEngine {
     // use the deterministic offline analyzer instead, where styleTime = time.
     frame.styleTime = performance.now() / 1000
 
-    if (!this.playing || !this.analyser || !this.ctx) {
+    // Analyze while the track plays OR while routed video audio is live —
+    // the analyser hears the mix of whatever is connected (track, video, or
+    // both), so the visuals react to the video even with the track paused.
+    if ((!this.playing && !this.isVideoAudioLive) || !this.analyser || !this.ctx) {
       frame.freq.fill(0)
       frame.wave.fill(0)
       frame.energy = 0
@@ -246,6 +327,15 @@ export class AudioEngine {
     this.endedCallbacks = []
     this.buffer = null
     this.trackDuration = 0
+    for (const bind of this.videoSources.values()) {
+      try {
+        bind.disconnect()
+      } catch {
+        /* context going away */
+      }
+    }
+    this.videoSources.clear()
+    this.videoEl = null
     if (this.ctx) {
       const ctx = this.ctx
       this.ctx = null

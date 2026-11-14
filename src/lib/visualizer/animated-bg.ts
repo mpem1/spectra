@@ -5,9 +5,11 @@
  * drawable frame every rAF, and the offline exporters need DETERMINISTIC
  * frames (same song time → same pixels).
  *
- * - Video files (mp4/webm/mov): a muted, looping <video> drives the live
+ * - Video files (mp4/webm/mov): a looping <video> drives the live
  *   preview on the wall clock (decorative motion, keeps playing while the
- *   track is paused — same philosophy as the vinyl spin). The last drawable
+ *   track is paused — same philosophy as the vinyl spin). It is muted
+ *   unless the user opts into the clip's own audio (getPreviewVideoElement
+ *   + the engine's attachVideoElement). The last drawable
  *   frame is held across the native loop seam so the wrap never flashes.
  *   Exports of the MP4 pipeline get their OWN private element and seek it to
  *   `songTime % length` before every frame, so exported video is frame-exact.
@@ -236,6 +238,30 @@ export function getBackgroundMedia(src: string): BackgroundMedia | null {
     previewVideos.set(src, entry)
   }
   return observePreviewVideo(entry)
+}
+
+/**
+ * The live-preview video element for `src`, created (and auto-played) on
+ * first use — the same element the renderer draws, so unmuting it and
+ * attaching it to the audio engine plays the clip's own sound in sync with
+ * the picture. Null only when `src` is empty.
+ */
+export function getPreviewVideoElement(src: string): HTMLVideoElement | null {
+  if (!src) return null
+  let entry = previewVideos.get(src)
+  if (!entry) {
+    entry = { el: createVideoElement(src, false), snap: null, snapAt: 0, drawableAt: 0 }
+    previewVideos.set(src, entry)
+  }
+  return entry.el
+}
+
+/**
+ * Mute (or unmute) every cached preview video element — the video-audio
+ * toggle-off path keeps all of them silent even while they keep looping.
+ */
+export function setPreviewVideosMuted(muted: boolean): void {
+  for (const entry of previewVideos.values()) entry.el.muted = muted
 }
 
 /**

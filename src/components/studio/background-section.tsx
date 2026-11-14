@@ -415,9 +415,28 @@ function VideoBackgroundSection() {
 
       <MediaBackgroundControls />
 
+      {/* The clip's own sound — strictly opt-in (off by default). GIFs carry
+          no audio, so the toggle only shows for real video files. */}
+      {background.videoSrc && !isGifSrc(background.videoSrc) ? (
+        <section className="space-y-1.5">
+          <ToggleRow
+            label="Video audio"
+            checked={!!background.videoAudio}
+            onCheckedChange={(videoAudio) => patchBackground({ videoAudio })}
+          />
+          <p className="text-[10px] leading-snug text-zinc-600">
+            Play the clip's own sound through the audio engine — it mixes
+            with your track and drives the visualizer together with it.
+            Off by default, so clips stay silent until you ask for sound.
+            Exports keep your track's audio.
+          </p>
+        </section>
+      ) : null}
+
       <p className="text-[11px] leading-snug text-zinc-500">
-        The clip loops automatically and stays muted behind your track. On the
-        preview: drag the video to move it, drag the corner handle or scroll
+        The clip loops automatically and stays muted behind your track
+        unless you turn Video audio on. On the preview: drag the video to
+        move it, drag the corner handle or scroll
         to zoom — same framing controls as the image background. Videos loop
         in real time; GIFs are decoded into frames so the exported MP4 is
         frame-exact. The shade fader keeps the visualizer readable.

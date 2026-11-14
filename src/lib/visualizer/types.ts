@@ -218,8 +218,15 @@ export interface BackgroundConfig {
   gradient: GradientConfig
   /** Image data URL (used when mode = image), drawn cover-fit */
   imageSrc: string
-  /** Video/GIF data URL (used when mode = video), looping and muted */
+  /** Video/GIF data URL (used when mode = video); loops on the wall clock,
+   *  muted unless the opt-in below is on */
   videoSrc: string
+  /** Opt-in: play the background video's own audio through the engine —
+   *  the clip's sound is analysed together with the track (the visualizer
+   *  reacts to both) and plays through the master volume. Off by default,
+   *  and meaningless for GIFs (which carry no sound). MP4 exports keep
+   *  muxing the track's audio. */
+  videoAudio?: boolean
   /** Horizontal image offset as a fraction of canvas width (0 = centered) */
   x: number
   /** Vertical image offset as a fraction of canvas height (0 = centered) */
@@ -1339,6 +1346,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     beatFlip: false,
     flipSensitivity: 0.1,
     flipHold: 0.2,
+    // The background video's own sound stays muted until the user opts in.
+    videoAudio: false,
   },
   lyrics: {
     enabled: false,

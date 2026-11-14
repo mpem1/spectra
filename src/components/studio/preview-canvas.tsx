@@ -9,7 +9,12 @@ import { useStudioStore } from '@/store/studio'
 import { setPreviewCanvas } from '@/components/studio/canvas-registry'
 import { setEngine, setPreviewControls, type PreviewControls } from '@/components/studio/engine-registry'
 import { loadAudioFile } from '@/components/studio/load-audio'
-import { warmGif } from '@/lib/visualizer/animated-bg'
+import {
+  getPreviewVideoElement,
+  isGifSrc,
+  setPreviewVideosMuted,
+  warmGif,
+} from '@/lib/visualizer/animated-bg'
 import { PlayerBar } from '@/components/studio/player-bar'
 import { BgImageTransform } from '@/components/studio/bg-image-transform'
 import { cn } from '@/lib/utils'
@@ -121,6 +126,39 @@ export function PreviewCanvas() {
   useEffect(() => {
     engineRef.current?.setAnalysisOptions({ barCount, smoothing })
   }, [barCount, smoothing])
+
+  /* ------------------------ background video audio ------------------------- */
+
+  /**
+   * The background video's own sound, strictly opt-in (off by default):
+   * when enabled on a real (non-GIF) video background, the render element
+   * is unmuted and routed into the audio engine — the clip's audio is
+   * analysed together with the track (the visualizer reacts to both) and
+   * plays through the master volume. Toggling off, switching to a GIF or
+   * another background mode re-mutes everything and unroutes it.
+   */
+  const bgMode = config.background.mode
+  const bgVideoSrc = config.background.videoSrc
+  const bgVideoAudio = config.background.videoAudio
+  useEffect(() => {
+    const engine = engineRef.current
+    const active =
+      bgMode === 'video' && !!bgVideoSrc && !isGifSrc(bgVideoSrc) && !!bgVideoAudio
+    if (active) {
+      const el = getPreviewVideoElement(bgVideoSrc)
+      if (el) {
+        // The clip loops on the wall clock; make sure it is actually rolling
+        // (autoplay may have been blocked before any user gesture — a toggle
+        // click IS a gesture, so play() succeeds here).
+        if (el.paused) void el.play().catch(() => undefined)
+        el.muted = false
+        engine?.attachVideoElement(el)
+      }
+    } else {
+      engine?.detachVideoElement()
+      setPreviewVideosMuted(true)
+    }
+  }, [bgMode, bgVideoSrc, bgVideoAudio])
 
   /* ----------------------- drop-anywhere + shortcuts ----------------------- */
 
