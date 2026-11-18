@@ -3,7 +3,12 @@
 import { useState } from 'react'
 import { Camera, Circle, Download, Film, Square } from 'lucide-react'
 import { toast } from 'sonner'
-import type { ExportLength, ExportQuality, ExportResolution } from '@/lib/visualizer/types'
+import type {
+  ExportFormat,
+  ExportLength,
+  ExportQuality,
+  ExportResolution,
+} from '@/lib/visualizer/types'
 import { resolutionShape } from '@/lib/visualizer/types'
 import {
   useStudioStore,
@@ -51,8 +56,9 @@ const LENGTH_LABELS: Record<ExportLength, string> = {
 const PHASE_LABELS: Record<string, string> = {
   preparing: 'Preparing…',
   rendering: 'Rendering frames…',
-  encoding: 'Encoding video…',
-  muxing: 'Muxing MP4…',
+  encoding: 'Encoding audio…',
+  muxing: 'Muxing…',
+  converting: 'Converting audio to AAC…',
   done: 'Finalizing…',
 }
 
@@ -162,14 +168,15 @@ export function ExportTab() {
             <MicroLabel>Format</MicroLabel>
             <Select
               value={exportSettings.format}
-              onValueChange={() => setExportSettings({ format: 'mp4' })}
+              onValueChange={(format) => setExportSettings({ format: format as ExportFormat })}
               disabled={exporting}
             >
               <SelectTrigger size="sm" className="w-full" aria-label="Export format">
                 <SelectValue placeholder="Format" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="mp4">MP4 (H.264 + audio)</SelectItem>
+                <SelectItem value="mp4">MP4 · H.264 + AAC</SelectItem>
+                <SelectItem value="webm">WebM · VP9 + Opus</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -280,8 +287,10 @@ export function ExportTab() {
           Renders offline frame-by-frame and muxes your{' '}
           <span className="inline-block rounded border border-zinc-700 bg-zinc-950 px-1 py-px font-medium text-zinc-300">
             original audio in true stereo
-          </span>{' '}
-          (256 kbps AAC) — no clicks, no drift, perfect sync. Opens directly in DaVinci Resolve.
+          </span>
+          . The MP4 always carries AAC — if this browser lacks an AAC encoder, the audio is
+          converted to AAC in-browser automatically, so Facebook / Instagram accept the file.
+          WebM (VP9 + Opus) is the smaller option for Discord and the web.
         </p>
         <p className="text-[11px] leading-relaxed text-zinc-500">
           Glow and gradient-heavy visuals need bitrate — if the file looks soft, raise{' '}
@@ -325,7 +334,7 @@ export function ExportTab() {
                   onClick={() => void startExport()}
                 >
                   <Download className="size-4" />
-                  Export MP4
+                  Export {exportSettings.format === 'webm' ? 'WebM' : 'MP4'}
                 </Button>
               </span>
             </TooltipTrigger>

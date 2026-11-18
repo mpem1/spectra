@@ -17,6 +17,7 @@
  *    when the preview canvas is unmounted).
  */
 import { ArrayBufferTarget, Muxer } from 'mp4-muxer'
+import { ArrayBufferTarget as WebMArrayBufferTarget, Muxer as WebMMuxer } from 'webm-muxer'
 import { OfflineAnalyzer } from '../audio/offline'
 import { renderFrame } from '../visualizer/renderer'
 import { loadBackgroundImage } from '../visualizer/image-cache'
@@ -58,6 +59,19 @@ export class ExportCancelledError extends Error {
     super('Export cancelled')
     this.name = 'ExportCancelledError'
   }
+}
+
+/** Audio track kinds a finished export can carry. */
+export type ExportAudioKind = 'aac' | 'opus' | 'silent'
+
+export interface ExportMediaResult {
+  blob: Blob
+  /** AAC for mp4 targets, Opus for webm, 'silent' when no audio encoder exists. */
+  audioKind: ExportAudioKind
+  /** The winning WebCodecs video codec string (diagnostics). */
+  videoCodec: string
+  frames: number
+  durationSec: number
 }
 
 /**
@@ -216,29 +230,16 @@ function sleep(ms = 0): Promise<void> {
 }
 
 /**
- * Renders + encodes the visualizer to a finished MP4 blob.
- * Progress mapping: preparing 0 → rendering 0..0.9 → encoding 0.9..0.97 →
- * muxing 0.97 → done 1.
+ * Decode every optional asset that must exist before frame 0 so each
+ * rendered frame includes it (deterministic output): background image,
+ * album art / disc face, watermark, pulse image, image-visualizer artwork,
+ * imported fonts, and the background video or GIF. Returns the background
+ * video source ('' when none) so the render loop can seek it per frame.
  */
-export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
-  const { config, settings, audioBuffer, onProgress, signal, onNotice } = opts
-
-  if (typeof VideoEncoder === 'undefined' || typeof AudioEncoder === 'undefined') {
-    throw new Error(
-      'WebCodecs is not supported in this browser. Use Chrome or Edge for deterministic export.',
-    )
-  }
-
-  const report = (p: ExportProgress): void => {
-    onProgress?.(p)
-  }
-  const cancelled = (): boolean => signal?.cancelled === true
-
-  report({ phase: 'preparing', progress: 0, time: 0 })
-
-  // A configured background image must be fully decoded before frame 0 so
-  // every rendered frame includes it (deterministic output). Same for the
-  // album art used by the vinyl/CD layer.
+async function prepareExportAssets(
+  config: StudioConfig,
+  onNotice?: (message: string) => void,
+): Promise<string> {
   if (config.background.mode === 'image' && config.background.imageSrc) {
     try {
       await loadBackgroundImage(config.background.imageSrc)
@@ -307,6 +308,35 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
       onNotice?.('Background video could not be loaded — exporting with a dark background.')
     }
   }
+  return bgVideoSrc
+}
+
+/**
+ * Renders + encodes the visualizer to a finished MP4 (H.264 video, AAC or
+ * Opus audio per platform negotiation). The returned audioKind tells callers
+ * whether the platform AAC encoder was available — Opus-in-MP4 files are
+ * rejected by social platforms (Facebook/Instagram), so callers fix the
+ * audio with ffmpeg.wasm when this is not 'aac'.
+ * Progress mapping: preparing 0 → rendering 0..0.9 → encoding 0.9..0.97 →
+ * muxing 0.97 → done 1.
+ */
+export async function exportMP4(opts: ExportMP4Options): Promise<ExportMediaResult> {
+  const { config, settings, audioBuffer, onProgress, signal, onNotice } = opts
+
+  if (typeof VideoEncoder === 'undefined' || typeof AudioEncoder === 'undefined') {
+    throw new Error(
+      'WebCodecs is not supported in this browser. Use Chrome or Edge for deterministic export.',
+    )
+  }
+
+  const report = (p: ExportProgress): void => {
+    onProgress?.(p)
+  }
+  const cancelled = (): boolean => signal?.cancelled === true
+
+  report({ phase: 'preparing', progress: 0, time: 0 })
+
+  const bgVideoSrc = await prepareExportAssets(config, onNotice)
 
   const fps = settings.fps
   const analyzer = new OfflineAnalyzer(audioBuffer, fps)
@@ -548,5 +578,347 @@ export async function exportMP4(opts: ExportMP4Options): Promise<Blob> {
 
   const blob = new Blob([target.buffer], { type: 'video/mp4' })
   report({ phase: 'done', progress: 1, time: durationSeconds })
-  return blob
+  return {
+    blob,
+    audioKind: audio.kind,
+    videoCodec: chosenConfig.codec,
+    frames: totalFrames,
+    durationSec: durationSeconds,
+  }
+}
+
+/* ------------------------------- WebM (VP9 + Opus) ------------------------------ */
+
+/**
+ * VP9 codec candidates, probed in order with `isConfigSupported`. The level
+ * digit must legally cover resolution × fps; libvpx accepts higher levels
+ * loosely, so the ladder starts generous (level 4.1 covers 1080p60) and ends
+ * at the safest smallest level.
+ */
+const VP9_CANDIDATES = [
+  'vp09.00.41.08', // profile 0 · level 4.1 · 1080p60 and below
+  'vp09.00.40.08', // profile 0 · level 4.0 · 1080p30
+  'vp09.00.31.08', // profile 0 · level 3.1 · 720p
+  'vp09.00.10.08', // profile 0 · level 1.0 · small frames
+]
+
+/**
+ * Renders + encodes the visualizer to a finished WebM blob (VP9 video +
+ * Opus audio). The frame loop mirrors the MP4 exporter — the deterministic
+ * rules are identical — only the codec negotiation and the muxer differ.
+ * Opus only runs at 48 kHz, so 44.1 kHz sources are resampled first with
+ * the same deterministic linear interpolator the MP4 audio path uses.
+ */
+export async function exportWEBM(opts: ExportMP4Options): Promise<ExportMediaResult> {
+  const { config, settings, audioBuffer, onProgress, signal, onNotice } = opts
+
+  if (typeof VideoEncoder === 'undefined') {
+    throw new Error(
+      'WebCodecs is not supported in this browser. Use Chrome, Edge, Firefox 130+ or Safari 16.4+ for WebM export.',
+    )
+  }
+
+  const report = (p: ExportProgress): void => {
+    onProgress?.(p)
+  }
+  const cancelled = (): boolean => signal?.cancelled === true
+
+  report({ phase: 'preparing', progress: 0, time: 0 })
+  const bgVideoSrc = await prepareExportAssets(config, onNotice)
+
+  const fps = settings.fps
+  const analyzer = new OfflineAnalyzer(audioBuffer, fps)
+
+  // Serato strip: identical whole-song envelope + sync binding as the MP4
+  // path so the scroll matches the preview frame for frame.
+  if (config.visualizer.style === 'serato') {
+    bindSeratoSource(audioBuffer)
+    await prepareSeratoEnvelope(audioBuffer)
+  }
+
+  const previewFrames =
+    settings.length === '30s' ? 30 * fps : settings.length === '15s' ? 15 * fps : null
+  const totalFrames = Math.min(
+    previewFrames === null ? analyzer.totalFrames : Math.ceil(previewFrames),
+    analyzer.totalFrames,
+  )
+  if (totalFrames < 1) {
+    throw new Error('Audio buffer is empty — nothing to export.')
+  }
+
+  const { width, height } = RESOLUTIONS[settings.resolution]
+  const durationSeconds = totalFrames / fps
+
+  // Opus negotiation (48 kHz stereo, 192 kbps). A missing encoder degrades
+  // to a silent WebM with a notice — never fails the whole export.
+  let opus: { chL: Float32Array; chR: Float32Array } | null = null
+  if (typeof AudioEncoder !== 'undefined') {
+    try {
+      const support = await AudioEncoder.isConfigSupported({
+        codec: 'opus',
+        sampleRate: 48_000,
+        numberOfChannels: 2,
+        bitrate: 192_000,
+      })
+      if (support.supported) {
+        const stereo = extractStereoAudio(audioBuffer, durationSeconds)
+        if (stereo.chL.length > 0) {
+          opus = {
+            chL: resampleLinear(stereo.chL, stereo.sampleRate, 48_000),
+            chR: resampleLinear(stereo.chR, stereo.sampleRate, 48_000),
+          }
+        }
+      }
+    } catch {
+      /* fall through to a silent WebM */
+    }
+  }
+  if (!opus) {
+    onNotice?.('No Opus audio encoder in this browser — exporting a silent WebM.')
+  }
+
+  const target = new WebMArrayBufferTarget()
+  const muxer = new WebMMuxer({
+    target,
+    video: { codec: 'V_VP9', width, height, frameRate: fps },
+    ...(opus ? { audio: { codec: 'A_OPUS', sampleRate: 48_000, numberOfChannels: 2 } } : {}),
+    type: 'webm',
+  })
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d', { alpha: true })
+  if (!ctx) {
+    throw new Error('Could not create a 2D canvas context for the export render.')
+  }
+
+  let failure: Error | null = null
+  const fail = (err: DOMException | Error): void => {
+    if (!failure) failure = err instanceof Error ? err : new Error(String(err))
+  }
+
+  const bitratePreset = QUALITY_PRESETS[settings.quality ?? 'high']
+  const requestedBitrate = Math.round(width * height * fps * bitratePreset.bpp)
+  const encoderBitrate = Math.min(bitratePreset.max, Math.max(bitratePreset.min, requestedBitrate))
+  const keyFrameInterval = Math.max(1, fps * 2)
+  const frameDurationMicros = Math.round(1e6 / fps)
+
+  const videoEncoder = new VideoEncoder({
+    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    error: fail,
+  })
+
+  let chosenConfig: EncoderConfig | null = null
+  let chosenCodec: string | null = null
+  for (const codec of VP9_CANDIDATES) {
+    for (const rateControl of RATE_CONTROL_SETS) {
+      const candidate: EncoderConfig = {
+        codec,
+        width,
+        height,
+        bitrate: encoderBitrate,
+        framerate: fps,
+        ...rateControl,
+      }
+      try {
+        const support = await VideoEncoder.isConfigSupported(candidate)
+        if (support.supported) {
+          chosenConfig = candidate
+          chosenCodec = codec
+          break
+        }
+      } catch {
+        /* try the next, simpler configuration */
+      }
+    }
+    if (chosenConfig) break
+  }
+  if (!chosenConfig || !chosenCodec) {
+    videoEncoder.close()
+    throw new Error('No supported VP9 encoder configuration available.')
+  }
+  videoEncoder.configure(chosenConfig)
+
+  try {
+    for (let i = 0; i < totalFrames; i++) {
+      if (cancelled()) throw new ExportCancelledError()
+      if (failure) throw failure
+
+      // MUST be sequential 0,1,2,… (temporal smoothing state depends on it).
+      const frame = analyzer.frame(i, config.visualizer.barCount, config.visualizer.smoothing)
+
+      if (bgVideoSrc && !isGifSrc(bgVideoSrc)) {
+        await seekExportVideo(bgVideoSrc, frame.styleTime)
+      }
+
+      ctx.clearRect(0, 0, width, height)
+      renderFrame({ ctx, width, height, frame: i }, frame, config)
+
+      const videoFrame = new VideoFrame(canvas, {
+        timestamp: Math.round((i * 1e6) / fps),
+        duration: frameDurationMicros,
+      })
+      try {
+        videoEncoder.encode(videoFrame, { keyFrame: i % keyFrameInterval === 0 })
+      } finally {
+        videoFrame.close()
+      }
+
+      while (videoEncoder.encodeQueueSize > 8) {
+        if (failure) throw failure
+        await sleep(2)
+      }
+
+      if (i % 8 === 7 || i === totalFrames - 1) {
+        await sleep()
+        report({
+          phase: 'rendering',
+          progress: ((i + 1) / totalFrames) * 0.9,
+          time: (i + 1) / fps,
+        })
+      }
+    }
+    if (failure) throw failure
+    await videoEncoder.flush()
+  } finally {
+    if (videoEncoder.state !== 'closed') videoEncoder.close()
+    if (bgVideoSrc) releaseExportVideo(bgVideoSrc)
+  }
+  if (failure) throw failure
+
+  if (opus) {
+    const sampleRate = 48_000
+    const totalSamples = opus.chL.length
+    const audioEncoder = new AudioEncoder({
+      output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+      error: fail,
+    })
+    audioEncoder.configure({
+      codec: 'opus',
+      sampleRate,
+      numberOfChannels: 2,
+      bitrate: 192_000,
+    })
+
+    const CHUNK_FRAMES = 1024
+    const planar = new Float32Array(CHUNK_FRAMES * 2)
+
+    try {
+      for (let offset = 0; offset < totalSamples; offset += CHUNK_FRAMES) {
+        if (cancelled()) throw new ExportCancelledError()
+        if (failure) throw failure
+
+        const n = Math.min(CHUNK_FRAMES, totalSamples - offset)
+        planar.set(opus.chL.subarray(offset, offset + n), 0)
+        planar.set(opus.chR.subarray(offset, offset + n), n)
+
+        const audioData = new AudioData({
+          format: 'f32-planar',
+          sampleRate,
+          numberOfFrames: n,
+          numberOfChannels: 2,
+          timestamp: Math.round((offset / sampleRate) * 1e6),
+          data: planar.subarray(0, n * 2),
+        })
+        try {
+          audioEncoder.encode(audioData)
+        } finally {
+          audioData.close()
+        }
+
+        while (audioEncoder.encodeQueueSize > 8) {
+          if (failure) throw failure
+          await sleep(2)
+        }
+
+        const done = Math.min(offset + CHUNK_FRAMES, totalSamples)
+        report({
+          phase: 'encoding',
+          progress: 0.9 + (done / totalSamples) * 0.07,
+          time: done / sampleRate,
+        })
+      }
+      if (failure) throw failure
+      await audioEncoder.flush()
+    } finally {
+      if (audioEncoder.state !== 'closed') audioEncoder.close()
+    }
+    if (failure) throw failure
+  }
+
+  report({ phase: 'muxing', progress: 0.97, time: durationSeconds })
+  muxer.finalize()
+
+  const blob = new Blob([target.buffer], { type: 'video/webm' })
+  report({ phase: 'done', progress: 1, time: durationSeconds })
+  return {
+    blob,
+    audioKind: opus ? ('opus' as const) : ('silent' as const),
+    videoCodec: chosenCodec,
+    frames: totalFrames,
+    durationSec: durationSeconds,
+  }
+}
+
+/* ------------------------------- shared helpers ------------------------------ */
+
+/**
+ * Encode an AudioBuffer's first two channels as a 16-bit PCM WAV — the
+ * universal lossless-ish interchange format ffmpeg.wasm consumes when the
+ * browser had no audio encoder at all and the song must be attached to a
+ * silent MP4 as AAC. Truncated to maxSeconds (the exported length).
+ */
+export function audioBufferToWav(buffer: AudioBuffer, maxSeconds: number): Blob {
+  const sampleRate = buffer.sampleRate
+  const maxSamples = Math.min(
+    buffer.length,
+    Math.max(1, Math.ceil(maxSeconds * sampleRate)),
+  )
+  const chL = buffer.getChannelData(0)
+  const chR = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : chL
+
+  const blockAlign = 4 // 2 channels × 2 bytes
+  const dataSize = maxSamples * blockAlign
+  const view = new DataView(new ArrayBuffer(44 + dataSize))
+  const writeStr = (off: number, s: string): void => {
+    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i))
+  }
+  writeStr(0, 'RIFF')
+  view.setUint32(4, 36 + dataSize, true)
+  writeStr(8, 'WAVE')
+  writeStr(12, 'fmt ')
+  view.setUint32(16, 16, true) // PCM chunk size
+  view.setUint16(20, 1, true) // PCM
+  view.setUint16(22, 2, true) // stereo
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * blockAlign, true)
+  view.setUint16(32, blockAlign, true)
+  view.setUint16(34, 16, true) // bits per sample
+  writeStr(36, 'data')
+  view.setUint32(40, dataSize, true)
+
+  let off = 44
+  for (let i = 0; i < maxSamples; i++) {
+    const l = Math.max(-1, Math.min(1, chL[i]))
+    const r = Math.max(-1, Math.min(1, chR[i]))
+    view.setInt16(off, l < 0 ? l * 0x8000 : l * 0x7fff, true)
+    off += 2
+    view.setInt16(off, r < 0 ? r * 0x8000 : r * 0x7fff, true)
+    off += 2
+  }
+  return new Blob([view.buffer], { type: 'audio/wav' })
+}
+
+/** Filesystem-safe, lowercased basename for exported files. */
+export function sanitizeFilename(name: string): string {
+  const base = (name || 'spectra').replace(/\.[a-z0-9]+$/i, '')
+  return (
+    base
+      .replace(/[^a-z0-9-_ ]/gi, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .slice(0, 60)
+      .toLowerCase() || 'spectra'
+  )
 }

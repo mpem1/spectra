@@ -1153,7 +1153,15 @@ export type RenderFrameFn = (rc: RenderContext, frame: AudioFrame, config: Studi
 
 /* --------------------------------- Export API --------------------------------- */
 
-export type ExportFormat = 'mp4'
+/**
+ * Deterministic export containers:
+ *  - mp4  — H.264 + AAC, the universal upload format (Facebook, Instagram,
+ *    TikTok, YouTube, X). When the browser has no AAC encoder the audio is
+ *    converted to AAC in-browser (ffmpeg.wasm) before download, so the file
+ *    is always accepted by social platforms.
+ *  - webm — VP9 + Opus, smaller files for the open web / Discord embeds.
+ */
+export type ExportFormat = 'mp4' | 'webm'
 export type ExportLength = 'full' | '30s' | '15s'
 export type ExportResolution = '1280x720' | '1920x1080' | '1080x1080' | '720x1280'
 
@@ -1202,7 +1210,7 @@ export interface ExportSettings {
 }
 
 export interface ExportProgress {
-  phase: 'preparing' | 'rendering' | 'encoding' | 'muxing' | 'done'
+  phase: 'preparing' | 'rendering' | 'encoding' | 'muxing' | 'converting' | 'done'
   /** 0..1 overall progress */
   progress: number
   /** Current render time within the song (seconds) */

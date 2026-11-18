@@ -30,7 +30,14 @@ import {
   type PhosphorFilterConfig,
   type ContourFilterConfig,
 } from '@/lib/visualizer/types'
-import { exportMP4 } from '@/lib/export/exporter'
+import {
+  exportMP4,
+  exportWEBM,
+  audioBufferToWav,
+  sanitizeFilename,
+  type ExportMediaResult,
+} from '@/lib/export/exporter'
+import { transcodeMp4AudioToAac, muxWavIntoMp4 } from '@/lib/ffmpeg-wasm'
 import { getEngine, getPreviewControls } from '@/components/studio/engine-registry'
 import { getPreviewCanvas } from '@/components/studio/canvas-registry'
 import { toast } from 'sonner'
@@ -471,20 +478,82 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       })
       return
     }
+    const fmt = state.exportSettings.format
     exportCancelFlag = { cancelled: false }
     set({ exportJob: { active: true, progress: null }, activeTab: 'export' })
     try {
-      const blob = await exportMP4({
-        config: state.config,
-        settings: state.exportSettings,
-        audioBuffer,
-        onProgress: (progress) => set({ exportJob: { active: true, progress } }),
-        signal: exportCancelFlag,
-        onNotice: (message) => toast.warning('Export notice', { description: message }),
-      })
-      downloadBlob(blob, 'spectra.mp4')
-      toast.success('MP4 exported', {
-        description: `spectra.mp4 · ${(blob.size / (1024 * 1024)).toFixed(1)} MB`,
+      const runExport = () =>
+        fmt === 'webm'
+          ? exportWEBM({
+              config: state.config,
+              settings: state.exportSettings,
+              audioBuffer,
+              onProgress: (progress) => set({ exportJob: { active: true, progress } }),
+              signal: exportCancelFlag,
+              onNotice: (message) => toast.warning('Export notice', { description: message }),
+            })
+          : exportMP4({
+              config: state.config,
+              settings: state.exportSettings,
+              audioBuffer,
+              onProgress: (progress) => set({ exportJob: { active: true, progress } }),
+              signal: exportCancelFlag,
+              onNotice: (message) => toast.warning('Export notice', { description: message }),
+            })
+
+      const result: ExportMediaResult = await runExport()
+      let blob = result.blob
+
+      // Social-media guarantee for the MP4 target: the file must carry AAC
+      // audio — Facebook/Instagram reject Opus-in-MP4, and some browsers have
+      // no AAC encoder (the exporter then muxes Opus or nothing). Fix the
+      // soundtrack in-browser with ffmpeg.wasm; the video stream is copied,
+      // so this costs seconds, not a re-render. Failures degrade to the
+      // un-converted file with a warning rather than losing the export.
+      if (fmt === 'mp4' && result.audioKind !== 'aac') {
+        const dur = result.durationSec
+        const converting = (pct: number) =>
+          set({
+            exportJob: {
+              active: true,
+              progress: {
+                phase: 'converting',
+                progress: Math.min(0.97, pct / 100),
+                time: dur * Math.min(1, pct / 100),
+              },
+            },
+          })
+        try {
+          if (result.audioKind === 'opus') {
+            blob = await transcodeMp4AudioToAac(result.blob, {
+              durationSec: dur,
+              onProgress: converting,
+            })
+          } else {
+            // Silent MP4 (no audio encoder at all): attach the original song
+            // — re-encoded lossless-ish to WAV — as a fresh AAC track.
+            blob = await muxWavIntoMp4(
+              result.blob,
+              audioBufferToWav(audioBuffer, dur),
+              { durationSec: dur, onProgress: converting },
+            )
+          }
+        } catch {
+          toast.warning('Audio could not be converted to AAC', {
+            description:
+              result.audioKind === 'opus'
+                ? 'The file keeps Opus audio, which Facebook may reject. Check your connection and export again.'
+                : 'The video stays silent (Facebook accepts it, just without sound).',
+          })
+        }
+      }
+
+      const ext = fmt === 'webm' ? 'webm' : 'mp4'
+      const base = sanitizeFilename(state.audioMeta?.name ?? 'spectra')
+      const filename = `${base}-${state.exportSettings.fps}fps.${ext}`
+      downloadBlob(blob, filename)
+      toast.success(`${ext.toUpperCase()} exported`, {
+        description: `${filename} · ${(blob.size / (1024 * 1024)).toFixed(1)} MB`,
       })
     } catch (err) {
       if (exportCancelFlag.cancelled) {

@@ -313,3 +313,132 @@ export function cancelWasmConversion(): void {
     loadPromise = null
   }
 }
+
+/* --------------------- deterministic-export AAC guarantee --------------------- */
+
+export interface AacFixOptions {
+  /** Real media duration in seconds — drives the progress percentage. */
+  durationSec?: number
+  /** 0..100 progress of the transcode. */
+  onProgress?: (pct: number) => void
+}
+
+/**
+ * Shared runner for the export-fix jobs: write inputs, exec, read+copy the
+ * output out of the wasm heap, clean the MEMFS up.
+ */
+async function runAacJob(
+  inputs: Array<{ name: string; bytes: Uint8Array }>,
+  args: string[],
+  outName: string,
+  opts: AacFixOptions,
+): Promise<Blob> {
+  const ffmpeg = await getFFmpeg()
+  const startedAt = Date.now()
+  let latestLog = ''
+  let offLog: unknown
+  let offProgress: unknown
+  const emit = (pct: number | null) =>
+    opts.onProgress?.(pct ?? Math.min(99, ((Date.now() - startedAt) / 1000 / 20) * 100))
+    // fallback: a slow crawl so the bar never sits frozen when ffmpeg gives
+    // no progress events (audio-only jobs report none on some builds)
+
+  try {
+    offLog = ffmpeg.on('log', ({ message }) => {
+      latestLog = message
+      emit(null)
+    })
+    offProgress = ffmpeg.on('progress', ({ time }) => {
+      const dur = opts.durationSec ?? 0
+      emit(dur > 0 ? Math.min(99.9, (time / 1e6 / dur) * 100) : null)
+    })
+
+    for (const input of inputs) {
+      await ffmpeg.writeFile(input.name, input.bytes)
+    }
+    const code = await ffmpeg.exec(args)
+    if (code !== 0) {
+      throw new Error(
+        `Audio conversion failed${latestLog ? ` — ${latestLog.slice(0, 200)}` : ''}.`,
+      )
+    }
+    const data = await ffmpeg.readFile(outName)
+    if (typeof data === 'string' || data.byteLength === 0) {
+      throw new Error('Audio conversion produced an empty file.')
+    }
+    // Copy out of the wasm heap before touching the MEMFS file again
+    const bytes = new Uint8Array(data.byteLength)
+    bytes.set(data)
+    return new Blob([bytes], { type: 'video/mp4' })
+  } finally {
+    if (typeof offLog === 'function') (offLog as () => void)()
+    if (typeof offProgress === 'function') (offProgress as () => void)()
+    for (const input of inputs) {
+      try {
+        await ffmpeg.deleteFile(input.name)
+      } catch {
+        /* ignore */
+      }
+    }
+    try {
+      await ffmpeg.deleteFile(outName)
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Re-encode an MP4's audio track to AAC 256 kbps while copying the video
+ * stream bit-for-bit (fast — the picture is never re-rendered). This is the
+ * social-media guarantee: Opus-in-MP4 is rejected by Facebook/Instagram;
+ * H.264 + AAC in a faststart MP4 is universally accepted.
+ */
+export async function transcodeMp4AudioToAac(mp4: Blob, opts: AacFixOptions = {}): Promise<Blob> {
+  return runAacJob(
+    [{ name: 'input.mp4', bytes: new Uint8Array(await mp4.arrayBuffer()) }],
+    [
+      '-y',
+      '-i', 'input.mp4',
+      '-map', '0:v:0',
+      '-map', '0:a:0?',
+      '-c:v', 'copy',
+      '-c:a', 'aac',
+      '-b:a', '256k',
+      '-movflags', '+faststart',
+      'output.mp4',
+    ],
+    'output.mp4',
+    opts,
+  )
+}
+
+/**
+ * Attach a PCM WAV (encoded from the original decoded song) to a silent MP4,
+ * encoding it to AAC 256 kbps. Used when the browser has NO audio encoder
+ * at all: the deterministic export produces a silent H.264 MP4 and this job
+ * gives it its soundtrack back. `-shortest` trims the audio to the video.
+ */
+export async function muxWavIntoMp4(mp4: Blob, wav: Blob, opts: AacFixOptions = {}): Promise<Blob> {
+  return runAacJob(
+    [
+      { name: 'video.mp4', bytes: new Uint8Array(await mp4.arrayBuffer()) },
+      { name: 'audio.wav', bytes: new Uint8Array(await wav.arrayBuffer()) },
+    ],
+    [
+      '-y',
+      '-i', 'video.mp4',
+      '-i', 'audio.wav',
+      '-map', '0:v:0',
+      '-map', '1:a:0',
+      '-c:v', 'copy',
+      '-c:a', 'aac',
+      '-b:a', '256k',
+      '-shortest',
+      '-movflags', '+faststart',
+      'output.mp4',
+    ],
+    'output.mp4',
+    opts,
+  )
+}
