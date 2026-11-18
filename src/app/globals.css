@@ -8,6 +8,12 @@
  *   #23241f near-black  · #2c485d dark slate · #247189 teal
  *   #6d858f muted slate · #9f9ba0 light gray-mauve
  *
+ * The far background does NOT use #23241f verbatim: that value carries a warm
+ * green cast that clashes with the cool slate section cards sitting on it, so
+ * the deepest chrome (zinc-950 / dark background / checkerboard base) leans
+ * into the slate hue instead (#12181d) while keeping near-black depth.
+ * #23241f stays in the light theme as ink on paper.
+ *
  * The GUI chrome speaks this palette: the zinc ramp is re-tinted so every
  * hardcoded zinc class across the studio adopts the slate-teal family at the
  * same lightness, and the active-state greens (emerald/green) map onto the
@@ -26,7 +32,7 @@
   --color-zinc-700: #35566b;
   --color-zinc-800: #2c485d;
   --color-zinc-900: #1b2a35;
-  --color-zinc-950: #23241f;
+  --color-zinc-950: #12181d;
 
   --color-emerald-200: #b7e0ea;
   --color-emerald-300: #8bc9db;
@@ -94,11 +100,11 @@
 :root {
   --radius: 0.625rem;
   --background: #f2f6f8;
-  --foreground: #23241f;
+  --foreground: #12181d;
   --card: #ffffff;
-  --card-foreground: #23241f;
+  --card-foreground: #12181d;
   --popover: #ffffff;
-  --popover-foreground: #23241f;
+  --popover-foreground: #12181d;
   --primary: #247189;
   --primary-foreground: #f2f6f8;
   --secondary: #e2e9ec;
@@ -117,7 +123,7 @@
   --chart-4: #c9855f;
   --chart-5: #9f9ba0;
   --sidebar: #e2e9ec;
-  --sidebar-foreground: #23241f;
+  --sidebar-foreground: #12181d;
   --sidebar-primary: #247189;
   --sidebar-primary-foreground: #f2f6f8;
   --sidebar-accent: #e2e9ec;
@@ -127,7 +133,7 @@
 }
 
 .dark {
-  --background: #23241f;
+  --background: #12181d;
   --foreground: #e2e9ec;
   --card: #1b2a35;
   --card-foreground: #e2e9ec;
@@ -193,7 +199,7 @@
 
 /* Alpha checkerboard shown behind the canvas when background mode = transparent */
 .checkerboard {
-  background-color: #23241f;
+  background-color: #12181d;
   background-image:
     linear-gradient(45deg, #1b2a35 25%, transparent 25%, transparent 75%, #1b2a35 75%),
     linear-gradient(45deg, #1b2a35 25%, transparent 25%, transparent 75%, #1b2a35 75%);
