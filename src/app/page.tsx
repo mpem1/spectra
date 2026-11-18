@@ -26,7 +26,15 @@ export default function Home() {
       <CustomFontLoader />
       <TopBar />
       <main className="flex min-h-0 flex-1 flex-col gap-4 p-4 lg:flex-row">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/*
+          Mobile: pin the video (canvas + player bar) to the top of the
+          viewport so it stays on screen while the settings below scroll —
+          tweaks stay visible as they are made. The wrapper goes full-bleed
+          with an opaque page-color backdrop so panel content slides cleanly
+          underneath instead of peeking through the gutters. Desktop uses the
+          fixed two-pane shell, so sticky is scoped to below lg.
+        */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col max-lg:sticky max-lg:top-0 max-lg:z-30 max-lg:-mx-4 max-lg:px-4 max-lg:pt-2 max-lg:pb-3 max-lg:bg-zinc-950 max-lg:shadow-lg max-lg:shadow-black/30">
           <PreviewCanvas />
         </div>
         <ControlPanel />
