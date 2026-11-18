@@ -364,12 +364,12 @@ export function ExportPanel({ recording, recElapsed, onStartRecording, onStopRec
       <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
           <Circle
-            className={`h-4 w-4 ${recording ? 'animate-pulse fill-red-500 text-red-500' : 'text-zinc-500'}`}
+            className={`h-4 w-4 ${recording ? 'animate-pulse fill-terra-500 text-terra-500' : 'text-zinc-500'}`}
             aria-hidden
           />
           Live recording (WebM/MP4)
           {recording && (
-            <span className="ml-auto font-mono text-xs tabular-nums text-red-400">{recClock}</span>
+            <span className="ml-auto font-mono text-xs tabular-nums text-terra-400">{recClock}</span>
           )}
         </div>
         <p className="text-xs leading-snug text-zinc-500">
@@ -387,7 +387,7 @@ export function ExportPanel({ recording, recElapsed, onStartRecording, onStopRec
             onClick={() => onStartRecording(config.transparentBg)}
             disabled={!track || exporting}
           >
-            <Circle className="h-4 w-4 fill-red-500 text-red-500" aria-hidden /> Start recording
+            <Circle className="h-4 w-4 fill-terra-500 text-terra-500" aria-hidden /> Start recording
           </Button>
         )}
         {config.transparentBg && !recording && (

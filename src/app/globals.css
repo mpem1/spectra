@@ -3,6 +3,54 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Spectra palette — user-supplied five-color base:
+ *   #23241f near-black  · #2c485d dark slate · #247189 teal
+ *   #6d858f muted slate · #9f9ba0 light gray-mauve
+ *
+ * The GUI chrome speaks this palette: the zinc ramp is re-tinted so every
+ * hardcoded zinc class across the studio adopts the slate-teal family at the
+ * same lightness, and the active-state greens (emerald/green) map onto the
+ * teal ramp with #247189 anchored at 600. Terracotta is the complementary
+ * contrast hue (opposite the teal on the wheel, muted to the same saturation)
+ * for the record accent and warm highlights.
+ */
+@theme {
+  --color-zinc-50: #f2f6f8;
+  --color-zinc-100: #e2e9ec;
+  --color-zinc-200: #ccd5da;
+  --color-zinc-300: #b3bcbf;
+  --color-zinc-400: #9f9ba0;
+  --color-zinc-500: #6d858f;
+  --color-zinc-600: #466a7d;
+  --color-zinc-700: #35566b;
+  --color-zinc-800: #2c485d;
+  --color-zinc-900: #1b2a35;
+  --color-zinc-950: #23241f;
+
+  --color-emerald-200: #b7e0ea;
+  --color-emerald-300: #8bc9db;
+  --color-emerald-400: #55b1cc;
+  --color-emerald-500: #2e96b4;
+  --color-emerald-600: #247189;
+  --color-emerald-700: #1e5c73;
+
+  --color-green-200: #b7e0ea;
+  --color-green-300: #8bc9db;
+  --color-green-400: #55b1cc;
+  --color-green-500: #2e96b4;
+  --color-green-600: #247189;
+  --color-green-700: #1e5c73;
+
+  --color-terra-100: #f7e8df;
+  --color-terra-200: #efd3c2;
+  --color-terra-300: #ecc2ab;
+  --color-terra-400: #dda284;
+  --color-terra-500: #c9855f;
+  --color-terra-600: #a86947;
+  --color-terra-700: #85503a;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -45,71 +93,71 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --background: #f2f6f8;
+  --foreground: #23241f;
+  --card: #ffffff;
+  --card-foreground: #23241f;
+  --popover: #ffffff;
+  --popover-foreground: #23241f;
+  --primary: #247189;
+  --primary-foreground: #f2f6f8;
+  --secondary: #e2e9ec;
+  --secondary-foreground: #2c485d;
+  --muted: #e2e9ec;
+  --muted-foreground: #6d858f;
+  --accent: #e2e9ec;
+  --accent-foreground: #2c485d;
+  --destructive: #b3423a;
+  --border: #ccd5da;
+  --input: #ccd5da;
+  --ring: #55b1cc;
+  --chart-1: #247189;
+  --chart-2: #6d858f;
+  --chart-3: #2c485d;
+  --chart-4: #c9855f;
+  --chart-5: #9f9ba0;
+  --sidebar: #e2e9ec;
+  --sidebar-foreground: #23241f;
+  --sidebar-primary: #247189;
+  --sidebar-primary-foreground: #f2f6f8;
+  --sidebar-accent: #e2e9ec;
+  --sidebar-accent-foreground: #2c485d;
+  --sidebar-border: #ccd5da;
+  --sidebar-ring: #55b1cc;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #23241f;
+  --foreground: #e2e9ec;
+  --card: #1b2a35;
+  --card-foreground: #e2e9ec;
+  --popover: #1b2a35;
+  --popover-foreground: #e2e9ec;
+  --primary: #247189;
+  --primary-foreground: #f2f6f8;
+  --secondary: #263c4b;
+  --secondary-foreground: #e2e9ec;
+  --muted: #263c4b;
+  --muted-foreground: #9f9ba0;
+  --accent: #2c485d;
+  --accent-foreground: #e2e9ec;
+  --destructive: #c96b5f;
+  --border: rgba(143, 167, 180, 0.22);
+  --input: rgba(143, 167, 180, 0.3);
+  --ring: #55b1cc;
+  --chart-1: #247189;
+  --chart-2: #6d858f;
+  --chart-3: #2c485d;
+  --chart-4: #c9855f;
+  --chart-5: #9f9ba0;
+  --sidebar: #1b2a35;
+  --sidebar-foreground: #e2e9ec;
+  --sidebar-primary: #247189;
+  --sidebar-primary-foreground: #f2f6f8;
+  --sidebar-accent: #263c4b;
+  --sidebar-accent-foreground: #e2e9ec;
+  --sidebar-border: rgba(143, 167, 180, 0.22);
+  --sidebar-ring: #55b1cc;
 }
 
 @layer base {
@@ -123,10 +171,10 @@
 
 /* ------------------------------ Pulse Studio ------------------------------ */
 
-/* Slim scrollbar for studio panel scroll areas */
+/* Slim scrollbar for studio panel scroll areas — slate-teal thumb */
 .slim-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #3f3f46 transparent;
+  scrollbar-color: rgba(109, 133, 143, 0.5) transparent;
 }
 .slim-scrollbar::-webkit-scrollbar {
   width: 6px;
@@ -137,18 +185,18 @@
 }
 .slim-scrollbar::-webkit-scrollbar-thumb {
   border-radius: 9999px;
-  background: #3f3f46;
+  background: rgba(109, 133, 143, 0.5);
 }
 .slim-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: rgba(143, 167, 180, 0.75);
 }
 
 /* Alpha checkerboard shown behind the canvas when background mode = transparent */
 .checkerboard {
-  background-color: #18181b;
+  background-color: #23241f;
   background-image:
-    linear-gradient(45deg, #27272a 25%, transparent 25%, transparent 75%, #27272a 75%),
-    linear-gradient(45deg, #27272a 25%, transparent 25%, transparent 75%, #27272a 75%);
+    linear-gradient(45deg, #1b2a35 25%, transparent 25%, transparent 75%, #1b2a35 75%),
+    linear-gradient(45deg, #1b2a35 25%, transparent 25%, transparent 75%, #1b2a35 75%);
   background-size: 16px 16px;
   background-position:
     0 0,

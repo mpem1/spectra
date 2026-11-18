@@ -60,14 +60,14 @@ export const SECTION_ACCENT: Record<SectionAccent, { shell: string; icon: string
     label: 'text-rose-300/80',
   },
   lime: {
-    shell: 'border-lime-500/20 bg-lime-500/[0.04]',
-    icon: 'text-lime-500',
-    label: 'text-lime-300/80',
+    shell: 'border-terra-500/20 bg-terra-500/[0.04]',
+    icon: 'text-terra-500',
+    label: 'text-terra-300/80',
   },
   fuchsia: {
-    shell: 'border-fuchsia-500/20 bg-fuchsia-500/[0.04]',
-    icon: 'text-fuchsia-500',
-    label: 'text-fuchsia-300/80',
+    shell: 'border-sky-500/20 bg-sky-500/[0.04]',
+    icon: 'text-sky-500',
+    label: 'text-sky-300/80',
   },
   teal: {
     shell: 'border-teal-500/20 bg-teal-500/[0.04]',

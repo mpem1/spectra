@@ -348,17 +348,17 @@ export function ExportTab() {
             <Circle
               className={cn(
                 'size-3 fill-current',
-                recording ? 'animate-pulse text-red-500' : 'text-zinc-600',
+                recording ? 'animate-pulse text-terra-500' : 'text-zinc-600',
               )}
               aria-hidden
             />
             Live recording (WebM/MP4)
           </h3>
           {recording ? (
-            <span className="flex items-center gap-1.5 text-xs tabular-nums text-red-400">
+            <span className="flex items-center gap-1.5 text-xs tabular-nums text-terra-400">
               <span className="relative flex size-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-                <span className="relative inline-flex size-2 rounded-full bg-red-500" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-terra-500 opacity-75" />
+                <span className="relative inline-flex size-2 rounded-full bg-terra-500" />
               </span>
               REC {formatElapsed(recordElapsed)}
             </span>
@@ -377,7 +377,7 @@ export function ExportTab() {
 
         {recording ? (
           <Button
-            className="h-10 w-full bg-red-600 font-semibold text-white hover:bg-red-500"
+            className="h-10 w-full bg-terra-600 font-semibold text-white hover:bg-terra-500"
             onClick={stopRecording}
           >
             <Square className="size-4 fill-current" />
@@ -389,7 +389,7 @@ export function ExportTab() {
             disabled={exporting}
             onClick={startRecording}
           >
-            <span className="size-2.5 rounded-full bg-red-500" aria-hidden />
+            <span className="size-2.5 rounded-full bg-terra-500" aria-hidden />
             Start recording
           </Button>
         )}

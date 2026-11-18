@@ -204,7 +204,7 @@ export function PngSequenceDialog({ disabled }: { disabled?: boolean }) {
           <div className="space-y-3" aria-live="polite">
             <div className="flex items-center justify-between gap-2 text-sm">
               <span className="flex items-center gap-2 font-semibold text-zinc-100">
-                <Circle className="h-3 w-3 animate-pulse fill-red-500 text-red-500" aria-hidden />
+                <Circle className="h-3 w-3 animate-pulse fill-terra-500 text-terra-500" aria-hidden />
                 Capturing frames
               </span>
               <span className="font-mono tabular-nums text-zinc-400">
