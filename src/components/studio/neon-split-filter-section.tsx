@@ -20,7 +20,7 @@ const RAMPS: {
     id: 'violet',
     label: 'Violet neon',
     sub: 'the classic preset',
-    css: 'linear-gradient(90deg,#000000 0%,#16124e 18%,#232e83 38%,#6143b6 58%,#a855dd 74%,#d55fec 87%,#ffd6fa 100%)',
+    css: 'linear-gradient(90deg,#170d18 0%,#1a0e1f 8%,#21183f 12%,#232151 16%,#2a2e6c 21%,#4d3f97 31%,#8d52c4 44%,#d87fe4 65%,#edabed 78%,#f6c0f3 84%,#fcd2f7 89%,#fedcfa 100%)',
   },
   {
     id: 'uv',
@@ -49,11 +49,13 @@ const RAMPS: {
 ]
 
 /**
- * Neon Split filter card — the social-grade neon look: the whole picture is
- * re-read as brightness and recolored through a glowing neon ramp, the dark
- * end glitters with sparkle grain, a soft bloom milks the highlights, and an
- * optional split line lets the bottom of the frame keep its own colors.
- * Baked into every export; skipped on transparent backgrounds.
+ * Neon Split filter card — the effect.app "neon split" look, rebuilt from
+ * measurements of the real preset: the whole picture is re-read as brightness
+ * and recolored through the sampled neon ramp, the preset's pink veil washes
+ * the top of the frame, a soft bloom milks the highlights, and fine film
+ * grain sits over everything. An optional split line lets the bottom of the
+ * frame keep its own colors. Baked into every export; skipped on transparent
+ * backgrounds.
  */
 export function NeonSplitFilterSection() {
   const filter = useStudioStore((s) => s.config.neonSplitFilter)
@@ -76,12 +78,13 @@ export function NeonSplitFilterSection() {
         />
       </div>
       <p className="text-[11px] leading-snug text-zinc-600">
-        The neon poster grade — every pixel&apos;s brightness is re-read as a
-        position on a glowing neon ramp: shadows sink to near-black, mids climb
-        through blue and violet, highlights flare to magenta. The dark end
-        glitters with sparkle grain and a soft bloom milks the bright areas.
-        Turn on Split to let the bottom of the frame keep its own colors — the
-        line can ride the beat. Baked into every export.
+        The effect.app neon-split look, measured from the real thing — every
+        pixel&apos;s brightness re-reads as a position on the preset&apos;s own
+        ramp (plum shadows → indigo → violet → orchid → pale pink), the pink
+        color-gradient veil washes over the top of the frame, the highlights
+        bloom softly and fine film grain sits on top. Turn on Split to let the
+        bottom of the frame keep its own colors — the line can ride the beat.
+        Baked into every export.
       </p>
 
       {filter.enabled ? (
@@ -132,7 +135,16 @@ export function NeonSplitFilterSection() {
             format={(v) => (v < 0.475 ? 'Washed' : v <= 0.525 ? 'Neutral' : `${Math.round(v * 100)}%`)}
           />
           <SliderRow
-            label="Sparkle grain"
+            label="Top wash"
+            value={filter.wash ?? 1}
+            min={0}
+            max={1}
+            step={0.05}
+            onChange={set('wash')}
+            format={(v) => (v <= 0.025 ? 'Off' : `${Math.round(v * 100)}%`)}
+          />
+          <SliderRow
+            label="Film grain"
             value={filter.grain}
             min={0}
             max={1}
@@ -183,14 +195,19 @@ export function NeonSplitFilterSection() {
           <p className="text-[10px] leading-snug text-zinc-600">
             Contrast shapes the tones before the ramp (50% is neutral — higher
             pushes the shadows down and the highlights up so the neon reads
-            punchier). Sparkle grain screens glitter into the dark end — the
-            ramp recolors it, so it always shines in your chosen palette. Neon
-            bloom glows the bright areas outward. Split fades the untouched
+            punchier). Top wash is the preset&apos;s color-gradient veil: the
+            light pink layer screen-blended over the top of the frame that
+            cuts out by mid-frame — dial it down to let more of the raw ramp
+            show. Film grain is fine per-pixel speckle over the finished
+            frame (the preset&apos;s noise layer — it shimmers with the song
+            but stays deterministic for exports). Neon bloom glows the bright
+            areas outward from the clean map, so the veil never milks up and
+            the grain never flares into blobs. Split fades the untouched
             picture back in from the bottom (0% keeps the whole frame neon);
-            with React to beat the line slides down on every kick and the bloom
-            flares, resting exactly as dialed in between hits. Mix blends the
-            whole look back toward the original. Skipped on transparent
-            backgrounds so alpha recordings stay clean.
+            with React to beat the line slides down on every kick and the
+            bloom flares, resting exactly as dialed in between hits. Mix
+            blends the whole look back toward the original. Skipped on
+            transparent backgrounds so alpha recordings stay clean.
           </p>
         </>
       ) : null}

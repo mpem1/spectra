@@ -990,39 +990,47 @@ export interface AnaglyphFilterConfig {
 }
 
 /**
- * Neon Split filter — a luminance gradient-map in the spirit of the classic
- * "neon split" social look: every pixel's brightness is re-read as a position
- * on a neon color ramp (shadows sink to near-black navy, mids climb through
- * deep blue and violet, highlights flare to bright magenta and pale pink),
- * then sparkling grain is screen-blended into the dark end so the shadows
- * glitter, and a soft two-pass bloom makes the whole frame glow. The
- * "split": below an adjustable line the untouched picture fades back in, so
- * part of the frame wears the neon and part keeps its own colors — the line
- * breathes with the song when React to beat is on.
+ * Neon Split filter — a reproduction of the effect.app "neon split" preset,
+ * rebuilt from measurements of the real thing: every pixel's brightness is
+ * re-read as a position on a color ramp sampled off the preset's own output
+ * (plum shadows → indigo → blue-violet → orchid → pink → pale-pink
+ * highlights), the preset's vertical pink veil is screen-blended over the
+ * top of the frame, a soft two-pass bloom (fed by the clean map, never the
+ * grain) makes the bright areas glow, and fine per-pixel film grain sits on
+ * top of everything. The "split": below an adjustable line the untouched
+ * picture fades back in, so part of the frame wears the neon and part keeps
+ * its own colors — the line breathes with the song when React to beat is on.
  *
- * Deterministic like every full-frame filter: the grain tile is baked once
- * from integer hashes and re-tiled at a quantized song-time offset, so the
- * same frame in preview and export produces the same pixels. Skipped on
- * transparent backgrounds (alpha must stay clean).
+ * Deterministic like every full-frame filter: the grain is integer-hashed
+ * per pixel and re-offset at a quantized song-time step, so the same frame
+ * in preview and export produces the same pixels. Skipped on transparent
+ * backgrounds (alpha must stay clean).
  */
 export interface NeonSplitFilterConfig {
   enabled: boolean
   /** Which neon ramp the luminance maps onto. 'violet' reproduces the
-   *  classic preset (black → navy → blue → violet → magenta → pale pink);
-   *  the others recolor the same geometry. Old saves without this field
-   *  load as 'violet'. */
+   *  classic preset (plum → indigo → blue-violet → orchid → pink → pale
+   *  pink, sampled off the real preset's output); the others recolor the
+   *  same geometry. Old saves without this field load as 'violet'. */
   ramp: 'violet' | 'uv' | 'acid' | 'ember' | 'ice'
   /** Contrast conditioning before the map, 0..1 (0.5 = neutral — tones pass
    *  through unchanged; higher pushes shadows down and highlights up so the
    *  neon reads punchier, lower washes everything toward the mids). */
   contrast: number
-  /** Sparkle grain 0..1 — screen-blended deterministic noise that lights the
-   *  dark end of the frame with glitter (the map recolors it, so it always
-   *  shines in the ramp's colors). */
+  /** Film grain 0..1 — fine per-pixel luminance speckle on top of the
+   *  finished grade (the preset's noise layer): ±5% at the default dial,
+   *  slightly damped in the shadows, re-offset every 1/24 s so it shimmers
+   *  with the song while staying deterministic. */
   grain: number
-  /** Neon bloom 0..1 — two blurred, contrast-crushed copies of the graded
-   *  frame drawn back additively, so bright areas glow outward. */
+  /** Neon bloom 0..1 — two blurred, high-threshold-crushed copies of the
+   *  CLEAN mapped frame (pre-veil, pre-grain) screen-blended back, so only
+   *  the bright areas glow — without the veil milking up, the grain
+   *  flaring, or the cores clipping to white. */
   glow: number
+  /** Top wash 0..1 — the preset's color-gradient veil strength (the light
+   *  pink wash screen-blended over the top of the frame, cutting out by
+   *  ~58% of the height). Absent in old saves → 1 (the full preset look). */
+  wash?: number
   /** The split 0..1 — how much of the frame, measured from the BOTTOM, fades
    *  back to the untouched picture. 0 = the whole frame goes neon (the
    *  classic preset); 0.4 = the bottom 40% keeps its own colors, the rest is
@@ -1078,7 +1086,8 @@ export interface StudioConfig {
   glitchFilter: GlitchFilterConfig
   /** Full-frame anaglyph post-pass (red/cyan 3D-glasses re-projection) */
   anaglyphFilter: AnaglyphFilterConfig
-  /** Full-frame neon post-pass (luminance gradient map + sparkle + bloom) */
+  /** Full-frame neon post-pass (gradient map + color-gradient veil + bloom
+   *  + film grain — the effect.app "neon split" preset look) */
   neonSplitFilter: NeonSplitFilterConfig
   /** Full-frame retro-dither post-pass (Bayer dot patterns + glow bloom) */
   ditherFilter: DitherFilterConfig
@@ -1597,9 +1606,10 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
   neonSplitFilter: {
     enabled: false,
     ramp: 'violet',
-    contrast: 0.62,
+    contrast: 0.5,
     grain: 0.5,
     glow: 0.6,
+    wash: 1,
     split: 0,
     strength: 1,
     beatReactive: false,

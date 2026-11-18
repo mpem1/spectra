@@ -1,28 +1,34 @@
 /**
- * Neon Split filter — a luminance gradient-map in the spirit of the classic
- * "neon split" social look (the effect.app preset the filter is modeled on):
+ * Neon Split filter — a faithful reproduction of the effect.app "neon split"
+ * preset, built by measuring the real preset's output pixel-by-pixel (the
+ * four sections the preset is made of, in its own stack order):
  *
- *   1. Contrast pre-pass — the frame is contrast-conditioned on the GPU
- *      (the site's CURVES layer, 0.5 = neutral).
- *   2. Sparkle grain — a deterministic noise tile is screen-blended over the
- *      frame (the site's NOISE + hard-light texture layers): mostly-dark
- *      purple sparkle points that lift the shadows' luminance, so the dark
- *      end of the picture glitters. The tile is baked ONCE from integer
- *      hashes and re-tiled at a quantized song-time offset each frame —
- *      animated grain, same frame in → same pixels out.
- *   3. The map — every pixel's luminance re-reads as a position on a neon
- *      ramp through a 256-entry LUT: shadows sink to near-black navy, mids
- *      climb through deep blue and violet, highlights flare to magenta and
- *      pale pink ('violet' reproduces the sampled preset ramp byte-for-byte;
- *      four more ramps recolor the same geometry).
- *   4. Bloom — two blurred, contrast-crushed copies of the graded frame
- *      drawn back additively (the site's BLOOM layer, threshold ≈ 0.1,
- *      intensity 3): bright areas glow outward, the whole frame milks up.
+ *   1. Gradient map — every pixel's luminance re-reads as a position on a
+ *      256-entry ramp whose stops are SAMPLED from the preset's actual
+ *      output: dark plum shadows → indigo → blue-violet → orchid → pink →
+ *      pale-pink highlights. Nothing clips to pure black or white — even the
+ *      deepest shadow keeps a violet-plum cast and the hottest highlight
+ *      lands on near-white pink.
+ *   2. Color gradient — the preset's signature vertical veil: a light-pink
+ *      wash screen-blended over the top of the frame, holding its strength
+ *      down to ~42% of the height, then cutting out sharply by ~58% (the
+ *      bottom keeps the pure gradient map). Tinted per ramp for the other
+ *      palettes; the Top wash dial scales its strength.
+ *   3. Bloom — two blurred, contrast-crushed copies of the CLEAN mapped
+ *      frame (pre-veil, pre-grain, so the wash never milks up and the grain
+ *      never flares into blobs) screen-blended back with a high threshold:
+ *      bright areas glow outward in the ramp's colors, dark areas contribute
+ *      nothing, and the hottest cores hold their pale pink. With React to beat the bloom flares on
+ *      kicks, resting exactly as dialed in between hits.
+ *   4. Noise — the preset's film grain: fine per-pixel luminance speckle
+ *      applied ON TOP of everything (±5% at the default dial, slightly
+ *      damped in the shadows), hashed deterministically and re-offset at a
+ *      quantized song-time step each frame — animated grain, same frame in →
+ *      same pixels out.
+ *
  *   5. The split — below a soft line the untouched picture fades back in
- *      (the site's gradient-masked LEVELS stage): the top of the frame wears
- *      the neon, the bottom keeps its own colors. With React to beat on, the
- *      line slides down on kicks — the neon pushes further over the picture
- *      — and the bloom flares, resting exactly as dialed in between hits.
+ *      (optional): the top of the frame wears the neon, the bottom keeps its
+ *      own colors. With React to beat, the line slides down on kicks.
  *
  * Deterministic: no Math.random / Date.now anywhere — same (frame, config) →
  * same pixels in the live preview, the MP4 and the PNG exports. Transparent
@@ -46,16 +52,23 @@ import {
 type RampStop = { t: number; c: string }
 
 const RAMPS: Record<NeonSplitFilterConfig['ramp'], RampStop[]> = {
-  // Sampled off the reference preset's gradient map (black → navy → deep
-  // blue → violet → bright purple → magenta → pale pink).
+  // Sampled off the reference preset's actual output (luminance deciles →
+  // mean color): plum → indigo → blue-violet → violet → orchid → pink →
+  // pale pink. The bottom third climbs slowly through blue-violet; the top
+  // quarter compresses into soft pinks — exactly how the preset reads.
   violet: [
-    { t: 0, c: '#000000' },
-    { t: 0.18, c: '#16124e' },
-    { t: 0.38, c: '#232e83' },
-    { t: 0.58, c: '#6143b6' },
-    { t: 0.74, c: '#a855dd' },
-    { t: 0.87, c: '#d55fec' },
-    { t: 1, c: '#ffd6fa' },
+    { t: 0, c: '#170d18' },
+    { t: 0.08, c: '#1a0e1f' },
+    { t: 0.12, c: '#21183f' },
+    { t: 0.16, c: '#232151' },
+    { t: 0.21, c: '#2a2e6c' },
+    { t: 0.31, c: '#4d3f97' },
+    { t: 0.44, c: '#8d52c4' },
+    { t: 0.65, c: '#d87fe4' },
+    { t: 0.78, c: '#edabed' },
+    { t: 0.84, c: '#f6c0f3' },
+    { t: 0.89, c: '#fcd2f7' },
+    { t: 1, c: '#fedcfa' },
   ],
   // Deeper ultraviolet — colder shadows, electric-violet highlights.
   uv: [
@@ -96,6 +109,60 @@ const RAMPS: Record<NeonSplitFilterConfig['ramp'], RampStop[]> = {
     { t: 0.78, c: '#4fc3e8' },
     { t: 0.9, c: '#a5ecf7' },
     { t: 1, c: '#eafcff' },
+  ],
+}
+
+/* ------------------------- the color-gradient veil ------------------------- */
+
+/** The preset's vertical color-gradient section: a wash screen-blended over
+ *  the mapped frame. Stops = (position from top, RGB, alpha). Sampled from
+ *  the reference: near-opaque light pink at the very top, holding through
+ *  ~42%, then crashing out by ~58% so the bottom wears the pure map. */
+type WashStop = { t: number; c: [number, number, number]; a: number }
+
+const WASHES: Record<NeonSplitFilterConfig['ramp'], WashStop[]> = {
+  violet: [
+    { t: 0, c: [246, 204, 242], a: 0.97 },
+    { t: 0.3, c: [234, 178, 233], a: 0.93 },
+    { t: 0.42, c: [221, 156, 224], a: 0.9 },
+    { t: 0.48, c: [183, 94, 203], a: 0.8 },
+    { t: 0.53, c: [90, 58, 160], a: 0.15 },
+    { t: 0.565, c: [0, 0, 0], a: 0 },
+  ],
+  // The sibling palettes reuse the measured alpha profile with their own
+  // tint (top = the ramp's highlight color lifted, mid = the ramp's orchid
+  // zone, deep = the ramp's shadow hue).
+  uv: [
+    { t: 0, c: [232, 214, 255], a: 0.97 },
+    { t: 0.3, c: [216, 190, 250], a: 0.93 },
+    { t: 0.42, c: [198, 158, 244], a: 0.9 },
+    { t: 0.48, c: [160, 100, 228], a: 0.82 },
+    { t: 0.545, c: [74, 58, 160], a: 0.2 },
+    { t: 0.585, c: [0, 0, 0], a: 0 },
+  ],
+  acid: [
+    { t: 0, c: [226, 248, 208], a: 0.97 },
+    { t: 0.3, c: [206, 240, 182], a: 0.93 },
+    { t: 0.42, c: [178, 228, 152], a: 0.9 },
+    { t: 0.48, c: [116, 204, 104], a: 0.82 },
+    { t: 0.545, c: [58, 106, 58], a: 0.2 },
+    { t: 0.585, c: [0, 0, 0], a: 0 },
+  ],
+  ember: [
+    { t: 0, c: [255, 228, 204], a: 0.97 },
+    { t: 0.3, c: [252, 206, 172], a: 0.93 },
+    { t: 0.42, c: [248, 182, 140], a: 0.9 },
+    { t: 0.48, c: [236, 128, 84], a: 0.82 },
+    { t: 0.545, c: [138, 58, 32], a: 0.2 },
+    { t: 0.585, c: [0, 0, 0], a: 0 },
+  ],
+  ice: [
+    { t: 0, c: [214, 244, 255], a: 0.97 },
+    { t: 0.3, c: [188, 234, 250], a: 0.93 },
+    { t: 0.42, c: [158, 222, 244], a: 0.9 },
+    { t: 0.48, c: [104, 192, 228], a: 0.82 },
+    { t: 0.545, c: [42, 90, 138], a: 0.2 },
+    { t: 0.585, c: [0, 0, 0], a: 0 },
   ],
 }
 
@@ -155,52 +222,51 @@ function getGradeLut(ramp: NeonSplitFilterConfig['ramp'], contrast: number): Uin
   return lut
 }
 
-/* ------------------------------ sparkle grain ------------------------------ */
+/* ------------------------------- veil rows -------------------------------- */
 
-/** Grain tile edge in px — tiled across the frame, offset per song-time
- *  step so the grain shimmers deterministically. */
-const GRAIN_TILE = 96
+/** Per-row veil color+alpha (r,g,b,a), cached per ramp+height — computed
+ *  once per frame-size change, read four floats per row in the hot loop. */
+let veilCache: { ramp: string; h: number; data: Float32Array } | null = null
 
-let grainTile: HTMLCanvasElement | null = null
-
-/**
- * The sparkle tile, baked once: mostly near-black pixels (screen-blend
- * no-ops) with sparse two-scale sparkle points that peak around violet
- * luminance — after the map they read as glitter in the ramp's colors,
- * not blown-out white. Pure integer hashes → identical on every machine.
- */
-function getGrainTile(): HTMLCanvasElement {
-  if (grainTile) return grainTile
-  const c = document.createElement('canvas')
-  c.width = GRAIN_TILE
-  c.height = GRAIN_TILE
-  const g = c.getContext('2d')!
-  const img = g.createImageData(GRAIN_TILE, GRAIN_TILE)
-  const d = img.data
-  for (let y = 0; y < GRAIN_TILE; y++) {
-    for (let x = 0; x < GRAIN_TILE; x++) {
-      const o = (y * GRAIN_TILE + x) * 4
-      // Two octaves: fine per-pixel grain clustered into chunkier flecks.
-      const v = 0.62 * hash01(x + 1, y + 1) + 0.38 * hash01((x >> 1) + 7, (y >> 1) + 11)
-      // ~55% of pixels stay at the dark base (screen = no-op there), the
-      // rest ramp up to mid-bright sparkle luminance.
-      const s = v <= 0.55 ? 0 : Math.min(1, (v - 0.55) * 2.1)
-      // Dark violet base → bright lavender sparkle, luminance-capped so
-      // the map lands the glitter in the blue-violet/magenta zone.
-      const base = 10
-      const r = base + (207 - base) * s * s
-      const gg = base + (155 - base) * s * s
-      const b = 26 + (245 - 26) * s
-      d[o] = r
-      d[o + 1] = gg
-      d[o + 2] = b
-      d[o + 3] = 255
+function getVeilRows(ramp: NeonSplitFilterConfig['ramp'], h: number): Float32Array {
+  if (veilCache && veilCache.ramp === ramp && veilCache.h === h) return veilCache.data
+  const stops = WASHES[ramp] ?? WASHES.violet
+  const data = new Float32Array(h * 4)
+  for (let y = 0; y < h; y++) {
+    const t = y / (h - 1)
+    let r = 0
+    let g = 0
+    let b = 0
+    let a = 0
+    for (let k = 0; k < stops.length - 1; k++) {
+      const s0 = stops[k]
+      const s1 = stops[k + 1]
+      if (t >= s0.t && t <= s1.t) {
+        const span = s1.t - s0.t
+        const f = span > 0 ? (t - s0.t) / span : 0
+        r = s0.c[0] + (s1.c[0] - s0.c[0]) * f
+        g = s0.c[1] + (s1.c[1] - s0.c[1]) * f
+        b = s0.c[2] + (s1.c[2] - s0.c[2]) * f
+        a = s0.a + (s1.a - s0.a) * f
+        break
+      }
     }
+    data[y * 4] = r
+    data[y * 4 + 1] = g
+    data[y * 4 + 2] = b
+    data[y * 4 + 3] = a
   }
-  g.putImageData(img, 0, 0)
-  grainTile = c
-  return c
+  veilCache = { ramp, h, data }
+  return data
 }
+
+/* ------------------------------ clean buffer ------------------------------ */
+
+/** Reused ImageData for the clean mapped frame (the bloom source — no veil,
+ *  no grain). Re-allocated only when the frame size changes. */
+let cleanBuf: ImageData | null = null
+let cleanBufW = 0
+let cleanBufH = 0
 
 /* -------------------------------- the filter -------------------------------- */
 
@@ -220,6 +286,7 @@ export function drawNeonSplitFilter(
   const contrast = clamp01(cfg.contrast ?? 0.5)
   const grain = clamp01(cfg.grain ?? 0.5)
   const glow = clamp01(cfg.glow ?? 0.6)
+  const veil = clamp01(cfg.wash ?? 1)
   const split = clamp01(cfg.split ?? 0)
   const bass = clamp01(frame.bass ?? 0)
 
@@ -234,71 +301,102 @@ export function drawNeonSplitFilter(
   // copy is skipped and the grade reads the live frame directly.
   const needsSnap = split > 0.001 || beatShift > 0.001 || strength < 0.999
   let snap: HTMLCanvasElement | null = null
-  let sc: CanvasRenderingContext2D | null = null
   if (needsSnap) {
     snap = getWork('neon:snap', W, H)
-    sc = resetWork(snap.getContext('2d')!)
+    const sc = resetWork(snap.getContext('2d')!)
     sc.clearRect(0, 0, W, H)
     sc.drawImage(ctx.canvas, 0, 0)
   }
 
-  // 1+2) The grade canvas — plain copy first, then the sparkle grain
-  //      screen-blended on top at HALF resolution (grain is chunky by
-  //      design and the composite cost drops 4×). The contrast conditioning
-  //      rides INSIDE the map LUT, so no full-frame filter pass is spent
-  //      on it.
+  // 1-4) One full-res pass does the whole grade: copy the frame in, then
+  //      per pixel → contrast+ramp LUT (the gradient map) → write the CLEAN
+  //      color to the bloom-source buffer → screen the color-gradient veil
+  //      over it → add the film-grain speckle on top. No half-res sparkle
+  //      tiles, no separate blend passes — the grain is 1:1 per-pixel.
   const grade = getWork('neon:grade', W, H)
   const gc = resetWork(grade.getContext('2d', { willReadFrequently: true })!)
   gc.clearRect(0, 0, W, H)
   gc.drawImage(snap ?? ctx.canvas, 0, 0)
-  if (grain > 0.001) {
-    const gw = Math.max(2, W >> 1)
-    const gh = Math.max(2, H >> 1)
-    const half = getWork('neon:grain', gw, gh)
-    const hc = resetWork(half.getContext('2d')!)
-    hc.clearRect(0, 0, gw, gh)
-    const pat = hc.createPattern(getGrainTile(), 'repeat')
-    if (pat) {
-      // Animated grain: the tile re-offsets every 1/24 s, hashed from song
-      // time — same frame, same offset, export-safe.
-      const seed = frameSeed(frame.time ?? 0, 24)
-      const ox = hash01(seed, 91) * GRAIN_TILE
-      const oy = hash01(seed, 92) * GRAIN_TILE
-      if (typeof DOMMatrix !== 'undefined') {
-        try {
-          pat.setTransform(new DOMMatrix([1, 0, 0, 1, ox, oy]))
-        } catch {
-          /* pattern stays static — still deterministic */
-        }
+
+  const cleanMap = getWork('neon:clean', W, H)
+  const cc = resetWork(cleanMap.getContext('2d')!)
+
+  if (!cleanBuf || cleanBufW !== W || cleanBufH !== H) {
+    cleanBuf = gc.createImageData(W, H)
+    cleanBufW = W
+    cleanBufH = H
+  }
+
+  const img = gc.getImageData(0, 0, W, H)
+  const fd = img.data
+  const cd = cleanBuf.data
+  const lut = getGradeLut(cfg.ramp ?? 'violet', contrast)
+  const veilRows = veil > 0.001 ? getVeilRows(cfg.ramp ?? 'violet', H) : null
+
+  // Film grain: ±(grain × 49) luminance — the default dial (0.5) lands the
+  // speckle std at ~15/255, measured off the reference. The tile re-offsets
+  // every 1/24 s, hashed from song time — same frame, same offset, export-
+  // safe. Slightly damped in the shadows (the reference's dark end reads
+  // calmer), full strength through the mids and highlights.
+  const amp = grain * 49
+  const step = frameSeed(frame.time ?? 0, 24)
+  const nx = 131 * step
+  const ny = 197 * step
+
+  for (let y = 0; y < H; y++) {
+    let vr = 0
+    let vg = 0
+    let vb = 0
+    let va = 0
+    if (veilRows) {
+      vr = veilRows[y * 4]
+      vg = veilRows[y * 4 + 1]
+      vb = veilRows[y * 4 + 2]
+      va = veilRows[y * 4 + 3] * veil
+    }
+    const row = y * W
+    for (let x = 0; x < W; x++) {
+      const o = (row + x) * 4
+      const l = (54 * fd[o] + 183 * fd[o + 1] + 19 * fd[o + 2]) >> 8
+      const u = l * 3
+      const r = lut[u]
+      const g = lut[u + 1]
+      const b = lut[u + 2]
+      // The clean mapped frame — what the bloom reads (no veil, no grain).
+      cd[o] = r
+      cd[o + 1] = g
+      cd[o + 2] = b
+      cd[o + 3] = 255
+      // The color-gradient veil, screen-blended (brightens toward the wash
+      // color, never darkens — how the preset's gradient layer sits).
+      let rr = r
+      let gg = g
+      let bb = b
+      if (va > 0) {
+        rr = r + va * ((255 - ((255 - r) * (255 - vr)) / 255) - r)
+        gg = g + va * ((255 - ((255 - g) * (255 - vg)) / 255) - g)
+        bb = b + va * ((255 - ((255 - b) * (255 - vb)) / 255) - b)
       }
-      hc.fillStyle = pat
-      hc.fillRect(0, 0, gw, gh)
-      gc.globalCompositeOperation = 'screen'
-      gc.globalAlpha = grain * 0.7
-      gc.imageSmoothingEnabled = true
-      gc.drawImage(half, 0, 0, gw, gh, 0, 0, W, H)
-      gc.globalCompositeOperation = 'source-over'
-      gc.globalAlpha = 1
+      // Film grain on top — one deterministic luminance speck per pixel.
+      if (amp > 0.5) {
+        const lum = rr * 0.299 + gg * 0.587 + bb * 0.114
+        const damp = lum < 200 ? 0.78 + (0.22 * lum) / 200 : 1
+        const n = (hash01(x + nx, y + ny) - 0.5) * 2 * amp * damp
+        rr += n
+        gg += n
+        bb += n
+      }
+      fd[o] = rr
+      fd[o + 1] = gg
+      fd[o + 2] = bb
     }
   }
-
-  // 3) The gradient map — one tight per-pixel pass: integer luminance →
-  //     combined contrast+ramp LUT color.
-  const lut = getGradeLut(cfg.ramp ?? 'violet', contrast)
-  const img = gc.getImageData(0, 0, W, H)
-  const d = img.data
-  for (let i = 0; i < d.length; i += 4) {
-    const l = (54 * d[i] + 183 * d[i + 1] + 19 * d[i + 2]) >> 8
-    const o = l * 3
-    d[i] = lut[o]
-    d[i + 1] = lut[o + 1]
-    d[i + 2] = lut[o + 2]
-  }
   gc.putImageData(img, 0, 0)
+  cc.putImageData(cleanBuf, 0, 0)
 
-  // 4) Bloom sources — two blurred, contrast-crushed copies of the graded
-  //     frame at HALF resolution (the bloom is low-frequency; upscaling the
-  //     small blurred copies is visually identical and 4× cheaper). Only
+  // 3) Bloom sources — two blurred, contrast-crushed copies of the CLEAN
+  //     mapped frame at HALF resolution (the bloom is low-frequency; the
+  //     veil and grain are not in it, so only true highlights glow). Only
   //     the bright end survives the crush, so the halos are neon light,
   //     not gray milk.
   let glowA: HTMLCanvasElement | null = null
@@ -313,16 +411,19 @@ export function drawNeonSplitFilter(
     ac.clearRect(0, 0, gw, gh)
     ac.imageSmoothingEnabled = true
     ac.imageSmoothingQuality = 'high'
-    ac.filter = `brightness(1.4) contrast(2.6) blur(${(1 * S).toFixed(2)}px)`
-    ac.drawImage(grade, 0, 0, gw, gh)
+    // High-threshold crush — only the true highlights survive as light
+    // (measured off the reference: the dark bottom contributes ZERO glow
+    // and the bright cores never milk past their pale-pink ramp color).
+    ac.filter = `contrast(3.2) blur(${(2 * S).toFixed(2)}px)`
+    ac.drawImage(cleanMap, 0, 0, gw, gh)
     ac.filter = 'none'
     glowB = getWork('neon:glowB', qw, qh)
     const bc = resetWork(glowB.getContext('2d')!)
     bc.clearRect(0, 0, qw, qh)
     bc.imageSmoothingEnabled = true
     bc.imageSmoothingQuality = 'high'
-    bc.filter = `brightness(1.5) contrast(2.2) blur(${(2.2 * S).toFixed(2)}px)`
-    bc.drawImage(grade, 0, 0, qw, qh)
+    bc.filter = `contrast(2.2) blur(${(3.4 * S).toFixed(2)}px)`
+    bc.drawImage(cleanMap, 0, 0, qw, qh)
     bc.filter = 'none'
   }
 
@@ -351,19 +452,21 @@ export function drawNeonSplitFilter(
     pc.globalCompositeOperation = 'source-over'
   }
 
-  // Composite — the graded frame replaces the picture, the bloom draws back
-  // additively (the half-res glow sources stretch back over the frame), the
-  // split region restores the untouched pixels, and below 100% mix the whole
-  // look blends over the original.
+  // Composite — the graded frame (map + veil + grain) replaces the picture,
+  // the bloom screens back from the clean map, the split region
+  // restores the untouched pixels, and below 100% mix the whole look blends
+  // over the original.
   ctx.save()
   ctx.globalCompositeOperation = 'source-over'
   ctx.globalAlpha = 1
   ctx.drawImage(grade, 0, 0)
   if (glowAmt > 0.004 && glowA && glowB) {
-    ctx.globalCompositeOperation = 'lighter'
-    ctx.globalAlpha = glowAmt * 0.5
+    // Screen, not additive — the reference's bright cores hold their pale
+    // pink (#fedcfa) instead of clipping to pure white.
+    ctx.globalCompositeOperation = 'screen'
+    ctx.globalAlpha = glowAmt * 0.55
     ctx.drawImage(glowA, 0, 0, glowA.width, glowA.height, 0, 0, W, H)
-    ctx.globalAlpha = glowAmt * 0.35
+    ctx.globalAlpha = glowAmt * 0.4
     ctx.drawImage(glowB, 0, 0, glowB.width, glowB.height, 0, 0, W, H)
     ctx.globalCompositeOperation = 'source-over'
     ctx.globalAlpha = 1
