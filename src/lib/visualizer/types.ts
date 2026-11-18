@@ -990,58 +990,53 @@ export interface AnaglyphFilterConfig {
 }
 
 /**
- * Neon Split filter — a reproduction of the effect.app "neon split" preset,
- * rebuilt from measurements of the real thing: every pixel's brightness is
- * re-read as a position on a color ramp sampled off the preset's own output
- * (plum shadows → indigo → blue-violet → orchid → pink → pale-pink
- * highlights), the preset's vertical pink veil is screen-blended over the
- * top of the frame, a soft two-pass bloom (fed by the clean map, never the
- * grain) makes the bright areas glow, and fine per-pixel film grain sits on
- * top of everything. The "split": below an adjustable line the untouched
- * picture fades back in, so part of the frame wears the neon and part keeps
- * its own colors — the line breathes with the song when React to beat is on.
+ * Neon Split filter — the effect.app "neon split" preset, rebuilt from the
+ * preset's own published definition and effect shaders (fetched off the site
+ * and decrypted — nothing measured/eyeballed). The whole picture runs through
+ * the preset's exact chain: a masked inversion across the top of the frame
+ * (the real "split"), the preset's bloom (6-level mip pyramid, screen blend in
+ * linear light), its film-grain noise (colored speckle in linear light, static
+ * like the published preset), its 4-stop gradient map (#000000 → #002266 →
+ * #D55FEC → #FFD6FA) that carries all of the color, the master curve, and the
+ * two paper-texture layers (screen + hard light) that leave the crease marks.
+ * There is no overlay veil anywhere — the color IS the gradient map.
  *
- * Deterministic like every full-frame filter: the grain is integer-hashed
- * per pixel and re-offset at a quantized song-time step, so the same frame
- * in preview and export produces the same pixels. Skipped on transparent
- * backgrounds (alpha must stay clean).
+ * Deterministic like every full-frame filter (hash-based grain, fixed
+ * pipeline). Skipped on transparent backgrounds (alpha must stay clean).
  */
 export interface NeonSplitFilterConfig {
   enabled: boolean
-  /** Which neon ramp the luminance maps onto. 'violet' reproduces the
-   *  classic preset (plum → indigo → blue-violet → orchid → pink → pale
-   *  pink, sampled off the real preset's output); the others recolor the
-   *  same geometry. Old saves without this field load as 'violet'. */
+  /** Which neon ramp the luminance maps onto. 'violet' is the published
+   *  preset's own gradient (verbatim stops #000000/#002266/#D55FEC/#FFD6FA at
+   *  0/0.406/0.857/1); the others recolor the exact same stop geometry.
+   *  Old saves without this field load as 'violet'. */
   ramp: 'violet' | 'uv' | 'acid' | 'ember' | 'ice'
-  /** Contrast conditioning before the map, 0..1 (0.5 = neutral — tones pass
-   *  through unchanged; higher pushes shadows down and highlights up so the
-   *  neon reads punchier, lower washes everything toward the mids). */
+  /** Master-curve depth 0..1 — 0.5 = the preset's own curve (neutral); lower
+   *  relaxes the tone curve toward identity (washed), 0..1 clamps at the
+   *  preset. */
   contrast: number
-  /** Film grain 0..1 — fine per-pixel luminance speckle on top of the
-   *  finished grade (the preset's noise layer): ±5% at the default dial,
-   *  slightly damped in the shadows, re-offset every 1/24 s so it shimmers
-   *  with the song while staying deterministic. */
+  /** Film grain 0..1 — the preset's noise layer strength (exp2-dialed like
+   *  the real thing: 0.5 = the published 1.78; the speckle is colored
+   *  (chroma 0.69), heavier in highlights than shadows, and static). */
   grain: number
-  /** Neon bloom 0..1 — two blurred, high-threshold-crushed copies of the
-   *  CLEAN mapped frame (pre-veil, pre-grain) screen-blended back, so only
-   *  the bright areas glow — without the veil milking up, the grain
-   *  flaring, or the cores clipping to white. */
+  /** Neon bloom 0..1 — the preset's bloom intensity (0.5 = the published 3.0;
+   *  threshold 0.1 / knee 0.29 / factor 0.65 stay the preset's own). */
   glow: number
-  /** Top wash 0..1 — the preset's color-gradient veil strength (the light
-   *  pink wash screen-blended over the top of the frame, cutting out by
-   *  ~58% of the height). Absent in old saves → 1 (the full preset look). */
+  /** Paper texture 0..1 — the two paper-texture layers' strength (0.5 = the
+   *  published opacities 0.8/0.32: the charcoal sheet screened over the frame
+   *  and the folded-paper sheet hard-lit, whose creases mark the highlights).
+   *  Absent in old saves → 0.5. */
   wash?: number
   /** The split 0..1 — how much of the frame, measured from the BOTTOM, fades
    *  back to the untouched picture. 0 = the whole frame goes neon (the
-   *  classic preset); 0.4 = the bottom 40% keeps its own colors, the rest is
+   *  published preset); 0.4 = the bottom 40% keeps its own colors, the rest is
    *  neon, with a soft edge between. */
   split: number
   /** Mix 0..1 — the full neon look blended back over the untouched picture
    *  (1 = the grade replaces the frame, lower values dial it back). */
   strength: number
-  /** React to beat — on kicks the split line slides down (the neon pushes
-   *  further over the picture) and the bloom flares; between beats the look
-   *  rests exactly as dialed in. */
+  /** React to beat — on kicks the bloom flares; between beats the look rests
+   *  exactly as dialed in. */
   beatReactive: boolean
   /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
   beatStrength: number

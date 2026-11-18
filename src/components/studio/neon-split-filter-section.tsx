@@ -7,9 +7,9 @@ import { Switch } from '@/components/ui/switch'
 import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 
-/** The five ramps, mirrored from the renderer's RAMPS table for the chip
- *  swatches — a tiny CSS gradient strip per chip so the palette choice is
- *  visible at a glance. Keep in sync with src/lib/visualizer/neon-split.ts. */
+/** The five ramps, mirrored from neon-split-data's RAMPS table — the preset's
+ *  own 4-stop gradient geometry (0 / 0.406 / 0.857 / 1), recolored per chip.
+ *  Keep in sync with src/lib/visualizer/neon-split-data.ts. */
 const RAMPS: {
   id: NeonSplitFilterConfig['ramp']
   label: string
@@ -19,43 +19,45 @@ const RAMPS: {
   {
     id: 'violet',
     label: 'Violet neon',
-    sub: 'the classic preset',
-    css: 'linear-gradient(90deg,#170d18 0%,#1a0e1f 8%,#21183f 12%,#232151 16%,#2a2e6c 21%,#4d3f97 31%,#8d52c4 44%,#d87fe4 65%,#edabed 78%,#f6c0f3 84%,#fcd2f7 89%,#fedcfa 100%)',
+    sub: 'the real preset',
+    css: 'linear-gradient(90deg,#000000 0%,#002266 40.6%,#d55fec 85.7%,#ffd6fa 100%)',
   },
   {
     id: 'uv',
     label: 'UV',
     sub: 'electric violet',
-    css: 'linear-gradient(90deg,#01000a 0%,#0b1030 20%,#232b7c 42%,#4f2bb8 62%,#8a45ff 80%,#c9a1ff 92%,#f4ecff 100%)',
+    css: 'linear-gradient(90deg,#01000a 0%,#0b1030 40.6%,#8a45ff 85.7%,#f4ecff 100%)',
   },
   {
     id: 'acid',
     label: 'Acid',
     sub: 'radioactive green',
-    css: 'linear-gradient(90deg,#000000 0%,#052012 18%,#0d5c2a 40%,#2fae4e 60%,#7ee06a 78%,#c9ff7a 90%,#f2ffc9 100%)',
+    css: 'linear-gradient(90deg,#000000 0%,#06240f 40.6%,#3fce54 85.7%,#e8ffc4 100%)',
   },
   {
     id: 'ember',
     label: 'Ember',
     sub: 'furnace orange',
-    css: 'linear-gradient(90deg,#000000 0%,#200509 18%,#7c1a12 40%,#c43e18 60%,#f57b21 76%,#ffb45e 90%,#ffedc9 100%)',
+    css: 'linear-gradient(90deg,#000000 0%,#260607 40.6%,#f57b21 85.7%,#ffedc9 100%)',
   },
   {
     id: 'ice',
     label: 'Ice',
     sub: 'glacial cyan',
-    css: 'linear-gradient(90deg,#000000 0%,#041224 18%,#0a3a5c 40%,#1a7ab0 60%,#4fc3e8 78%,#a5ecf7 90%,#eafcff 100%)',
+    css: 'linear-gradient(90deg,#000000 0%,#041a2c 40.6%,#4fc3e8 85.7%,#eafcff 100%)',
   },
 ]
 
 /**
- * Neon Split filter card — the effect.app "neon split" look, rebuilt from
- * measurements of the real preset: the whole picture is re-read as brightness
- * and recolored through the sampled neon ramp, the preset's pink veil washes
- * the top of the frame, a soft bloom milks the highlights, and fine film
- * grain sits over everything. An optional split line lets the bottom of the
- * frame keep its own colors. Baked into every export; skipped on transparent
- * backgrounds.
+ * Neon Split filter card — the effect.app "neon split" preset, rebuilt from
+ * the preset's own published definition and effect shaders (fetched off the
+ * site — the same numbers the real thing runs). The top of the frame inverts
+ * behind a soft vertical band (the actual "split"), the highlights bloom
+ * through a mip pyramid, colored film grain sits in the light, every pixel's
+ * brightness re-reads through the preset's own gradient map, and two paper
+ * texture layers leave the crease marks. An optional split line lets the
+ * bottom of the frame keep its own colors. Baked into every export; skipped
+ * on transparent backgrounds.
  */
 export function NeonSplitFilterSection() {
   const filter = useStudioStore((s) => s.config.neonSplitFilter)
@@ -78,13 +80,13 @@ export function NeonSplitFilterSection() {
         />
       </div>
       <p className="text-[11px] leading-snug text-zinc-600">
-        The effect.app neon-split look, measured from the real thing — every
-        pixel&apos;s brightness re-reads as a position on the preset&apos;s own
-        ramp (plum shadows → indigo → violet → orchid → pale pink), the pink
-        color-gradient veil washes over the top of the frame, the highlights
-        bloom softly and fine film grain sits on top. Turn on Split to let the
-        bottom of the frame keep its own colors — the line can ride the beat.
-        Baked into every export.
+        The effect.app neon-split preset, rebuilt from its own published
+        shader code — the top of the frame inverts behind a soft band (the real
+        &ldquo;split&rdquo;), the highlights bloom, colored film grain sits in the
+        light, and every pixel&apos;s brightness re-reads through the
+        preset&apos;s own gradient map (deep blue → orchid → pale pink). No
+        overlay — the color IS the map. Turn on Split to let the bottom of the
+        frame keep its own colors. Baked into every export.
       </p>
 
       {filter.enabled ? (
@@ -132,16 +134,16 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('contrast')}
-            format={(v) => (v < 0.475 ? 'Washed' : v <= 0.525 ? 'Neutral' : `${Math.round(v * 100)}%`)}
+            format={(v) => (v < 0.475 ? 'Washed' : v <= 0.525 ? 'Preset' : `+${Math.round((v - 0.5) * 100)}%`)}
           />
           <SliderRow
-            label="Top wash"
-            value={filter.wash ?? 1}
+            label="Paper texture"
+            value={filter.wash ?? 0.5}
             min={0}
             max={1}
             step={0.05}
             onChange={set('wash')}
-            format={(v) => (v <= 0.025 ? 'Off' : `${Math.round(v * 100)}%`)}
+            format={(v) => (v <= 0.025 ? 'Off' : v <= 0.525 ? 'Preset' : 'Preset')}
           />
           <SliderRow
             label="Film grain"
@@ -150,7 +152,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('grain')}
-            format={(v) => (v <= 0.025 ? 'Clean' : `${Math.round(v * 100)}%`)}
+            format={(v) => (v <= 0.025 ? 'Clean' : v <= 0.525 ? 'Preset' : `+${Math.round((v - 0.5) * 100)}%`)}
           />
           <SliderRow
             label="Neon bloom"
@@ -159,7 +161,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('glow')}
-            format={(v) => (v <= 0.025 ? 'Flat' : `${Math.round(v * 100)}%`)}
+            format={(v) => (v <= 0.025 ? 'Flat' : v <= 0.525 ? 'Preset' : `+${Math.round((v - 0.5) * 100)}%`)}
           />
           <SliderRow
             label="Split"
@@ -177,10 +179,10 @@ export function NeonSplitFilterSection() {
             onStrength={(beatStrength) => patchNeonSplitFilter({ beatStrength })}
             strengthLabel="Beat punch"
           />
-          {filter.beatReactive && filter.split > 0.025 ? (
+          {filter.beatReactive ? (
             <p className="text-[10px] leading-snug text-zinc-600">
-              On every kick the split line slides down — the neon pushes further
-              over the picture — then settles back home between beats.
+              On every kick the bloom flares with the bass, then settles back
+              exactly as dialed in between beats.
             </p>
           ) : null}
           <SliderRow
@@ -193,21 +195,19 @@ export function NeonSplitFilterSection() {
             format={(v) => `${Math.round(v * 100)}%`}
           />
           <p className="text-[10px] leading-snug text-zinc-600">
-            Contrast shapes the tones before the ramp (50% is neutral — higher
-            pushes the shadows down and the highlights up so the neon reads
-            punchier). Top wash is the preset&apos;s color-gradient veil: the
-            light pink layer screen-blended over the top of the frame that
-            cuts out by mid-frame — dial it down to let more of the raw ramp
-            show. Film grain is fine per-pixel speckle over the finished
-            frame (the preset&apos;s noise layer — it shimmers with the song
-            but stays deterministic for exports). Neon bloom glows the bright
-            areas outward from the clean map, so the veil never milks up and
-            the grain never flares into blobs. Split fades the untouched
-            picture back in from the bottom (0% keeps the whole frame neon);
-            with React to beat the line slides down on every kick and the
-            bloom flares, resting exactly as dialed in between hits. Mix
-            blends the whole look back toward the original. Skipped on
-            transparent backgrounds so alpha recordings stay clean.
+            Every dial sits at the real preset&apos;s value in the middle:
+            Contrast shapes the master tone curve (50% = the preset&apos;s own
+            curve, lower relaxes it). Paper texture fades the two paper layers
+            (a charcoal sheet screened over the frame and a folded-paper sheet
+            whose creases mark the highlights — 50% = the preset&apos;s own
+            opacities). Film grain is the preset&apos;s colored speckle in
+            linear light — heavier in highlights than shadows, still like the
+            published preset, deterministic for exports. Neon bloom drives the
+            preset&apos;s mip-pyramid glow (50% = its intensity 3). Split
+            fades the untouched picture back in from the bottom (0% keeps the
+            whole frame neon). Mix blends the whole look back toward the
+            original. Skipped on transparent backgrounds so alpha recordings
+            stay clean.
           </p>
         </>
       ) : null}

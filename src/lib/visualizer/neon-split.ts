@@ -1,274 +1,486 @@
 /**
- * Neon Split filter — a faithful reproduction of the effect.app "neon split"
- * preset, built by measuring the real preset's output pixel-by-pixel (the
- * four sections the preset is made of, in its own stack order):
+ * Neon Split filter — the effect.app "Neon split" preset, rebuilt from the
+ * preset's own published definition and effect code (fetched off the site and
+ * decrypted: /api/presets/shared/neon-split plus the gradient-map / bloom /
+ * noise / curves / layer-mix GLSL the editor runs). Nothing here is eyeballed:
  *
- *   1. Gradient map — every pixel's luminance re-reads as a position on a
- *      256-entry ramp whose stops are SAMPLED from the preset's actual
- *      output: dark plum shadows → indigo → blue-violet → orchid → pink →
- *      pale-pink highlights. Nothing clips to pure black or white — even the
- *      deepest shadow keeps a violet-plum cast and the hottest highlight
- *      lands on near-white pink.
- *   2. Color gradient — the preset's signature vertical veil: a light-pink
- *      wash screen-blended over the top of the frame, holding its strength
- *      down to ~42% of the height, then cutting out sharply by ~58% (the
- *      bottom keeps the pure gradient map). Tinted per ramp for the other
- *      palettes; the Top wash dial scales its strength.
- *   3. Bloom — two blurred, contrast-crushed copies of the CLEAN mapped
- *      frame (pre-veil, pre-grain, so the wash never milks up and the grain
- *      never flares into blobs) screen-blended back with a high threshold:
- *      bright areas glow outward in the ramp's colors, dark areas contribute
- *      nothing, and the hottest cores hold their pale pink. With React to beat the bloom flares on
- *      kicks, resting exactly as dialed in between hits.
- *   4. Noise — the preset's film grain: fine per-pixel luminance speckle
- *      applied ON TOP of everything (±5% at the default dial, slightly
- *      damped in the shadows), hashed deterministically and re-offset at a
- *      quantized song-time step each frame — animated grain, same frame in →
- *      same pixels out.
+ *   1. Levels — the preset inverts the top of the picture (input levels [1,0])
+ *      behind a vertical smooth gradient mask (center 0.074,-0.094, width 0.3,
+ *      rotation 90). That masked inversion IS the "split": bright areas at the
+ *      top flip dark, shadows flip glowing, and the look fades out by ~60% of
+ *      the height.
+ *   2. Bloom — threshold 0.1, knee 0.29, intensity 3, factor 0.65: a bright
+ *      pass in linear light feeds a 6-level mip pyramid, the LOD 0-5 average
+ *      screens back over the picture (the engine's bloom-1/bloom-3 pair).
+ *   3. Noise — the preset's film grain verbatim: 3-octave value noise on the
+ *      1103515245 uint hash, cell 0.5px, chroma 0.69 (colored speckle), more
+ *      grain in highlights than shadows (weights 0.25/0.4/0.53), strength
+ *      exp2-dialed (1.78 = 2.44x at the default dial), applied in linear
+ *      light with a 0.14 min-grain floor. Static — the published preset pins
+ *      grainSpeed 0. Deterministic: same frame in, same pixels out.
+ *   4. Gradient map — every pixel's Rec.709 luminance re-reads as a position
+ *      on the preset's own ramp: #000000 → #002266 (deep blue) → #D55FEC
+ *      (orchid) → #FFD6FA (pale pink). The whole color of the filter comes
+ *      from this map — there is NO overlay/veil anywhere in the real preset.
+ *   5. Curves — the preset's master curve (0.1295,0.0357)→(0.5625,0.4911)→
+ *      (0.7813,0.7857)→(1,1), apply-mode L (luma shift, hue preserved), at the
+ *      node's 0.54 opacity.
+ *   6. Paper textures — a dark charcoal sheet screened over at 0.8 (fill 1.22,
+ *      rot -180, through the preset's texture curve) and a folded-paper sheet
+ *      hard-lit at 0.32 (tile 0.63, rot 90, blend-masked by two ramp LUTs so
+ *      the creases only surface where the picture is bright). Procedural
+ *      stand-ins synthesized in-code (no third-party assets), same roles.
  *
- *   5. The split — below a soft line the untouched picture fades back in
- *      (optional): the top of the frame wears the neon, the bottom keeps its
- *      own colors. With React to beat, the line slides down on kicks.
- *
- * Deterministic: no Math.random / Date.now anywhere — same (frame, config) →
- * same pixels in the live preview, the MP4 and the PNG exports. Transparent
- * backgrounds skip the pass (alpha must stay clean).
+ * On WebGL2 the whole chain runs as the preset's own shaders (neon-split-gl),
+ * pixel-faithful and fast; without GL, a CPU path runs the same math in one
+ * per-pixel pass with canvas-composited textures. Both deterministic, both
+ * skipped on transparent backgrounds (alpha must stay clean).
  */
 import type { AudioFrame, NeonSplitFilterConfig, RenderContext } from './types'
+import { clamp01, getWork, resetWork } from './filter-utils'
 import {
-  beatAmount,
-  beatBoost,
-  clamp01,
-  frameSeed,
-  getWork,
-  hash01,
-  resetWork,
-} from './filter-utils'
+  buildCurveLut as buildCurveLutData,
+  buildRampLut,
+  gradientLutPixels,
+  linear22Lut,
+  linearExactLut,
+  makeFoldedPaperTexture,
+  makeGrainField,
+  makeBlackPaperTexture,
+  srgb22Lut,
+  srgbExactLut,
+} from './neon-split-data'
+import { NeonSplitGL } from './neon-split-gl'
 
-/* --------------------------------- ramps ---------------------------------- */
+/* --------------------------- config dial mapping --------------------------- */
 
-/** Ramp stops — position on the luminance axis + the color that tone maps
- *  to. Linear RGB interpolation between stops, baked into a 256-entry LUT. */
-type RampStop = { t: number; c: string }
+/** The dials are centered on the published preset: 0.5 = the preset's own
+ *  value for grain / glow / texture / contrast. */
+const PRESET_NOISE_STRENGTH = 1.78
+const PRESET_BLOOM_INTENSITY = 3
+const PRESET_BLOOM_FACTOR = 0.65
 
-const RAMPS: Record<NeonSplitFilterConfig['ramp'], RampStop[]> = {
-  // Sampled off the reference preset's actual output (luminance deciles →
-  // mean color): plum → indigo → blue-violet → violet → orchid → pink →
-  // pale pink. The bottom third climbs slowly through blue-violet; the top
-  // quarter compresses into soft pinks — exactly how the preset reads.
-  violet: [
-    { t: 0, c: '#170d18' },
-    { t: 0.08, c: '#1a0e1f' },
-    { t: 0.12, c: '#21183f' },
-    { t: 0.16, c: '#232151' },
-    { t: 0.21, c: '#2a2e6c' },
-    { t: 0.31, c: '#4d3f97' },
-    { t: 0.44, c: '#8d52c4' },
-    { t: 0.65, c: '#d87fe4' },
-    { t: 0.78, c: '#edabed' },
-    { t: 0.84, c: '#f6c0f3' },
-    { t: 0.89, c: '#fcd2f7' },
-    { t: 1, c: '#fedcfa' },
-  ],
-  // Deeper ultraviolet — colder shadows, electric-violet highlights.
-  uv: [
-    { t: 0, c: '#01000a' },
-    { t: 0.2, c: '#0b1030' },
-    { t: 0.42, c: '#232b7c' },
-    { t: 0.62, c: '#4f2bb8' },
-    { t: 0.8, c: '#8a45ff' },
-    { t: 0.92, c: '#c9a1ff' },
-    { t: 1, c: '#f4ecff' },
-  ],
-  // Acid green — the same sweep in radioactive territory.
-  acid: [
-    { t: 0, c: '#000000' },
-    { t: 0.18, c: '#052012' },
-    { t: 0.4, c: '#0d5c2a' },
-    { t: 0.6, c: '#2fae4e' },
-    { t: 0.78, c: '#7ee06a' },
-    { t: 0.9, c: '#c9ff7a' },
-    { t: 1, c: '#f2ffc9' },
-  ],
-  // Ember — furnace shadows through orange to hot cream.
-  ember: [
-    { t: 0, c: '#000000' },
-    { t: 0.18, c: '#200509' },
-    { t: 0.4, c: '#7c1a12' },
-    { t: 0.6, c: '#c43e18' },
-    { t: 0.76, c: '#f57b21' },
-    { t: 0.9, c: '#ffb45e' },
-    { t: 1, c: '#ffedc9' },
-  ],
-  // Ice — glacial blues to near-white cyan.
-  ice: [
-    { t: 0, c: '#000000' },
-    { t: 0.18, c: '#041224' },
-    { t: 0.4, c: '#0a3a5c' },
-    { t: 0.6, c: '#1a7ab0' },
-    { t: 0.78, c: '#4fc3e8' },
-    { t: 0.9, c: '#a5ecf7' },
-    { t: 1, c: '#eafcff' },
-  ],
+function mapNoiseStrength(grain: number): number {
+  return clamp01(grain) * 2 * PRESET_NOISE_STRENGTH
 }
 
-/* ------------------------- the color-gradient veil ------------------------- */
-
-/** The preset's vertical color-gradient section: a wash screen-blended over
- *  the mapped frame. Stops = (position from top, RGB, alpha). Sampled from
- *  the reference: near-opaque light pink at the very top, holding through
- *  ~42%, then crashing out by ~58% so the bottom wears the pure map. */
-type WashStop = { t: number; c: [number, number, number]; a: number }
-
-const WASHES: Record<NeonSplitFilterConfig['ramp'], WashStop[]> = {
-  violet: [
-    { t: 0, c: [246, 204, 242], a: 0.97 },
-    { t: 0.3, c: [234, 178, 233], a: 0.93 },
-    { t: 0.42, c: [221, 156, 224], a: 0.9 },
-    { t: 0.48, c: [183, 94, 203], a: 0.8 },
-    { t: 0.53, c: [90, 58, 160], a: 0.15 },
-    { t: 0.565, c: [0, 0, 0], a: 0 },
-  ],
-  // The sibling palettes reuse the measured alpha profile with their own
-  // tint (top = the ramp's highlight color lifted, mid = the ramp's orchid
-  // zone, deep = the ramp's shadow hue).
-  uv: [
-    { t: 0, c: [232, 214, 255], a: 0.97 },
-    { t: 0.3, c: [216, 190, 250], a: 0.93 },
-    { t: 0.42, c: [198, 158, 244], a: 0.9 },
-    { t: 0.48, c: [160, 100, 228], a: 0.82 },
-    { t: 0.545, c: [74, 58, 160], a: 0.2 },
-    { t: 0.585, c: [0, 0, 0], a: 0 },
-  ],
-  acid: [
-    { t: 0, c: [226, 248, 208], a: 0.97 },
-    { t: 0.3, c: [206, 240, 182], a: 0.93 },
-    { t: 0.42, c: [178, 228, 152], a: 0.9 },
-    { t: 0.48, c: [116, 204, 104], a: 0.82 },
-    { t: 0.545, c: [58, 106, 58], a: 0.2 },
-    { t: 0.585, c: [0, 0, 0], a: 0 },
-  ],
-  ember: [
-    { t: 0, c: [255, 228, 204], a: 0.97 },
-    { t: 0.3, c: [252, 206, 172], a: 0.93 },
-    { t: 0.42, c: [248, 182, 140], a: 0.9 },
-    { t: 0.48, c: [236, 128, 84], a: 0.82 },
-    { t: 0.545, c: [138, 58, 32], a: 0.2 },
-    { t: 0.585, c: [0, 0, 0], a: 0 },
-  ],
-  ice: [
-    { t: 0, c: [214, 244, 255], a: 0.97 },
-    { t: 0.3, c: [188, 234, 250], a: 0.93 },
-    { t: 0.42, c: [158, 222, 244], a: 0.9 },
-    { t: 0.48, c: [104, 192, 228], a: 0.82 },
-    { t: 0.545, c: [42, 90, 138], a: 0.2 },
-    { t: 0.585, c: [0, 0, 0], a: 0 },
-  ],
+function mapBloomIntensity(glow: number, beatBoost: number): number {
+  return clamp01(glow) * 2 * PRESET_BLOOM_INTENSITY * beatBoost
 }
 
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.slice(1), 16)
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+function mapPaperAmount(wash: number): number {
+  return clamp01(wash) * 2
 }
 
-/** Cached 256×3 LUT per ramp id — luminance index → ramp RGB. */
-const rampLuts = new Map<string, Uint8ClampedArray>()
+/* ------------------------------- GL instance ------------------------------- */
 
-function getRampLut(ramp: NeonSplitFilterConfig['ramp']): Uint8ClampedArray {
-  const cached = rampLuts.get(ramp)
-  if (cached) return cached
-  const stops = RAMPS[ramp] ?? RAMPS.violet
-  const rgb = stops.map((s) => ({ t: s.t, rgb: hexToRgb(s.c) }))
-  const lut = new Uint8ClampedArray(256 * 3)
+let glInstance: NeonSplitGL | null = null
+let glBroken = false
+
+function getGL(): NeonSplitGL | null {
+  if (glBroken) return null
+  if (glInstance) return glInstance.isLost ? null : glInstance
+  try {
+    glInstance = new NeonSplitGL()
+    return glInstance
+  } catch {
+    glBroken = true
+    return null
+  }
+}
+
+/* ------------------------------ shared state ------------------------------- */
+
+// the preset's master curve points (kept local so the data module stays the
+// single source of truth for the numbers)
+const CURVE_POINTS_LOCAL: [number, number][] = [
+  [0.1295, 0.0357],
+  [0.5625, 0.4911],
+  [0.7813, 0.7857],
+  [1, 1],
+]
+
+const curveLutBase = buildCurveLutData(CURVE_POINTS_LOCAL)
+const lin22 = linear22Lut()
+const srgb22 = srgb22Lut()
+const linExact = linearExactLut()
+const srgbExact = srgbExactLut()
+
+// contrast-dial curve LUTs (lerped toward identity — cached per dial step)
+const curveLutCache = new Map<number, Float32Array>()
+function curveLutFor(contrast: number): Float32Array {
+  const key = Math.round(clamp01(contrast) * 20)
+  const hit = curveLutCache.get(key)
+  if (hit) return hit
+  const mix = key / 10 // 0.5 dial → 1.0 = the preset's own curve
+  const lut = new Float32Array(256)
   for (let i = 0; i < 256; i++) {
     const t = i / 255
-    let j = 0
-    while (j < rgb.length - 2 && t > rgb[j + 1].t) j++
-    const a = rgb[j]
-    const b = rgb[Math.min(rgb.length - 1, j + 1)]
-    const span = b.t - a.t
-    const k = span > 0 ? Math.min(1, Math.max(0, (t - a.t) / span)) : 0
-    lut[i * 3] = a.rgb[0] + (b.rgb[0] - a.rgb[0]) * k
-    lut[i * 3 + 1] = a.rgb[1] + (b.rgb[1] - a.rgb[1]) * k
-    lut[i * 3 + 2] = a.rgb[2] + (b.rgb[2] - a.rgb[2]) * k
+    lut[i] = t + (curveLutBase[i] - t) * mix
   }
-  rampLuts.set(ramp, lut)
+  curveLutCache.set(key, lut)
   return lut
 }
 
-/** Cached COMBINED LUTs — contrast conditioning folded into the ramp lookup
- *  (input luminance → contrasted luminance → ramp color), so the per-pixel
- *  pass is a single table read with no extra GPU filter pass. Keyed by ramp
- *  + contrast in 1/40 steps (the UI slider moves in 0.05), bounded. */
-const gradeLuts = new Map<string, Uint8ClampedArray>()
+// static per-size grain field (the preset's grain is stationary, speed 0)
+let grainField: Float32Array | null = null
+let grainW = 0
+let grainH = 0
 
-function getGradeLut(ramp: NeonSplitFilterConfig['ramp'], contrast: number): Uint8ClampedArray {
-  const key = `${ramp}:${Math.round(contrast * 40)}`
-  const cached = gradeLuts.get(key)
-  if (cached) return cached
-  const base = getRampLut(ramp)
-  const cf = 0.4 + 1.2 * contrast
-  const lut = new Uint8ClampedArray(256 * 3)
-  for (let v = 0; v < 256; v++) {
-    let t = (v / 255 - 0.5) * cf + 0.5
-    if (t < 0) t = 0
-    else if (t > 1) t = 1
-    const li = (t * 255 + 0.5) | 0
-    lut[v * 3] = base[li * 3]
-    lut[v * 3 + 1] = base[li * 3 + 1]
-    lut[v * 3 + 2] = base[li * 3 + 2]
-  }
-  gradeLuts.set(key, lut)
-  return lut
+// procedural paper textures, built once
+let paper1: HTMLCanvasElement | null = null
+let paper2: HTMLCanvasElement | null = null
+let paper1Curved: { canvas: HTMLCanvasElement; ramp: Float32Array } | null = null
+const texCurveRamp = buildRampLut([
+  [0.0759, 0],
+  [0.433, 0.75],
+  [1, 1],
+])
+const rampCurrent = buildRampLut([
+  [0.1875, 1],
+  [1, 0],
+])
+const rampUnder = buildRampLut([
+  [0, 0],
+  [0.9598, 1],
+])
+
+function ensureGrain(w: number, h: number): Float32Array {
+  if (grainField && grainW === w && grainH === h) return grainField
+  grainField = makeGrainField(w, h, 0.5)
+  grainW = w
+  grainH = h
+  return grainField
 }
 
-/* ------------------------------- veil rows -------------------------------- */
+function ensurePapers(): { paper1: HTMLCanvasElement; paper2: HTMLCanvasElement } {
+  if (!paper1) paper1 = makeBlackPaperTexture(512)
+  if (!paper2) paper2 = makeFoldedPaperTexture(512)
+  return { paper1, paper2 }
+}
 
-/** Per-row veil color+alpha (r,g,b,a), cached per ramp+height — computed
- *  once per frame-size change, read four floats per row in the hot loop. */
-let veilCache: { ramp: string; h: number; data: Float32Array } | null = null
-
-function getVeilRows(ramp: NeonSplitFilterConfig['ramp'], h: number): Float32Array {
-  if (veilCache && veilCache.ramp === ramp && veilCache.h === h) return veilCache.data
-  const stops = WASHES[ramp] ?? WASHES.violet
-  const data = new Float32Array(h * 4)
-  for (let y = 0; y < h; y++) {
-    const t = y / (h - 1)
-    let r = 0
-    let g = 0
-    let b = 0
-    let a = 0
-    for (let k = 0; k < stops.length - 1; k++) {
-      const s0 = stops[k]
-      const s1 = stops[k + 1]
-      if (t >= s0.t && t <= s1.t) {
-        const span = s1.t - s0.t
-        const f = span > 0 ? (t - s0.t) / span : 0
-        r = s0.c[0] + (s1.c[0] - s0.c[0]) * f
-        g = s0.c[1] + (s1.c[1] - s0.c[1]) * f
-        b = s0.c[2] + (s1.c[2] - s0.c[2]) * f
-        a = s0.a + (s1.a - s0.a) * f
-        break
-      }
+function ensureCurvedPaper1(): { canvas: HTMLCanvasElement; ramp: Float32Array } {
+  if (paper1Curved) return paper1Curved
+  const { paper1: p1 } = ensurePapers()
+  const cv = document.createElement('canvas')
+  cv.width = p1.width
+  cv.height = p1.height
+  const ctx = cv.getContext('2d')!
+  const img = ctx.createImageData(p1.width, p1.height)
+  const src = p1.getContext('2d')!.getImageData(0, 0, p1.width, p1.height)
+  for (let i = 0; i < src.data.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      const v = src.data[i + c] / 255
+      img.data[i + c] = Math.round(texCurveRamp[Math.min(255, Math.max(0, Math.round(v * 255)))] * 255)
     }
-    data[y * 4] = r
-    data[y * 4 + 1] = g
-    data[y * 4 + 2] = b
-    data[y * 4 + 3] = a
+    img.data[i + 3] = 255
   }
-  veilCache = { ramp, h, data }
-  return data
+  ctx.putImageData(img, 0, 0)
+  paper1Curved = { canvas: cv, ramp: texCurveRamp }
+  return paper1Curved
 }
 
-/* ------------------------------ clean buffer ------------------------------ */
+/* ----------------------------- mask (the split) ---------------------------- */
 
-/** Reused ImageData for the clean mapped frame (the bloom source — no veil,
- *  no grain). Re-allocated only when the frame size changes. */
-let cleanBuf: ImageData | null = null
-let cleanBufW = 0
-let cleanBufH = 0
+/** The published preset's gradient-mask coverage per row (rotation 90 → the
+ *  band runs vertically; smooth curve). Mirror of the mask shader in rel
+ *  space, sampled per pixel row. */
+function splitMaskRow(y: number, h: number, w: number): number {
+  const aspect = w / h
+  const relScaleY = aspect > 1 ? 1 : 1 / aspect
+  const rel = ((y + 0.5) / h) * 2 - 1
+  const relY = rel * relScaleY
+  const centerY = -0.094 * relScaleY
+  const s = (relY - centerY) / 0.3
+  const t = s * 0.5 + 0.5
+  let m = 1 - Math.min(1, Math.max(0, t))
+  m = m * m * (3 - 2 * m)
+  return m
+}
 
-/* -------------------------------- the filter -------------------------------- */
+/* ------------------------------ the CPU path ------------------------------- */
+
+/**
+ * One per-pixel pass runs levels-mask → bloom-screen → noise → gradient map →
+ * curves (the exact chain math from the shaders); the two paper textures and
+ * the bloom mip pyramid ride canvas composites (GPU-backed, deterministic).
+ */
+function drawNeonSplitCPU(
+  rc: RenderContext,
+  cfg: NeonSplitFilterConfig,
+  bloomIntensity: number,
+  noiseStrength: number,
+  paperAmount: number,
+): void {
+  const { ctx, width: W, height: H } = rc
+  const aspect = W / H
+
+  // the bloom field: bright pass (per-pixel, half-res) → mip chain (canvas)
+  const bright = getWork('neon:bright', W, H)
+  const bctx = resetWork(bright.getContext('2d', { willReadFrequently: true })!)
+  const base = getWork('neon:base', W, H)
+  const baseCtx = resetWork(base.getContext('2d', { willReadFrequently: true })!)
+  baseCtx.drawImage(ctx.canvas, 0, 0)
+  const srcImg = baseCtx.getImageData(0, 0, W, H)
+  const sd = srcImg.data
+
+  const grain = noiseStrength > 0.001 ? ensureGrain(W, H) : null
+  const strengthGain = Math.pow(2, noiseStrength) - 1
+
+  // PASS 1 — levels (invert behind the vertical mask) + bloom bright pass
+  const bw = Math.max(2, W >> 1)
+  const bh = Math.max(2, H >> 1)
+  const brightImg = bctx.createImageData(bw, bh)
+  const bd = brightImg.data
+  const postLevels = new Uint8ClampedArray(W * H * 3)
+  const rowMask = new Float32Array(H)
+  for (let y = 0; y < H; y++) rowMask[y] = splitMaskRow(y, H, W)
+
+  for (let y = 0; y < H; y++) {
+    const m = rowMask[y]
+    const inv = 1 - m
+    for (let x = 0; x < W; x++) {
+      const o = (y * W + x) * 4
+      // levels: mix(rgb, 1 - rgb, mask)
+      const r0 = (sd[o] * inv + (255 - sd[o]) * m) / 255
+      const g0 = (sd[o + 1] * inv + (255 - sd[o + 1]) * m) / 255
+      const b0 = (sd[o + 2] * inv + (255 - sd[o + 2]) * m) / 255
+      postLevels[(y * W + x) * 3] = Math.round(r0 * 255)
+      postLevels[(y * W + x) * 3 + 1] = Math.round(g0 * 255)
+      postLevels[(y * W + x) * 3 + 2] = Math.round(b0 * 255)
+      // bloom bright pass in linear light (exact sRGB transfer)
+      const rl = r0 <= 0.04045 ? r0 / 12.92 : Math.pow((r0 + 0.055) / 1.055, 2.4)
+      const gl2 = g0 <= 0.04045 ? g0 / 12.92 : Math.pow((g0 + 0.055) / 1.055, 2.4)
+      const bl = b0 <= 0.04045 ? b0 / 12.92 : Math.pow((b0 + 0.055) / 1.055, 2.4)
+      const Y = 0.2126729 * rl + 0.7151522 * gl2 + 0.072175 * bl
+      const kn = 0.29
+      const xk = Math.max(Y - (0.1 - kn), 0)
+      const mask = Math.min(1, (xk * xk) / (4 * kn * xk + 1e-6))
+      const i = Math.min(bh - 1, y >> 1)
+      const j = Math.min(bw - 1, x >> 1)
+      const bo = (i * bw + j) * 4
+      // accumulate into the half-res buffer (box filter over the 2x2 block)
+      bd[bo] = Math.min(255, bd[bo] + Math.max(0, Math.min(1, rl * mask * bloomIntensity)) * 255 * 0.25)
+      bd[bo + 1] = Math.min(255, bd[bo + 1] + Math.max(0, Math.min(1, gl2 * mask * bloomIntensity)) * 255 * 0.25)
+      bd[bo + 2] = Math.min(255, bd[bo + 2] + Math.max(0, Math.min(1, bl * mask * bloomIntensity)) * 255 * 0.25)
+      bd[bo + 3] = 255
+    }
+  }
+  bctx.putImageData(brightImg, 0, 0)
+
+  // bloom pyramid: canvas box-filter chain, LODs summed with 'lighter' at 1/6
+  const lods: HTMLCanvasElement[] = []
+  let cur = bright
+  let cw = W
+  let ch = H
+  for (let i = 0; i < 6; i++) {
+    cw = Math.max(1, cw >> 1)
+    ch = Math.max(1, ch >> 1)
+    const lod = getWork('neon:lod' + i, cw, ch)
+    const lc = resetWork(lod.getContext('2d')!)
+    lc.imageSmoothingEnabled = true
+    lc.imageSmoothingQuality = 'high'
+    lc.drawImage(cur, 0, 0, cw, ch)
+    lods.push(lod)
+    cur = lod
+  }
+  const bloomSum = getWork('neon:blooms', W, H)
+  const bsCtx = resetWork(bloomSum.getContext('2d')!)
+  bsCtx.clearRect(0, 0, W, H)
+  for (let i = 0; i < 6; i++) {
+    bsCtx.globalCompositeOperation = 'lighter'
+    bsCtx.globalAlpha = 1 / 6
+    bsCtx.imageSmoothingEnabled = true
+    bsCtx.imageSmoothingQuality = 'high'
+    bsCtx.drawImage(lods[i], 0, 0, W, H)
+  }
+  bsCtx.globalCompositeOperation = 'source-over'
+  bsCtx.globalAlpha = 1
+  const bloomData = bsCtx.getImageData(0, 0, W, H).data
+
+  // PASS 2 — bloom screen → noise → gradient map → curves
+  // (per-pixel chain math from the shaders: the bloom screen runs in the
+  // exact sRGB transfer's linear space, the grain rides the noise shader's
+  // pow-2.2 linear space on the bloom's output bytes)
+  const curveLut = curveLutFor(cfg.contrast ?? 0.5)
+  const gc = gradLutFor(cfg.ramp)
+  const outImg = baseCtx.createImageData(W, H)
+  const od = outImg.data
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const o3 = (y * W + x) * 3
+      const o4 = (y * W + x) * 4
+      // bloom color from the summed pyramid (× the preset's factor)
+      const brl = (bloomData[o4] / 255) * PRESET_BLOOM_FACTOR
+      const bgl = (bloomData[o4 + 1] / 255) * PRESET_BLOOM_FACTOR
+      const bbl = (bloomData[o4 + 2] / 255) * PRESET_BLOOM_FACTOR
+      // post-levels sRGB → linear (EXACT transfer — the bloom shaders')
+      const linR = linExact[postLevels[o3]]
+      const linG = linExact[postLevels[o3 + 1]]
+      const linB = linExact[postLevels[o3 + 2]]
+      // screen in linear, back to sRGB bytes (the bloom node's output)
+      const scrR = 1 - (1 - linR) * (1 - brl)
+      const scrG = 1 - (1 - linG) * (1 - bgl)
+      const scrB = 1 - (1 - linB) * (1 - bbl)
+      const postBloomR = srgbExact[Math.min(255, Math.round(scrR * 255))] / 255
+      const postBloomG = srgbExact[Math.min(255, Math.round(scrG * 255))] / 255
+      const postBloomB = srgbExact[Math.min(255, Math.round(scrB * 255))] / 255
+      // noise: base = pow(post-bloom sRGB, 2.2); grain added in that linear
+      const baseR = lin22[Math.round(postBloomR * 255)] / 255
+      const baseG = lin22[Math.round(postBloomG * 255)] / 255
+      const baseB = lin22[Math.round(postBloomB * 255)] / 255
+      let outByteR = postBloomR * 255
+      let outByteG = postBloomG * 255
+      let outByteB = postBloomB * 255
+      if (grain && strengthGain > 0.001) {
+        const luma = 0.2126 * postBloomR + 0.7152 * postBloomG + 0.0722 * postBloomB
+        const sh = smoothstepInv(0.4, luma)
+        const hl = smoothstep(0.6, 1, luma)
+        const md = Math.min(1, Math.max(0, 1 - sh - hl))
+        const toneGain = Math.pow(sh * 0.25 + md * 0.4 + hl * 0.53, 0.6)
+        const gain = toneGain * strengthGain
+        const wR = Math.min(0.25, Math.max(0.14, baseR * (1 - baseR) + 0.14 * (1 - 4 * Math.min(0.25, baseR * (1 - baseR)))))
+        const wG = Math.min(0.25, Math.max(0.14, baseG * (1 - baseG) + 0.14 * (1 - 4 * Math.min(0.25, baseG * (1 - baseG)))))
+        const wB = Math.min(0.25, Math.max(0.14, baseB * (1 - baseB) + 0.14 * (1 - 4 * Math.min(0.25, baseB * (1 - baseB)))))
+        outByteR = srgb22[Math.min(255, Math.max(0, Math.round((baseR + grain[o3] * gain * wR) * 255)))]
+        outByteG = srgb22[Math.min(255, Math.max(0, Math.round((baseG + grain[o3 + 1] * gain * wG) * 255)))]
+        outByteB = srgb22[Math.min(255, Math.max(0, Math.round((baseB + grain[o3 + 2] * gain * wB) * 255)))]
+      }
+      // gradient map (Rec.709 luminance of the noise output → the preset's ramp)
+      const t =
+        (0.2126 * outByteR + 0.7152 * outByteG + 0.0722 * outByteB) / 255
+      const gi2 = Math.min(255, Math.max(0, Math.round(t * 255)))
+      let colR = gc[gi2 * 3] / 255
+      let colG = gc[gi2 * 3 + 1] / 255
+      let colB = gc[gi2 * 3 + 2] / 255
+      // curves — apply mode L: shift luma, keep hue; node opacity 0.54
+      const shift = (curveLut[gi2] - t) * 0.54
+      colR = Math.min(1, Math.max(0, colR + shift))
+      colG = Math.min(1, Math.max(0, colG + shift))
+      colB = Math.min(1, Math.max(0, colB + shift))
+      od[o4] = Math.round(colR * 255)
+      od[o4 + 1] = Math.round(colG * 255)
+      od[o4 + 2] = Math.round(colB * 255)
+      od[o4 + 3] = 255
+    }
+  }
+  baseCtx.putImageData(outImg, 0, 0)
+
+  // 6) paper textures via canvas composites (GPU-backed)
+  baseCtx.save()
+  const { paper1: p1, paper2: p2 } = ensurePapers()
+  const curved1 = ensureCurvedPaper1()
+  // mix #1: black paper, screen 0.8, fill 1.22, rot -180 (≈ 180° flip)
+  baseCtx.globalCompositeOperation = 'screen'
+  baseCtx.globalAlpha = Math.min(1, 0.8 * paperAmount)
+  drawFillTexture(baseCtx, curved1.canvas, W, H, aspect, 1.22, true)
+  // mix #2: folded paper, hard light 0.32, tile 0.63, rot 90, blend-masked
+  // by the static "this layer" ramp (baked) — the underlying ramp rides the
+  // global alpha (the CPU path's one approximation vs the GL path)
+  baseCtx.globalCompositeOperation = 'hard-light'
+  baseCtx.globalAlpha = Math.min(1, 0.32 * paperAmount)
+  drawTileTexture(baseCtx, p2, W, H, aspect, 0.63, 90)
+  baseCtx.restore()
+  baseCtx.globalCompositeOperation = 'source-over'
+  baseCtx.globalAlpha = 1
+
+  ctx.drawImage(base, 0, 0)
+}
+
+function smoothstep(e0: number, e1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)))
+  return t * t * (3 - 2 * t)
+}
+function smoothstepInv(e0: number, x: number): number {
+  // smoothstep(0.40, 0.00, x) — inverted edges
+  const t = Math.min(1, Math.max(0, (x - 0.4) / (0 - 0.4)))
+  return t * t * (3 - 2 * t)
+}
+
+/** Fill-fit texture draw (the shader's Fill mapping + scale). */
+function drawFillTexture(
+  ctx: CanvasRenderingContext2D,
+  tex: HTMLCanvasElement,
+  W: number,
+  H: number,
+  aspect: number,
+  scale: number,
+  flip180: boolean,
+): void {
+  const texAspect = tex.width / tex.height
+  // sample window in texture UV space (centered), aspect-corrected
+  let ux = 0.5 / scale
+  let uy = 0.5 / scale
+  if (aspect > texAspect) {
+    uy = uy / (aspect / texAspect)
+  } else {
+    ux = ux / (texAspect / aspect)
+  }
+  ctx.save()
+  if (flip180) {
+    ctx.translate(W, H)
+    ctx.rotate(Math.PI)
+  }
+  ctx.drawImage(tex, (0.5 - ux) * tex.width, (0.5 - uy) * tex.height, ux * 2 * tex.width, uy * 2 * tex.height, 0, 0, W, H)
+  ctx.restore()
+}
+
+/** Tile texture draw (the shader's Tile mapping: rotate about the center in
+ *  aspect-corrected space, then repeat the texture `scale` times across the
+ *  rotated canvas). */
+function drawTileTexture(
+  ctx: CanvasRenderingContext2D,
+  tex: HTMLCanvasElement,
+  W: number,
+  H: number,
+  aspect: number,
+  scale: number,
+  rotationDeg: number,
+): void {
+  const texAspect = tex.width / tex.height
+  // repetitions across the rotated canvas (the shader's Tile math)
+  const repsX = scale * (aspect > texAspect ? aspect / texAspect : 1)
+  const repsY = scale * (aspect > texAspect ? 1 : texAspect / aspect)
+  // after rotating by θ, the pattern's x-axis runs along the canvas axis
+  // rotated by θ; one repeat covers 1/repsX of that axis' full length
+  const rad = (rotationDeg * Math.PI) / 180
+  ctx.save()
+  ctx.translate(W / 2, H / 2)
+  ctx.rotate(-rad)
+  // the rotated canvas spans: length along pattern-x = H when |θ|=90°,
+  // along pattern-y = W; for general θ use the projection lengths
+  const c = Math.abs(Math.cos(rad))
+  const s = Math.abs(Math.sin(rad))
+  const spanX = H * s + W * c
+  const spanY = W * s + H * c
+  ctx.scale(spanX / repsX / tex.width, spanY / repsY / tex.height)
+  const pattern = ctx.createPattern(tex, 'repeat')
+  if (pattern) {
+    ctx.fillStyle = pattern
+    ctx.fillRect(-spanX, -spanY, spanX * 2, spanY * 2)
+  }
+  ctx.restore()
+}
+
+/* ------------------------------- ramp cache -------------------------------- */
+
+const gradLuts = new Map<string, Uint8ClampedArray>()
+
+function gradLutFor(ramp: string): Uint8ClampedArray {
+  const hit = gradLuts.get(ramp)
+  if (hit) return hit
+  const px = gradientLutPixels(ramp)
+  const lut = new Uint8ClampedArray(256 * 3)
+  for (let i = 0; i < 256; i++) {
+    lut[i * 3] = px[i * 4]
+    lut[i * 3 + 1] = px[i * 4 + 1]
+    lut[i * 3 + 2] = px[i * 4 + 2]
+  }
+  gradLuts.set(ramp, lut)
+  return lut
+}
+
+/* ------------------------------- the filter -------------------------------- */
 
 export function drawNeonSplitFilter(
   rc: RenderContext,
@@ -279,27 +491,20 @@ export function drawNeonSplitFilter(
   if (!cfg?.enabled || transparent) return
   const { ctx, width: W, height: H } = rc
   if (W < 8 || H < 8) return
-  const S = H / 720
 
   const strength = clamp01(cfg.strength ?? 1)
   if (strength <= 0.001) return
-  const contrast = clamp01(cfg.contrast ?? 0.5)
-  const grain = clamp01(cfg.grain ?? 0.5)
-  const glow = clamp01(cfg.glow ?? 0.6)
-  const veil = clamp01(cfg.wash ?? 1)
-  const split = clamp01(cfg.split ?? 0)
   const bass = clamp01(frame.bass ?? 0)
+  const split = clamp01(cfg.split ?? 0)
 
-  // React to beat — the split line slides down on kicks (the neon pushes
-  // over the picture) and the bloom flares; between beats both rest at
-  // exactly the dialed-in look.
-  const beatShift = beatAmount(cfg, bass) * 0.16
-  const glowAmt = glow * beatBoost(cfg, bass, 1.2)
+  // the dials — 0.5 = the published preset's own value
+  const bloomIntensity = mapBloomIntensity(cfg.glow ?? 0.5, 1 + (cfg.beatReactive ? clamp01(cfg.beatStrength ?? 0.5) * bass * 0.5 : 0))
+  const noiseStrength = mapNoiseStrength(cfg.grain ?? 0.5)
+  const paperAmount = mapPaperAmount(cfg.wash ?? 0.5)
+  const curveMix = Math.min(1, clamp01(cfg.contrast ?? 0.5) * 2)
 
-  // The untouched frame — the split region fades back to it, and below
-  // 100% strength the whole look mixes over it. Both rest states off → the
-  // copy is skipped and the grade reads the live frame directly.
-  const needsSnap = split > 0.001 || beatShift > 0.001 || strength < 0.999
+  // the untouched frame — the split region and the mix dial fade back to it
+  const needsSnap = split > 0.001 || strength < 0.999
   let snap: HTMLCanvasElement | null = null
   if (needsSnap) {
     snap = getWork('neon:snap', W, H)
@@ -308,174 +513,63 @@ export function drawNeonSplitFilter(
     sc.drawImage(ctx.canvas, 0, 0)
   }
 
-  // 1-4) One full-res pass does the whole grade: copy the frame in, then
-  //      per pixel → contrast+ramp LUT (the gradient map) → write the CLEAN
-  //      color to the bloom-source buffer → screen the color-gradient veil
-  //      over it → add the film-grain speckle on top. No half-res sparkle
-  //      tiles, no separate blend passes — the grain is 1:1 per-pixel.
-  const grade = getWork('neon:grade', W, H)
-  const gc = resetWork(grade.getContext('2d', { willReadFrequently: true })!)
-  gc.clearRect(0, 0, W, H)
-  gc.drawImage(snap ?? ctx.canvas, 0, 0)
-
-  const cleanMap = getWork('neon:clean', W, H)
-  const cc = resetWork(cleanMap.getContext('2d')!)
-
-  if (!cleanBuf || cleanBufW !== W || cleanBufH !== H) {
-    cleanBuf = gc.createImageData(W, H)
-    cleanBufW = W
-    cleanBufH = H
-  }
-
-  const img = gc.getImageData(0, 0, W, H)
-  const fd = img.data
-  const cd = cleanBuf.data
-  const lut = getGradeLut(cfg.ramp ?? 'violet', contrast)
-  const veilRows = veil > 0.001 ? getVeilRows(cfg.ramp ?? 'violet', H) : null
-
-  // Film grain: ±(grain × 49) luminance — the default dial (0.5) lands the
-  // speckle std at ~15/255, measured off the reference. The tile re-offsets
-  // every 1/24 s, hashed from song time — same frame, same offset, export-
-  // safe. Slightly damped in the shadows (the reference's dark end reads
-  // calmer), full strength through the mids and highlights.
-  const amp = grain * 49
-  const step = frameSeed(frame.time ?? 0, 24)
-  const nx = 131 * step
-  const ny = 197 * step
-
-  for (let y = 0; y < H; y++) {
-    let vr = 0
-    let vg = 0
-    let vb = 0
-    let va = 0
-    if (veilRows) {
-      vr = veilRows[y * 4]
-      vg = veilRows[y * 4 + 1]
-      vb = veilRows[y * 4 + 2]
-      va = veilRows[y * 4 + 3] * veil
-    }
-    const row = y * W
-    for (let x = 0; x < W; x++) {
-      const o = (row + x) * 4
-      const l = (54 * fd[o] + 183 * fd[o + 1] + 19 * fd[o + 2]) >> 8
-      const u = l * 3
-      const r = lut[u]
-      const g = lut[u + 1]
-      const b = lut[u + 2]
-      // The clean mapped frame — what the bloom reads (no veil, no grain).
-      cd[o] = r
-      cd[o + 1] = g
-      cd[o + 2] = b
-      cd[o + 3] = 255
-      // The color-gradient veil, screen-blended (brightens toward the wash
-      // color, never darkens — how the preset's gradient layer sits).
-      let rr = r
-      let gg = g
-      let bb = b
-      if (va > 0) {
-        rr = r + va * ((255 - ((255 - r) * (255 - vr)) / 255) - r)
-        gg = g + va * ((255 - ((255 - g) * (255 - vg)) / 255) - g)
-        bb = b + va * ((255 - ((255 - b) * (255 - vb)) / 255) - b)
-      }
-      // Film grain on top — one deterministic luminance speck per pixel.
-      if (amp > 0.5) {
-        const lum = rr * 0.299 + gg * 0.587 + bb * 0.114
-        const damp = lum < 200 ? 0.78 + (0.22 * lum) / 200 : 1
-        const n = (hash01(x + nx, y + ny) - 0.5) * 2 * amp * damp
-        rr += n
-        gg += n
-        bb += n
-      }
-      fd[o] = rr
-      fd[o + 1] = gg
-      fd[o + 2] = bb
+  let done = false
+  const gl = getGL()
+  if (gl) {
+    try {
+      const out = gl.render(
+        ctx.canvas,
+        bloomIntensity,
+        noiseStrength,
+        paperAmount,
+        curveMix,
+        curveLutBase,
+        cfg.ramp ?? 'violet',
+      )
+      ctx.save()
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.globalAlpha = 1
+      ctx.drawImage(out, 0, 0, W, H)
+      ctx.restore()
+      done = true
+    } catch {
+      glBroken = true
+      done = false
     }
   }
-  gc.putImageData(img, 0, 0)
-  cc.putImageData(cleanBuf, 0, 0)
 
-  // 3) Bloom sources — two blurred, contrast-crushed copies of the CLEAN
-  //     mapped frame at HALF resolution (the bloom is low-frequency; the
-  //     veil and grain are not in it, so only true highlights glow). Only
-  //     the bright end survives the crush, so the halos are neon light,
-  //     not gray milk.
-  let glowA: HTMLCanvasElement | null = null
-  let glowB: HTMLCanvasElement | null = null
-  if (glowAmt > 0.004) {
-    const gw = Math.max(2, W >> 1)
-    const gh = Math.max(2, H >> 1)
-    const qw = Math.max(2, W >> 2)
-    const qh = Math.max(2, H >> 2)
-    glowA = getWork('neon:glowA', gw, gh)
-    const ac = resetWork(glowA.getContext('2d')!)
-    ac.clearRect(0, 0, gw, gh)
-    ac.imageSmoothingEnabled = true
-    ac.imageSmoothingQuality = 'high'
-    // High-threshold crush — only the true highlights survive as light
-    // (measured off the reference: the dark bottom contributes ZERO glow
-    // and the bright cores never milk past their pale-pink ramp color).
-    ac.filter = `contrast(3.2) blur(${(2 * S).toFixed(2)}px)`
-    ac.drawImage(cleanMap, 0, 0, gw, gh)
-    ac.filter = 'none'
-    glowB = getWork('neon:glowB', qw, qh)
-    const bc = resetWork(glowB.getContext('2d')!)
-    bc.clearRect(0, 0, qw, qh)
-    bc.imageSmoothingEnabled = true
-    bc.imageSmoothingQuality = 'high'
-    bc.filter = `contrast(2.2) blur(${(3.4 * S).toFixed(2)}px)`
-    bc.drawImage(cleanMap, 0, 0, qw, qh)
-    bc.filter = 'none'
+  if (!done) {
+    drawNeonSplitCPU(rc, cfg, bloomIntensity, noiseStrength, paperAmount)
   }
 
-  // 5) The split — the untouched picture masked to the region below the
-  //     line (edge measured from the top; beat pushes it DOWN, so the neon
-  //     grows over the picture on kicks). A ~5% soft band blends the two.
-  let splitCanvas: HTMLCanvasElement | null = null
-  const edge = 1 - split + beatShift
-  if (edge < 0.985) {
-    splitCanvas = getWork('neon:split', W, H)
-    const pc = resetWork(splitCanvas.getContext('2d')!)
-    pc.clearRect(0, 0, W, H)
-    pc.drawImage(snap, 0, 0)
-    const soft = 0.05
+  // the split — below a soft line the untouched picture fades back in
+  if (snap && split > 0.001) {
+    const soft = 0.06
+    const edge = 1 - split
     const p0 = Math.max(0, edge - soft)
     const p1 = Math.min(1, edge + soft)
-    const g = pc.createLinearGradient(0, 0, 0, H)
+    const mctx = getWork('neon:splitmask', W, H)
+    const mc = resetWork(mctx.getContext('2d')!)
+    mc.clearRect(0, 0, W, H)
+    mc.drawImage(snap, 0, 0)
+    mc.globalCompositeOperation = 'destination-in'
+    const g = mc.createLinearGradient(0, 0, 0, H)
     if (p0 > 0.001) g.addColorStop(0, 'rgba(0,0,0,0)')
     g.addColorStop(p0, 'rgba(0,0,0,0)')
     g.addColorStop(Math.min(1, Math.max(p0, edge)), 'rgba(0,0,0,0.5)')
     g.addColorStop(p1, 'rgba(0,0,0,1)')
     if (p1 < 0.999) g.addColorStop(1, 'rgba(0,0,0,1)')
-    pc.globalCompositeOperation = 'destination-in'
-    pc.fillStyle = g
-    pc.fillRect(0, 0, W, H)
-    pc.globalCompositeOperation = 'source-over'
+    mc.fillStyle = g
+    mc.fillRect(0, 0, W, H)
+    mc.globalCompositeOperation = 'source-over'
+    ctx.drawImage(mctx, 0, 0)
   }
 
-  // Composite — the graded frame (map + veil + grain) replaces the picture,
-  // the bloom screens back from the clean map, the split region
-  // restores the untouched pixels, and below 100% mix the whole look blends
-  // over the original.
-  ctx.save()
-  ctx.globalCompositeOperation = 'source-over'
-  ctx.globalAlpha = 1
-  ctx.drawImage(grade, 0, 0)
-  if (glowAmt > 0.004 && glowA && glowB) {
-    // Screen, not additive — the reference's bright cores hold their pale
-    // pink (#fedcfa) instead of clipping to pure white.
-    ctx.globalCompositeOperation = 'screen'
-    ctx.globalAlpha = glowAmt * 0.55
-    ctx.drawImage(glowA, 0, 0, glowA.width, glowA.height, 0, 0, W, H)
-    ctx.globalAlpha = glowAmt * 0.4
-    ctx.drawImage(glowB, 0, 0, glowB.width, glowB.height, 0, 0, W, H)
-    ctx.globalCompositeOperation = 'source-over'
-    ctx.globalAlpha = 1
-  }
-  if (splitCanvas) ctx.drawImage(splitCanvas, 0, 0)
+  // the mix dial — the whole look blends back over the original
   if (snap && strength < 0.999) {
+    ctx.save()
     ctx.globalAlpha = 1 - strength
     ctx.drawImage(snap, 0, 0)
-    ctx.globalAlpha = 1
+    ctx.restore()
   }
-  ctx.restore()
 }
