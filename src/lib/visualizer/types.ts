@@ -989,6 +989,56 @@ export interface AnaglyphFilterConfig {
   rightColors?: string[]
 }
 
+/**
+ * Neon Split filter — a luminance gradient-map in the spirit of the classic
+ * "neon split" social look: every pixel's brightness is re-read as a position
+ * on a neon color ramp (shadows sink to near-black navy, mids climb through
+ * deep blue and violet, highlights flare to bright magenta and pale pink),
+ * then sparkling grain is screen-blended into the dark end so the shadows
+ * glitter, and a soft two-pass bloom makes the whole frame glow. The
+ * "split": below an adjustable line the untouched picture fades back in, so
+ * part of the frame wears the neon and part keeps its own colors — the line
+ * breathes with the song when React to beat is on.
+ *
+ * Deterministic like every full-frame filter: the grain tile is baked once
+ * from integer hashes and re-tiled at a quantized song-time offset, so the
+ * same frame in preview and export produces the same pixels. Skipped on
+ * transparent backgrounds (alpha must stay clean).
+ */
+export interface NeonSplitFilterConfig {
+  enabled: boolean
+  /** Which neon ramp the luminance maps onto. 'violet' reproduces the
+   *  classic preset (black → navy → blue → violet → magenta → pale pink);
+   *  the others recolor the same geometry. Old saves without this field
+   *  load as 'violet'. */
+  ramp: 'violet' | 'uv' | 'acid' | 'ember' | 'ice'
+  /** Contrast conditioning before the map, 0..1 (0.5 = neutral — tones pass
+   *  through unchanged; higher pushes shadows down and highlights up so the
+   *  neon reads punchier, lower washes everything toward the mids). */
+  contrast: number
+  /** Sparkle grain 0..1 — screen-blended deterministic noise that lights the
+   *  dark end of the frame with glitter (the map recolors it, so it always
+   *  shines in the ramp's colors). */
+  grain: number
+  /** Neon bloom 0..1 — two blurred, contrast-crushed copies of the graded
+   *  frame drawn back additively, so bright areas glow outward. */
+  glow: number
+  /** The split 0..1 — how much of the frame, measured from the BOTTOM, fades
+   *  back to the untouched picture. 0 = the whole frame goes neon (the
+   *  classic preset); 0.4 = the bottom 40% keeps its own colors, the rest is
+   *  neon, with a soft edge between. */
+  split: number
+  /** Mix 0..1 — the full neon look blended back over the untouched picture
+   *  (1 = the grade replaces the frame, lower values dial it back). */
+  strength: number
+  /** React to beat — on kicks the split line slides down (the neon pushes
+   *  further over the picture) and the bloom flares; between beats the look
+   *  rests exactly as dialed in. */
+  beatReactive: boolean
+  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
+}
+
 /* -------------------------------- Custom fonts ------------------------------- */
 
 /**
@@ -1028,6 +1078,8 @@ export interface StudioConfig {
   glitchFilter: GlitchFilterConfig
   /** Full-frame anaglyph post-pass (red/cyan 3D-glasses re-projection) */
   anaglyphFilter: AnaglyphFilterConfig
+  /** Full-frame neon post-pass (luminance gradient map + sparkle + bloom) */
+  neonSplitFilter: NeonSplitFilterConfig
   /** Full-frame retro-dither post-pass (Bayer dot patterns + glow bloom) */
   ditherFilter: DitherFilterConfig
   /** Full-frame phosphor-monitor post-pass (vertical dash columns + bloom) */
@@ -1541,6 +1593,17 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     strength: 1,
     leftColors: ['#ff0000'],
     rightColors: ['#00ffff'],
+  },
+  neonSplitFilter: {
+    enabled: false,
+    ramp: 'violet',
+    contrast: 0.62,
+    grain: 0.5,
+    glow: 0.6,
+    split: 0,
+    strength: 1,
+    beatReactive: false,
+    beatStrength: 0.5,
   },
   ditherFilter: {
     enabled: false,

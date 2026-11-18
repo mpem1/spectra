@@ -26,6 +26,7 @@ import {
   type HalftoneFilterConfig,
   type GlitchFilterConfig,
   type AnaglyphFilterConfig,
+  type NeonSplitFilterConfig,
   type DitherFilterConfig,
   type PhosphorFilterConfig,
   type ContourFilterConfig,
@@ -113,6 +114,8 @@ type StudioState = {
   patchHalftoneFilter: (partial: Partial<HalftoneFilterConfig>) => void
   patchGlitchFilter: (partial: Partial<GlitchFilterConfig>) => void
   patchAnaglyphFilter: (partial: Partial<AnaglyphFilterConfig>) => void
+  /** Patches config.neonSplitFilter */
+  patchNeonSplitFilter: (partial: Partial<NeonSplitFilterConfig>) => void
   patchDitherFilter: (partial: Partial<DitherFilterConfig>) => void
   /** Patches config.phosphorFilter */
   patchPhosphorFilter: (partial: Partial<PhosphorFilterConfig>) => void
@@ -256,6 +259,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, anaglyphFilter: { ...s.config.anaglyphFilter, ...partial } },
     })),
 
+  patchNeonSplitFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, neonSplitFilter: { ...s.config.neonSplitFilter, ...partial } },
+    })),
+
   patchDitherFilter: (partial) =>
     set((s) => ({
       config: { ...s.config, ditherFilter: { ...s.config.ditherFilter, ...partial } },
@@ -363,6 +371,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         halftoneFilter: { ...DEFAULT_STUDIO_CONFIG.halftoneFilter, ...config.halftoneFilter },
         glitchFilter: { ...DEFAULT_STUDIO_CONFIG.glitchFilter, ...config.glitchFilter },
         anaglyphFilter: { ...DEFAULT_STUDIO_CONFIG.anaglyphFilter, ...config.anaglyphFilter },
+        neonSplitFilter: { ...DEFAULT_STUDIO_CONFIG.neonSplitFilter, ...config.neonSplitFilter },
         ditherFilter: { ...DEFAULT_STUDIO_CONFIG.ditherFilter, ...config.ditherFilter },
         phosphorFilter: { ...DEFAULT_STUDIO_CONFIG.phosphorFilter, ...config.phosphorFilter },
         contourFilter: { ...DEFAULT_STUDIO_CONFIG.contourFilter, ...config.contourFilter },
