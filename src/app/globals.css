@@ -5,56 +5,54 @@
 
 /*
  * Spectra palette — user-supplied five-color base:
- *   #23241f near-black  · #2c485d dark slate · #247189 teal
- *   #6d858f muted slate · #9f9ba0 light gray-mauve
+ *   #fafafa near-white · #e4e5f1 pale lavender · #d2d3db light lavender-gray
+ *   #9394a5 muted gray-violet · #484b6a dark slate-violet
  *
- * The far background does NOT use #23241f verbatim: that value carries a warm
- * green cast that clashes with the cool slate section cards sitting on it, so
- * the deepest chrome (zinc-950 / dark background / checkerboard base) leans
- * into the slate hue instead (#12181d) while keeping near-black depth.
- * #23241f stays in the light theme as ink on paper.
- *
- * The GUI chrome speaks this palette: the zinc ramp is re-tinted so every
- * hardcoded zinc class across the studio adopts the slate-teal family at the
- * same lightness, and the active-state greens (emerald/green) map onto the
- * teal ramp with #247189 anchored at 600. Terracotta is the complementary
- * contrast hue (opposite the teal on the wheel, muted to the same saturation)
- * for the record accent and warm highlights.
+ * Every palette color appears verbatim in the chrome: the zinc ramp anchors
+ * #fafafa/#e4e5f1/#d2d3db at 50/100/200 (brightest text + hover tops),
+ * #9394a5 at 400 (labels and muted text), #484b6a at 700 (borders and hover
+ * chrome); the ramp interpolates between them in the same violet hue (~233°)
+ * so panels (#262939/#393c56) and the far background (#191b28) read as one
+ * family. The active-state greens (emerald/green) map onto the accent: light
+ * lavender fills (#8b90b5) for selected chips with near-black text, and
+ * #484b6a at 600 for switches and strong fills. Gold is the complementary
+ * contrast hue (opposite the violet on the wheel, muted to the palette's
+ * saturation) for the recording accents and warm highlights.
  */
 @theme {
-  --color-zinc-50: #f2f6f8;
-  --color-zinc-100: #e2e9ec;
-  --color-zinc-200: #ccd5da;
-  --color-zinc-300: #b3bcbf;
-  --color-zinc-400: #9f9ba0;
-  --color-zinc-500: #6d858f;
-  --color-zinc-600: #466a7d;
-  --color-zinc-700: #35566b;
-  --color-zinc-800: #2c485d;
-  --color-zinc-900: #1b2a35;
-  --color-zinc-950: #12181d;
+  --color-zinc-50: #fafafa;
+  --color-zinc-100: #e4e5f1;
+  --color-zinc-200: #d2d3db;
+  --color-zinc-300: #b7b9c9;
+  --color-zinc-400: #9394a5;
+  --color-zinc-500: #75778d;
+  --color-zinc-600: #5c5f7c;
+  --color-zinc-700: #484b6a;
+  --color-zinc-800: #393c56;
+  --color-zinc-900: #262939;
+  --color-zinc-950: #191b28;
 
-  --color-emerald-200: #b7e0ea;
-  --color-emerald-300: #8bc9db;
-  --color-emerald-400: #55b1cc;
-  --color-emerald-500: #2e96b4;
-  --color-emerald-600: #247189;
-  --color-emerald-700: #1e5c73;
+  --color-emerald-200: #d2d3db;
+  --color-emerald-300: #b7b9c9;
+  --color-emerald-400: #9da1bd;
+  --color-emerald-500: #8b90b5;
+  --color-emerald-600: #484b6a;
+  --color-emerald-700: #3c3f59;
 
-  --color-green-200: #b7e0ea;
-  --color-green-300: #8bc9db;
-  --color-green-400: #55b1cc;
-  --color-green-500: #2e96b4;
-  --color-green-600: #247189;
-  --color-green-700: #1e5c73;
+  --color-green-200: #d2d3db;
+  --color-green-300: #b7b9c9;
+  --color-green-400: #9da1bd;
+  --color-green-500: #8b90b5;
+  --color-green-600: #484b6a;
+  --color-green-700: #3c3f59;
 
-  --color-terra-100: #f7e8df;
-  --color-terra-200: #efd3c2;
-  --color-terra-300: #ecc2ab;
-  --color-terra-400: #dda284;
-  --color-terra-500: #c9855f;
-  --color-terra-600: #a86947;
-  --color-terra-700: #85503a;
+  --color-gold-100: #f2ecdb;
+  --color-gold-200: #e6dab8;
+  --color-gold-300: #d8c894;
+  --color-gold-400: #c6b077;
+  --color-gold-500: #ab9455;
+  --color-gold-600: #8f7a45;
+  --color-gold-700: #715e37;
 }
 
 @theme inline {
@@ -99,71 +97,71 @@
 
 :root {
   --radius: 0.625rem;
-  --background: #f2f6f8;
-  --foreground: #12181d;
+  --background: #fafafa;
+  --foreground: #484b6a;
   --card: #ffffff;
-  --card-foreground: #12181d;
+  --card-foreground: #484b6a;
   --popover: #ffffff;
-  --popover-foreground: #12181d;
-  --primary: #247189;
-  --primary-foreground: #f2f6f8;
-  --secondary: #e2e9ec;
-  --secondary-foreground: #2c485d;
-  --muted: #e2e9ec;
-  --muted-foreground: #6d858f;
-  --accent: #e2e9ec;
-  --accent-foreground: #2c485d;
-  --destructive: #b3423a;
-  --border: #ccd5da;
-  --input: #ccd5da;
-  --ring: #55b1cc;
-  --chart-1: #247189;
-  --chart-2: #6d858f;
-  --chart-3: #2c485d;
-  --chart-4: #c9855f;
-  --chart-5: #9f9ba0;
-  --sidebar: #e2e9ec;
-  --sidebar-foreground: #12181d;
-  --sidebar-primary: #247189;
-  --sidebar-primary-foreground: #f2f6f8;
-  --sidebar-accent: #e2e9ec;
-  --sidebar-accent-foreground: #2c485d;
-  --sidebar-border: #ccd5da;
-  --sidebar-ring: #55b1cc;
+  --popover-foreground: #484b6a;
+  --primary: #484b6a;
+  --primary-foreground: #fafafa;
+  --secondary: #e4e5f1;
+  --secondary-foreground: #484b6a;
+  --muted: #e4e5f1;
+  --muted-foreground: #9394a5;
+  --accent: #e4e5f1;
+  --accent-foreground: #484b6a;
+  --destructive: #a8524a;
+  --border: #d2d3db;
+  --input: #d2d3db;
+  --ring: #8b90b5;
+  --chart-1: #484b6a;
+  --chart-2: #9394a5;
+  --chart-3: #8b90b5;
+  --chart-4: #ab9455;
+  --chart-5: #d2d3db;
+  --sidebar: #e4e5f1;
+  --sidebar-foreground: #484b6a;
+  --sidebar-primary: #484b6a;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #e4e5f1;
+  --sidebar-accent-foreground: #484b6a;
+  --sidebar-border: #d2d3db;
+  --sidebar-ring: #8b90b5;
 }
 
 .dark {
-  --background: #12181d;
-  --foreground: #e2e9ec;
-  --card: #1b2a35;
-  --card-foreground: #e2e9ec;
-  --popover: #1b2a35;
-  --popover-foreground: #e2e9ec;
-  --primary: #247189;
-  --primary-foreground: #f2f6f8;
-  --secondary: #263c4b;
-  --secondary-foreground: #e2e9ec;
-  --muted: #263c4b;
-  --muted-foreground: #9f9ba0;
-  --accent: #2c485d;
-  --accent-foreground: #e2e9ec;
+  --background: #191b28;
+  --foreground: #fafafa;
+  --card: #262939;
+  --card-foreground: #fafafa;
+  --popover: #262939;
+  --popover-foreground: #fafafa;
+  --primary: #484b6a;
+  --primary-foreground: #fafafa;
+  --secondary: #2e3147;
+  --secondary-foreground: #fafafa;
+  --muted: #2e3147;
+  --muted-foreground: #9394a5;
+  --accent: #393c56;
+  --accent-foreground: #fafafa;
   --destructive: #c96b5f;
-  --border: rgba(143, 167, 180, 0.22);
-  --input: rgba(143, 167, 180, 0.3);
-  --ring: #55b1cc;
-  --chart-1: #247189;
-  --chart-2: #6d858f;
-  --chart-3: #2c485d;
-  --chart-4: #c9855f;
-  --chart-5: #9f9ba0;
-  --sidebar: #1b2a35;
-  --sidebar-foreground: #e2e9ec;
-  --sidebar-primary: #247189;
-  --sidebar-primary-foreground: #f2f6f8;
-  --sidebar-accent: #263c4b;
-  --sidebar-accent-foreground: #e2e9ec;
-  --sidebar-border: rgba(143, 167, 180, 0.22);
-  --sidebar-ring: #55b1cc;
+  --border: rgba(147, 148, 165, 0.26);
+  --input: rgba(147, 148, 165, 0.34);
+  --ring: #9da1bd;
+  --chart-1: #484b6a;
+  --chart-2: #9394a5;
+  --chart-3: #8b90b5;
+  --chart-4: #ab9455;
+  --chart-5: #d2d3db;
+  --sidebar: #262939;
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #484b6a;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #2e3147;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: rgba(147, 148, 165, 0.26);
+  --sidebar-ring: #9da1bd;
 }
 
 @layer base {
@@ -177,10 +175,10 @@
 
 /* ------------------------------ Pulse Studio ------------------------------ */
 
-/* Slim scrollbar for studio panel scroll areas — slate-teal thumb */
+/* Slim scrollbar for studio panel scroll areas — violet-gray thumb */
 .slim-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(109, 133, 143, 0.5) transparent;
+  scrollbar-color: rgba(147, 148, 165, 0.5) transparent;
 }
 .slim-scrollbar::-webkit-scrollbar {
   width: 6px;
@@ -191,18 +189,18 @@
 }
 .slim-scrollbar::-webkit-scrollbar-thumb {
   border-radius: 9999px;
-  background: rgba(109, 133, 143, 0.5);
+  background: rgba(147, 148, 165, 0.5);
 }
 .slim-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(143, 167, 180, 0.75);
+  background: rgba(178, 180, 196, 0.75);
 }
 
 /* Alpha checkerboard shown behind the canvas when background mode = transparent */
 .checkerboard {
-  background-color: #12181d;
+  background-color: #191b28;
   background-image:
-    linear-gradient(45deg, #1b2a35 25%, transparent 25%, transparent 75%, #1b2a35 75%),
-    linear-gradient(45deg, #1b2a35 25%, transparent 25%, transparent 75%, #1b2a35 75%);
+    linear-gradient(45deg, #262939 25%, transparent 25%, transparent 75%, #262939 75%),
+    linear-gradient(45deg, #262939 25%, transparent 25%, transparent 75%, #262939 75%);
   background-size: 16px 16px;
   background-position:
     0 0,

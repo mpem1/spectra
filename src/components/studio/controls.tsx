@@ -60,9 +60,9 @@ export const SECTION_ACCENT: Record<SectionAccent, { shell: string; icon: string
     label: 'text-rose-300/80',
   },
   lime: {
-    shell: 'border-terra-500/20 bg-terra-500/[0.04]',
-    icon: 'text-terra-500',
-    label: 'text-terra-300/80',
+    shell: 'border-gold-500/20 bg-gold-500/[0.04]',
+    icon: 'text-gold-500',
+    label: 'text-gold-300/80',
   },
   fuchsia: {
     shell: 'border-sky-500/20 bg-sky-500/[0.04]',

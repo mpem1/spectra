@@ -307,7 +307,7 @@ export function EditorApp() {
             >
               {recording ? (
                 <>
-                  <Square className="h-4 w-4 text-terra-400" aria-hidden />
+                  <Square className="h-4 w-4 text-gold-400" aria-hidden />
                   <span className="hidden font-mono sm:inline">
                     {Math.floor(recElapsed / 60)}:{String(Math.floor(recElapsed % 60)).padStart(2, '0')}
                   </span>
@@ -315,7 +315,7 @@ export function EditorApp() {
                 </>
               ) : (
                 <>
-                  <Circle className="h-3.5 w-3.5 fill-terra-500 text-terra-500" aria-hidden />
+                  <Circle className="h-3.5 w-3.5 fill-gold-500 text-gold-500" aria-hidden />
                   <span className="hidden sm:inline">Record</span>
                 </>
               )}
