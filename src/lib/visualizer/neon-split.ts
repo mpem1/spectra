@@ -283,8 +283,14 @@ function drawNeonSplitCPU(
 ): void {
   const { ctx, width: W, height: H } = rc
 
-  // the bloom field: bright pass (per-pixel, half-res) → mip chain (canvas)
-  const bright = getWork('neon:bright', W, H)
+  // the bloom field: bright pass (per-pixel, HALF-RES canvas — the pyramid
+  // squeezes this canvas, so it must hold exactly the bright-pass pixels;
+  // a full-size canvas left its bottom-right 3/4 transparent, and the mip
+  // chain read that as a hard-edged no-bloom dead zone — the mysterious box
+  // in the CPU fallback's frame) → mip chain (canvas)
+  const bw = Math.max(2, W >> 1)
+  const bh = Math.max(2, H >> 1)
+  const bright = getWork('neon:bright', bw, bh)
   const bctx = resetWork(bright.getContext('2d', { willReadFrequently: true })!)
   const base = getWork('neon:base', W, H)
   const baseCtx = resetWork(base.getContext('2d', { willReadFrequently: true })!)
@@ -300,8 +306,6 @@ function drawNeonSplitCPU(
   const oy = ((Math.round(grainOffsetY) % H) + H) % H
 
   // PASS 1 — levels (invert behind the vertical mask) + bloom bright pass
-  const bw = Math.max(2, W >> 1)
-  const bh = Math.max(2, H >> 1)
   const brightImg = bctx.createImageData(bw, bh)
   const bd = brightImg.data
   const postLevels = ensurePostLevels(W, H)
