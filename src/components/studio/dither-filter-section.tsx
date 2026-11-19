@@ -15,9 +15,11 @@ import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/
 import { cn } from '@/lib/utils'
 
 /** One swatch per MacPaint bitmap pattern — rendered from the engine's own
- *  bit table as an inline SVG data URL (pure string, SSR-safe), ink dots on
- *  a dark tile. The chooser and the matcher read the same table, so they can
- *  never drift apart. */
+ *  bit table as an inline SVG data URL (pure string, SSR-safe): ink dots on
+ *  a paper tile, exactly how the screens read in print — the mid-density
+ *  checkerboards sit in the grid as the grey screens they print as. The
+ *  chooser and the matcher read the same table, so they can never drift
+ *  apart. */
 const MAC_SWATCHES: string[] = Array.from({ length: MACPAINT_SLOT_COUNT }, (_, s) => {
   const rects: string[] = []
   for (let y = 0; y < 8; y++) {
@@ -27,9 +29,15 @@ const MAC_SWATCHES: string[] = Array.from({ length: MACPAINT_SLOT_COUNT }, (_, s
   }
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" shape-rendering="crispEdges">` +
-    `<rect width="8" height="8" fill="#09090b"/><g fill="#e4e4e7">${rects.join('')}</g></svg>`
+    `<rect width="8" height="8" fill="#f7f5eb"/><g fill="#0f0f12">${rects.join('')}</g></svg>`
   return `data:image/svg+xml,${encodeURIComponent(svg)}`
 })
+
+/** The grey-reading screens — the mid-density checkerboards and dense
+ *  hatches (ink coverage 0.44..0.875) that a fine MacPaint print blends
+ *  into the grey shades between ink and paper. The Greys quick-set picks
+ *  them out. */
+const MACPAINT_GREY_PATTERNS = [26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
 
 /** One option in the Edges chooser — active chip picks up the section's
  *  cyan (the same chip pattern the Halation card runs). */
@@ -247,6 +255,13 @@ export function DitherFilterSection() {
                     >
                       Classic
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => patchDitherFilter({ macPatterns: [...MACPAINT_GREY_PATTERNS] })}
+                      className="h-5 rounded border border-zinc-800 px-1.5 text-[10px] text-zinc-400 hover:text-zinc-100"
+                    >
+                      Greys
+                    </button>
                   </div>
                 </div>
                 <div
@@ -283,7 +298,8 @@ export function DitherFilterSection() {
                   Each cell picks the enabled screen whose ink coverage best
                   matches its tone — toggle screens out to steer the look (a
                   hatch-only set, dots only, anything). Empty selection plays
-                  all 38.
+                  all 38. The grey-reading checker screens sit mid-grid (the
+                  Greys quick-set picks them out).
                 </p>
               </div>
 
@@ -291,11 +307,17 @@ export function DitherFilterSection() {
                 label="Bitmap width"
                 value={filter.macBitmapWidth}
                 min={32}
-                max={1024}
+                max={4096}
                 step={2}
                 onChange={set('macBitmapWidth')}
                 format={(v) => `${Math.round(v)} cells`}
               />
+              <p className="text-[10px] leading-snug text-zinc-600">
+                Up to the site's full 4096 — fine widths print the screens so
+                small they blend into smooth grey tones between the black and
+                the paper. Your GPU renders the dial exactly; without one the
+                preview caps finer grids to stay interactive.
+              </p>
               <SliderRow
                 label="Threshold"
                 value={filter.macThreshold}
@@ -412,8 +434,9 @@ export function DitherFilterSection() {
               />
               <p className="text-[10px] leading-snug text-zinc-600">
                 MacPaint: the grid spans Bitmap width cells along the longer
-                side; Threshold + Contrast set where each tone snaps between
-                the screens; Smooth flattens noise into even tones, Sharpen
+                side (fine widths melt the screens into grey shades);
+                Threshold + Contrast set where each tone snaps between the
+                screens; Smooth flattens noise into even tones, Sharpen
                 crispens (negative denoises) at Radius reach; Edges read the
                 picture's contours; Grain jitters flat areas. Skipped on
                 transparent backgrounds so alpha recordings stay clean.

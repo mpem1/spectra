@@ -786,13 +786,16 @@ export interface DitherFilterConfig {
   beatStrength: number
   /** MacPaint: which of the 38 bitmap patterns the density matcher may
    *  pick from — array of pattern slot indices 0..37. The published preset
-   *  enables slots 2, 6, 17, 28, 33, 36, 37 (a spread from near-empty to
-   *  solid); the card's swatch grid toggles them. Old saves without the
-   *  field load as that published spread. */
+   *  enables slots 0, 2, 6, 17, 28, 33, 36, 37 (a spread from clean paper
+   *  to solid ink; slot 0 is the empty screen, so the brightest tones print
+   *  unbroken paper); the card's swatch grid toggles them. Old saves
+   *  without the field load as that published spread. */
   macPatterns: number[]
-  /** MacPaint: bitmap width 32..1024 — the dither grid is sized so the
+  /** MacPaint: bitmap width 32..4096 — the dither grid is sized so the
    *  LONGER frame side spans this many cells (the real effect's own
-   *  sizing; live preview caps the grid further for interactivity) */
+   *  sizing; a working GPU prints the dial verbatim — its cost is per
+   *  output pixel, so 4096 runs free — while the CPU fallback caps the
+   *  live grid for interactivity) */
   macBitmapWidth: number
   /** MacPaint: threshold 0..1 — the tone the 50% density pivot sits at
    *  (published 0.354) */
@@ -1904,7 +1907,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     paperColor: '#030a24',
     beatReactive: false,
     beatStrength: 0.5,
-    macPatterns: [2, 6, 17, 28, 33, 36, 37],
+    macPatterns: [0, 2, 6, 17, 28, 33, 36, 37],
     macBitmapWidth: 342,
     macThreshold: 0.354,
     macContrast: 2.5,

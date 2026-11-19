@@ -23,10 +23,14 @@
  *     cross-hatch, dense stipple …), each with a measured ink coverage; every
  *     cell picks the ENABLED pattern whose coverage best matches its tone —
  *     threshold + contrast shape the pivot, bitmap width sizes the grid by
- *     the longer side, a variance-based smooth flattens noise into even
- *     tones, an unsharp sharpen/denoise refines the cells, a Sobel pass
- *     stamps Ink along edges or Shades them toward paper, and a hash grain
- *     breaks up flat areas.
+ *     the longer side (32..4096, printed VERBATIM by the GPU path —
+ *     dither-macpaint-gl.ts — whose cost is per output pixel, so the site's
+ *     full 4096 runs free and the fine screens blend into the smooth grey
+ *     tones a real MacPaint print carries; the CPU fallback below clamps
+ *     finer grids for interactivity), a variance-based smooth flattens noise
+ *     into even tones, an unsharp sharpen/denoise refines the cells, a Sobel
+ *     pass stamps Ink along edges or Shades them toward paper, and a hash
+ *     grain breaks up flat areas.
  *
  * Glow: two blurred, contrast-crushed copies of the dithered grid (a tight
  * one and a wide one) are drawn back additively, so only the bright dots
@@ -45,6 +49,7 @@
  */
 import type { AudioFrame, DitherFilterConfig, RenderContext } from './types'
 import { beatBoost, clamp01, getWork, resetWork } from './filter-utils'
+import { MacpaintGL, type MacpaintParams } from './dither-macpaint-gl'
 import {
   ANCHOR_INK_RGB,
   ANCHOR_PAPER_RGB,
@@ -151,10 +156,13 @@ const MP_BITS = (() => {
   return bits
 })()
 
-/** effect.app's published default selection — slots 2, 6, 17, 28, 33, 36,
- *  37 (its default slots/slots_hi bitmask unpacked), a spread from the
- *  light stipple through solid ink. */
-const MP_DEFAULT_ENABLED = [2, 6, 17, 28, 33, 36, 37]
+/** effect.app's published default selection — slots 0, 2, 6, 17, 28, 33,
+ *  36, 37 (its default slots/slots_hi bitmask unpacked: slots=131141 holds
+ *  bits 0/2/6/17, slots_hi=410112 bits 9/14/17/18 → 19+each), a spread from
+ *  clean paper (slot 0 — the empty screen, so the brightest tones print
+ *  unbroken paper) through the light stipples and mid checkers to solid
+ *  ink. */
+const MP_DEFAULT_ENABLED = [0, 2, 6, 17, 28, 33, 36, 37]
 
 // The card UI renders the swatch grid and density labels straight from the
 // engine's own tables, so chooser and matcher can never drift apart.
@@ -238,16 +246,127 @@ const smoothstep = (a: number, b: number, x: number): number => {
   return t * t * (3 - 2 * t)
 }
 
+/* ------------------------------ MacPaint GL -------------------------------- */
+
+/** One GL chain per source canvas — the preview canvas and the exporter's
+ *  canvas each own an instance, so an export render can't fight the live
+ *  preview's texture sizes. Construction runs the self-test: any stack that
+ *  links but draws nothing throws there and the CPU port takes the dial. */
+const macGlEntries = new WeakMap<HTMLCanvasElement, MacpaintGL>()
+let macGlBroken = false
+/** performance.now() of the last context loss / construction failure — new
+ *  instances wait this out so a dead GPU can't spin a recreate-storm. */
+let macGlLastFailAt = -Infinity
+const MAC_GL_FAIL_COOLDOWN_MS = 4000
+
+function getMacGl(source: HTMLCanvasElement): MacpaintGL | null {
+  if (macGlBroken) return null
+  let inst = macGlEntries.get(source)
+  if (inst && inst.isLost) {
+    inst.dispose()
+    macGlEntries.delete(source)
+    macGlLastFailAt = performance.now()
+    inst = undefined
+  }
+  if (!inst) {
+    if (performance.now() - macGlLastFailAt < MAC_GL_FAIL_COOLDOWN_MS) return null
+    try {
+      inst = new MacpaintGL()
+      macGlEntries.set(source, inst)
+    } catch {
+      macGlBroken = true
+      return null
+    }
+  }
+  return inst
+}
+
+function dropMacGl(source: HTMLCanvasElement): void {
+  const inst = macGlEntries.get(source)
+  if (inst) {
+    inst.dispose()
+    macGlEntries.delete(source)
+  }
+  macGlLastFailAt = performance.now()
+}
+
+/** Pack the enabled pattern list into the shader's two bitmask uniforms —
+ *  slots 0..18 in `slots`, 19..37 in `slots_hi`. An empty selection plays
+ *  the full set (the shader's own zeroed-mask rule). */
+function packMacSlots(list: number[] | undefined): [number, number] {
+  const raw = Array.isArray(list) && list.length > 0 ? list : MP_DEFAULT_ENABLED
+  let lo = 0
+  let hi = 0
+  for (const s of raw) {
+    const slot = Math.round(s)
+    if (slot < 0 || slot >= MP_SLOTS) continue
+    if (slot < 19) lo |= 1 << slot
+    else hi |= 1 << (slot - 19)
+  }
+  if (lo === 0 && hi === 0) {
+    lo = (1 << 19) - 1
+    hi = (1 << (MP_SLOTS - 19)) - 1
+  }
+  return [lo, hi]
+}
+
+/** One GL print: parse the config exactly like the CPU port (same clamps),
+ *  hand the uniforms to the site's own shader, draw the finished frame back
+ *  onto the 2D context. */
+function drawMacpaintGlFrame(
+  rc: RenderContext,
+  gl: MacpaintGL,
+  cfg: DitherFilterConfig,
+  strength: number,
+  bitmapWidth: number,
+): void {
+  const { ctx, width: W, height: H } = rc
+  const [slotsLo, slotsHi] = packMacSlots(cfg.macPatterns)
+  const toUnit = (hex: string, fallback: number[]): [number, number, number] => {
+    const p = parseHexRGB(hex) ?? fallback
+    return [p[0] / 255, p[1] / 255, p[2] / 255]
+  }
+  const out = gl.render({
+    source: ctx.canvas,
+    slotsLo,
+    slotsHi,
+    bitmapWidth,
+    threshold: Math.min(1, Math.max(0, cfg.macThreshold ?? 0.354)),
+    contrast: Math.min(4, Math.max(0.1, cfg.macContrast ?? 2.5)),
+    grain: clamp01(cfg.macGrain ?? 0),
+    smoothing: Math.min(3, Math.max(0, Math.round(cfg.macSmoothing ?? 1))),
+    sharpen: Math.min(2, Math.max(-1, cfg.macSharpen ?? -0.83)),
+    radius: Math.min(5, Math.max(0.5, cfg.macRadius ?? 1.2)),
+    edgeMode: Math.round(cfg.macEdgeMode ?? 1),
+    edgeThreshold: Math.min(1, Math.max(0.01, cfg.macEdgeThreshold ?? 0.1)),
+    edgeWidth: Math.min(3, Math.max(0.5, cfg.macEdgeWidth ?? 1.1)),
+    ink: toUnit(cfg.macInkColor ?? '#0f0f12', [15, 15, 18]),
+    paper: toUnit(cfg.macPaperColor ?? '#f7f5eb', [247, 245, 235]),
+    blend: clamp01(strength),
+  })
+  ctx.save()
+  ctx.globalAlpha = 1
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.shadowBlur = 0
+  ctx.imageSmoothingEnabled = false
+  ctx.drawImage(out, 0, 0, W, H)
+  ctx.imageSmoothingEnabled = true
+  ctx.restore()
+}
+
 /**
- * The MacPaint engine — effect.app's shader, cell-for-cell. Per cell:
- * area-averaged color → optional unsharp (sharpen, radius) → luma →
- * optional variance-based flattening (smooth: picks the flattest diagonal
- * quadrant of the raw grid, keeps the sharpen detail on top) → optional
- * Sobel edges (Ink stamps them, Shade pushes them to paper) → the
- * threshold/contrast curve → density-matched bitmap pattern → ink/paper.
- * The GL path samples the source texture at fractional cell positions for
- * the sharpen stencil and the Sobel taps; here those read the gridded
- * buffers bilinearly — same field, cells apart, identical decision input.
+ * The MacPaint engine — effect.app's shader, cell-for-cell. On any working
+ * GPU the site's own GLSL pass runs the dial VERBATIM (dither-macpaint-gl.ts):
+ * its cost is per output pixel, not per cell, so Bitmap width 4096 prints as
+ * cheaply as 32 — exactly the site's behavior — and the fine screens blend
+ * into the smooth grey tones a real MacPaint print carries. The CPU port
+ * below stays the fallback (sandbox / no-WebGL / context loss) with its own
+ * interactivity budget. Per cell, both paths: area-averaged color → optional
+ * unsharp (sharpen, radius) → luma → optional variance-based flattening
+ * (smooth: picks the flattest diagonal quadrant of the raw grid, keeps the
+ * sharpen detail on top) → optional Sobel edges (Ink stamps them, Shade
+ * pushes them to paper) → the threshold/contrast curve → density-matched
+ * bitmap pattern → ink/paper.
  */
 function drawMacpaintGrid(
   rc: RenderContext,
@@ -255,10 +374,25 @@ function drawMacpaintGrid(
   strength: number,
 ): void {
   const { width: W, height: H } = rc
-  const bitmapDial = Math.min(1024, Math.max(32, Math.round(cfg.macBitmapWidth ?? 342)))
-  // Cell budget: the pass is O(cells); keep the live grid bounded (the look
-  // — cells per frame side — only bends past ~90k cells) and exports can go
-  // finer, with a generous ceiling so cranked dials can't stall a render.
+  const bitmapDial = Math.min(4096, Math.max(32, Math.round(cfg.macBitmapWidth ?? 342)))
+
+  // GPU first — the site's own shader prints the dial verbatim (blend = the
+  // Strength dial, so the fade-back rides inside the pass).
+  const gl = getMacGl(rc.ctx.canvas)
+  if (gl) {
+    try {
+      drawMacpaintGlFrame(rc, gl, cfg, strength, bitmapDial)
+      return
+    } catch {
+      dropMacGl(rc.ctx.canvas)
+      // fall through to the CPU port
+    }
+  }
+
+  // CPU cell budget: the pass is O(cells); keep the live grid bounded (the
+  // look — cells per frame side — only bends past ~90k cells) and exports
+  // can go finer, with a generous ceiling so cranked dials can't stall a
+  // render. Machines without the GL path therefore clamp finer widths here.
   let bitmapWidth = bitmapDial
   const cap = rc.interactive ? 90000 : 300000
   for (;;) {
