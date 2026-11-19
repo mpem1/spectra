@@ -26,7 +26,15 @@
  *
  * The blur is the site's own capped 80-tap sweep (step = max(1, radius/80),
  * quadratic-smoothed linear weights), sampled with CLAMP_TO_EDGE so halos
- * stop at the frame edge instead of wrapping around it.
+ * stop at the frame edge instead of wrapping around it. The taps run in a
+ * CONSTANT-BOUND loop (for int i = 0; i < 80 … break) — never a dynamic
+ * float loop: several real driver stacks (older Intel iGPU ANGLE compilers
+ * in particular) miscompile uniform-dependent loop bounds and smear the
+ * blur into directional streaks across the picture, exactly the breakage
+ * reported as "just showing streaks over the image". A fixed 80-iteration
+ * loop with a break is the pattern every GL implementation compiles
+ * correctly, and the math is identical (the same dist sequence, hard-capped
+ * at the same 80 taps).
  *
  * The site's shaders carry a "window" system (iSrcResolution /
  * iWindowOffset / iWindowSize) for masking the effect to a sub-region —
@@ -34,15 +42,32 @@
  * false) is the path ported here; the math is otherwise byte-identical.
  *
  * Architecture mirrors neon-split-gl.ts: one offscreen WebGL2 canvas, full-
- * frame quads, RGBA8 FBOs, the source frame uploaded per render() call.
+ * frame quads, the source frame uploaded per render() call at FULL canvas
+ * resolution. The three WORK framebuffer objects (bright pass + the two
+ * diffusion passes) render at a SEPARATE chain resolution — `scale` < 1 —
+ * because the glow is a low-frequency effect whose diffusion radii are
+ * fractions of the frame size, so a half-resolution chain upscales into a
+ * visually identical halo at a quarter of the tap cost. The COMPOSITE pass
+ * always renders at the full canvas resolution, sampling the chain-res glow
+ * (linear-upscaled by the sampler) over the full-resolution source, so the
+ * photographic base stays pixel-sharp at every chain scale — the live
+ * preview's perf escape hatch costs nothing visually. Exports call with 1.
+ *
+ * The work FBOs are RGBA16F when the context exposes EXT_color_buffer_float
+ * (nearly universal in WebGL2): the bright-pass energy is softKnee ×
+ * (0.4 + boost·1.8) × beat, which reaches ~5.7 at a full kick with the
+ * boost dial high — an 8-bit target clamps that at 1.0 and flattens the
+ * halo's smooth falloff into a saturated plateau. In half-float the energy
+ * stores raw and the composite's clamp(glow·3) sees the shader's real
+ * values; without the extension the chain falls back to RGBA8 (the
+ * historical behavior).
+ *
  * A construction-time SELF-TEST pushes a synthetic bright frame through the
  * real chain and requires the glow energy to land in the framebuffer — some
  * GL stacks hand out program objects that link, validate and report no
  * errors yet silently draw nothing, which would otherwise render the whole
  * effect as nothing at all; the probe recompiles the programs and, if the
  * chain still can't draw, throws so the proven CPU fallback takes over.
- * `scale` < 1 renders the chain at lower internal resolution — the live
- * preview's perf escape hatch; exports always call with 1.
  */
 
 const VERT = `#version 300 es
@@ -109,6 +134,8 @@ void main() {
     float center = texture(iChannel0, uv).r;
 
     // blurHorizontal(uv, localDiffusion, channel R, disabled = center)
+    // constant-bound sweep — identical dist sequence to the site's dynamic
+    // loop, but a fixed 80-iteration form every driver compiles correctly
     float local = center;
     {
         float blurPixels = uLocalDiffusion * srcResX;
@@ -116,7 +143,9 @@ void main() {
             float stepPx = max(1.0, blurPixels / 80.0);
             float sum = center;
             float wsum = 1.0;
-            for (float dist = stepPx; dist < blurPixels; dist += stepPx) {
+            for (int i = 0; i < 80; i++) {
+                float dist = stepPx * float(i + 1);
+                if (dist >= blurPixels) break;
                 float t = dist / blurPixels;
                 float w = 1.0 - t;
                 w = 1.0 - w * w;
@@ -140,7 +169,9 @@ void main() {
             float stepPx = max(1.0, blurPixels / 80.0);
             float sum = center;
             float wsum = 1.0;
-            for (float dist = stepPx; dist < blurPixels; dist += stepPx) {
+            for (int i = 0; i < 80; i++) {
+                float dist = stepPx * float(i + 1);
+                if (dist >= blurPixels) break;
                 float t = dist / blurPixels;
                 float w = 1.0 - t;
                 w = 1.0 - w * w;
@@ -184,7 +215,9 @@ void main() {
             float stepPx = max(1.0, blurPixels / 80.0);
             float sum = centerR;
             float wsum = 1.0;
-            for (float dist = stepPx; dist < blurPixels; dist += stepPx) {
+            for (int i = 0; i < 80; i++) {
+                float dist = stepPx * float(i + 1);
+                if (dist >= blurPixels) break;
                 float t = dist / blurPixels;
                 float w = 1.0 - t;
                 w = 1.0 - w * w;
@@ -208,7 +241,9 @@ void main() {
             float stepPx = max(1.0, blurPixels / 80.0);
             float sum = centerG;
             float wsum = 1.0;
-            for (float dist = stepPx; dist < blurPixels; dist += stepPx) {
+            for (int i = 0; i < 80; i++) {
+                float dist = stepPx * float(i + 1);
+                if (dist >= blurPixels) break;
                 float t = dist / blurPixels;
                 float w = 1.0 - t;
                 w = 1.0 - w * w;
@@ -313,10 +348,20 @@ export type HalationParams = {
 export class HalationGL {
   private gl: WebGL2RenderingContext
   private canvas: HTMLCanvasElement
+  /** Canvas / composite resolution (always the source frame's full size) */
   private w = 0
   private h = 0
+  /** Chain resolution — the bright + diffusion FBOs render here; the glow
+   *  is low-frequency, so this can drop for the live preview at no visible
+   *  cost while the composite stays full-res. */
+  private rw = 0
+  private rh = 0
   private srcW = 0
   private srcH = 0
+  /** Internal format of the work FBOs: RGBA16F stores the bright-pass
+   *  energy raw (it exceeds 1.0 at high boost / on kicks); RGBA8 is the
+   *  fallback when float rendering is unavailable. */
+  private workFormat: number
   private quadVao: WebGLVertexArrayObject | null = null
   private quadBuf: WebGLBuffer | null = null
   private passes = new Map<string, GlPass>()
@@ -340,6 +385,13 @@ export class HalationGL {
       e.preventDefault()
       this.lost = true
     })
+    // Half-float render targets need EXT_color_buffer_float in WebGL2; the
+    // LINEAR filtering of 16F textures is core WebGL2. Without the
+    // extension the chain falls back to RGBA8 (energy clamps at 1.0, the
+    // pre-16F behavior — still correct, just a flatter falloff at the top).
+    this.workFormat = this.gl.getExtension('EXT_color_buffer_float')
+      ? (this.gl as WebGL2RenderingContext).RGBA16F
+      : this.gl.RGBA8
     this.initGeometry()
     // The source frame uploads Y-flipped (WebGL puts texture row 0 at v=0;
     // without the flip every pass samples the picture upside down — the
@@ -525,8 +577,10 @@ export class HalationGL {
     ])
   }
 
-  private ensureSize(w: number, h: number) {
-    if (this.w === w && this.h === h) return
+  /** Work FBOs live at the CHAIN resolution (rw × rh); the GL canvas that
+   *  receives the composite stays at the full frame size (w × h). */
+  private ensureSize(w: number, h: number, rw: number, rh: number) {
+    if (this.w === w && this.h === h && this.rw === rw && this.rh === rh) return
     const gl = this.gl
     for (const f of this.fbos) {
       gl.deleteFramebuffer(f.fb)
@@ -538,7 +592,17 @@ export class HalationGL {
     for (let i = 0; i < 3; i++) {
       const tex = gl.createTexture()!
       gl.bindTexture(gl.TEXTURE_2D, tex)
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        this.workFormat,
+        rw,
+        rh,
+        0,
+        gl.RGBA,
+        this.workFormat === gl.RGBA16F ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE,
+        null,
+      )
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
@@ -550,6 +614,8 @@ export class HalationGL {
     }
     this.w = w
     this.h = h
+    this.rw = rw
+    this.rh = rh
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
   }
 
@@ -575,10 +641,16 @@ export class HalationGL {
     if (loc) gl.uniform1i(loc, texUnit)
   }
 
-  private renderPass(pass: GlPass, target: WebGLFramebuffer | null, setUniforms: () => void) {
+  private renderPass(
+    pass: GlPass,
+    target: WebGLFramebuffer | null,
+    vpW: number,
+    vpH: number,
+    setUniforms: () => void,
+  ) {
     const gl = this.gl
     gl.bindFramebuffer(gl.FRAMEBUFFER, target)
-    gl.viewport(0, 0, this.w, this.h)
+    gl.viewport(0, 0, vpW, vpH)
     gl.useProgram(pass.program)
     setUniforms()
     gl.bindVertexArray(this.quadVao)
@@ -589,8 +661,11 @@ export class HalationGL {
   /** Run the whole halation chain over the given 2D source; returns the GL
    *  canvas holding the finished frame (draw it onto the 2D context). Every
    *  parameter arrives already clamped to the shader's own published range.
-   *  scale < 1 renders the chain at a lower internal resolution (perf
-   *  escape hatch for the live preview). */
+   *  `scale` < 1 renders the bright + diffusion chain at a lower internal
+   *  resolution (the live preview's perf escape hatch — the glow is
+   *  low-frequency, so the look is unchanged); the composite always lands
+   *  at the source's full resolution over the untouched full-res frame, so
+   *  the picture itself never softens. Exports always call with 1. */
   render(p: HalationParams): HTMLCanvasElement {
     const gl = this.gl
     const w = p.source.width
@@ -599,7 +674,7 @@ export class HalationGL {
     this.ensureSrcSize(w, h)
     const rw = Math.max(8, Math.round(w * p.scale))
     const rh = Math.max(8, Math.round(h * p.scale))
-    this.ensureSize(rw, rh)
+    this.ensureSize(w, h, rw, rh)
 
     // upload the source frame (full-res, Y-flipped at upload)
     gl.bindTexture(gl.TEXTURE_2D, this.srcTex)
@@ -610,8 +685,8 @@ export class HalationGL {
     const C = this.fbos[2]
     const P = (k: string) => this.passes.get(k)!
 
-    // 1) bright pass  src → A
-    this.renderPass(P('bright'), A.fb, () => {
+    // 1) bright pass  src → A (chain res; samples the full-res source)
+    this.renderPass(P('bright'), A.fb, this.rw, this.rh, () => {
       this.use(0, this.srcTex, P('bright').uniforms.iChannel0)
       gl.uniform1f(P('bright').uniforms.uThreshold, p.threshold)
       gl.uniform1f(P('bright').uniforms.uKnee, p.knee)
@@ -620,23 +695,25 @@ export class HalationGL {
     })
 
     // 2) horizontal diffusion  A → B (R = local H, G = global H)
-    this.renderPass(P('blurH'), B.fb, () => {
+    this.renderPass(P('blurH'), B.fb, this.rw, this.rh, () => {
       this.use(0, A.tex, P('blurH').uniforms.iChannel0)
-      gl.uniform2f(P('blurH').uniforms.iResolution, this.w, this.h)
+      gl.uniform2f(P('blurH').uniforms.iResolution, this.rw, this.rh)
       gl.uniform1f(P('blurH').uniforms.uLocalDiffusion, p.localDiffusion)
       gl.uniform1f(P('blurH').uniforms.uGlobalDiffusion, p.globalDiffusion)
     })
 
     // 3) vertical diffusion  B → C (R = local HV, G = global HV)
-    this.renderPass(P('blurV'), C.fb, () => {
+    this.renderPass(P('blurV'), C.fb, this.rw, this.rh, () => {
       this.use(0, B.tex, P('blurV').uniforms.iChannel0)
-      gl.uniform2f(P('blurV').uniforms.iResolution, this.w, this.h)
+      gl.uniform2f(P('blurV').uniforms.iResolution, this.rw, this.rh)
       gl.uniform1f(P('blurV').uniforms.uLocalDiffusion, p.localDiffusion)
       gl.uniform1f(P('blurV').uniforms.uGlobalDiffusion, p.globalDiffusion)
     })
 
-    // 4) composite over the original  C + src → canvas (final pass)
-    this.renderPass(P('composite'), null, () => {
+    // 4) composite over the original  C + src → canvas, at the canvas's
+    // FULL resolution — the chain-res glow linearly upscales inside the
+    // sampler while the base frame stays pixel-sharp
+    this.renderPass(P('composite'), null, this.w, this.h, () => {
       this.use(0, C.tex, P('composite').uniforms.iChannel0)
       this.use(1, this.srcTex, P('composite').uniforms.iChannel7)
       gl.uniform1f(P('composite').uniforms.uIntensity, p.intensity)
