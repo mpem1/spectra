@@ -1123,6 +1123,71 @@ export interface ColorGradeFilterConfig {
   warmth?: number
 }
 
+/**
+ * Halation filter — the classic film optical artifact over the whole
+ * finished picture: bright highlights bleed a red/orange glow into the
+ * frame around them, exactly the way light blooms through film into the
+ * film base and reflects back (the look Kodak stocks are famous for).
+ *
+ * Rebuilt from effect.app's own Halation effect — the four encrypted GLSL
+ * passes (bright pass / horizontal diffusion / vertical diffusion / halo
+ * composite) were fetched off the site and decrypted verbatim; every dial
+ * below is the shader's own uniform at the shader's published default.
+ *
+ * The chain, exactly as the site runs it:
+ *   1. Bright pass — the frame's Rec.709 luminance (in linear light) goes
+ *      through a soft-knee threshold; what survives is scaled by
+ *      0.4 + boost · 1.8 into the glow energy channel.
+ *   2./3. Diffusion — the energy blurs horizontally then vertically at TWO
+ *      radii (a fraction of the frame width): a tight "local" glow and a
+ *      wide "global" halo. The blur is a capped 80-tap sweep with
+ *      quadratic-smoothed linear weights (the exact window the site's
+ *      shader runs).
+ *   4. Composite — the tight glow tints from red toward orange the hotter
+ *      it burns (driven by the hue dial), the wide halo stays red at half
+ *      strength; everything screens back over the original in linear light.
+ *      A background gate (dark-only ↔ everywhere) decides what tonal range
+ *      can catch the halo, and a blue damper keeps skies/cool pixels from
+ *      blushing.
+ *
+ * No beat reaction by design — this look's charm is the steady optical
+ * glow; per-kick flashing was explicitly removed from the neon look for
+ * strain and would be worse here. Deterministic (same frame in, same
+ * pixels out); skipped on transparent backgrounds like every full-frame
+ * filter.
+ */
+export interface HalationFilterConfig {
+  enabled: boolean
+  /** Bright-pass threshold 0..1 — how bright a pixel's luminance (in
+   *  linear light) must be before it starts to halo (published 0.6). */
+  threshold: number
+  /** Knee (softness of the threshold edge) 0.01..0.8 — higher eases more
+   *  mid-tones into the glow (published 0.25). */
+  knee: number
+  /** Boost 0..1 — extra energy pushed through the bright pass (published
+   *  0.5); also feeds the glow's shift from red toward orange. */
+  boost: number
+  /** Local diffusion 0.005..0.2 — the tight glow radius as a fraction of
+   *  the frame width (published 0.04). */
+  localDiffusion: number
+  /** Global diffusion 0..0.4 — the wide halo radius as a fraction of the
+   *  frame width (published 0.12). */
+  globalDiffusion: number
+  /** Intensity 0..1 — how strongly the halo lands on the frame (published
+   *  0.7). */
+  intensity: number
+  /** Hue 0..1 — how far the hot core of the glow shifts from red toward
+   *  orange (published 0.5). */
+  hue: number
+  /** Background gain 0..1 — where the halo may land: 0 = over dark tones
+   *  only, 1 = over the whole frame (published 0.85). */
+  backgroundGain: number
+  /** Compensation 0..1 — tames the halo over blue pixels (skies, cool
+   *  stages); 1 never damps, 0 kills the halo on any blue-leaning tone
+   *  (published 0.5). */
+  blueComp: number
+}
+
 /* -------------------------------- Custom fonts ------------------------------- */
 
 /**
@@ -1167,6 +1232,9 @@ export interface StudioConfig {
   neonSplitFilter: NeonSplitFilterConfig
   /** Full-frame color grade (black & white / sepia tone shaping) */
   colorGradeFilter: ColorGradeFilterConfig
+  /** Full-frame halation post-pass (the film highlight-bleed glow — the
+   *  effect.app Halation effect) */
+  halationFilter: HalationFilterConfig
   /** Full-frame retro-dither post-pass (Bayer dot patterns + glow bloom) */
   ditherFilter: DitherFilterConfig
   /** Full-frame phosphor-monitor post-pass (vertical dash columns + bloom) */
@@ -1709,6 +1777,19 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     strength: 1,
     contrast: 0.5,
     warmth: 0.5,
+  },
+  halationFilter: {
+    enabled: false,
+    // the published defaults of effect.app's own Halation shaders
+    threshold: 0.6,
+    knee: 0.25,
+    boost: 0.5,
+    localDiffusion: 0.04,
+    globalDiffusion: 0.12,
+    intensity: 0.7,
+    hue: 0.5,
+    backgroundGain: 0.85,
+    blueComp: 0.5,
   },
   ditherFilter: {
     enabled: false,

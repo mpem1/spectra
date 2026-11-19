@@ -33,6 +33,7 @@ import { drawGlitchFilter } from './glitch-filter'
 import { drawAnaglyphFilter } from './anaglyph-filter'
 import { drawNeonSplitFilter } from './neon-split'
 import { drawColorGradeFilter } from './color-grade'
+import { drawHalationFilter } from './halation-filter'
 import { drawDitherFilter } from './dither-filter'
 import { drawPhosphorFilter } from './phosphor-filter'
 import { drawContourFilter } from './contour-filter'
@@ -206,9 +207,14 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // whatever sits beneath it, so the two stack.
   drawNeonSplitFilter(rc, config.neonSplitFilter, frame, transparent)
   // Color grade — the black & white / sepia tone stage. Directly after Neon
-  // Split (it grades the neon look when both are on), before the phosphor /
-  // contour / dither stages, which stay the outermost re-materialized layers.
+  // Split (it grades the neon look when both are on), before the halation /
+  // phosphor / contour / dither stages, which stay the outermost layers.
   drawColorGradeFilter(rc, config.colorGradeFilter, frame, transparent)
+  // Halation — the film highlight-bleed glow (effect.app's Halation effect):
+  // bright spots of the GRADED picture bloom red/orange halos. After the
+  // color stage so the glow lands on the finished tones, before the
+  // re-materialized poster layers (phosphor / contour / dither).
+  drawHalationFilter(rc, config.halationFilter, frame, transparent)
   // Lo-fi phosphor monitor — repoints the finished picture into columns of
   // glowing dashes on a dark tube. Before the dither, which stays the
   // outermost poster layer.

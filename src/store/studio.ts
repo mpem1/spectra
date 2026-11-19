@@ -28,6 +28,7 @@ import {
   type AnaglyphFilterConfig,
   type NeonSplitFilterConfig,
   type ColorGradeFilterConfig,
+  type HalationFilterConfig,
   type DitherFilterConfig,
   type PhosphorFilterConfig,
   type ContourFilterConfig,
@@ -119,6 +120,8 @@ type StudioState = {
   patchNeonSplitFilter: (partial: Partial<NeonSplitFilterConfig>) => void
   /** Patches config.colorGradeFilter */
   patchColorGradeFilter: (partial: Partial<ColorGradeFilterConfig>) => void
+  /** Patches config.halationFilter */
+  patchHalationFilter: (partial: Partial<HalationFilterConfig>) => void
   patchDitherFilter: (partial: Partial<DitherFilterConfig>) => void
   /** Patches config.phosphorFilter */
   patchPhosphorFilter: (partial: Partial<PhosphorFilterConfig>) => void
@@ -272,6 +275,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, colorGradeFilter: { ...s.config.colorGradeFilter, ...partial } },
     })),
 
+  patchHalationFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, halationFilter: { ...s.config.halationFilter, ...partial } },
+    })),
+
   patchDitherFilter: (partial) =>
     set((s) => ({
       config: { ...s.config, ditherFilter: { ...s.config.ditherFilter, ...partial } },
@@ -381,6 +389,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         anaglyphFilter: { ...DEFAULT_STUDIO_CONFIG.anaglyphFilter, ...config.anaglyphFilter },
         neonSplitFilter: { ...DEFAULT_STUDIO_CONFIG.neonSplitFilter, ...config.neonSplitFilter },
         colorGradeFilter: { ...DEFAULT_STUDIO_CONFIG.colorGradeFilter, ...config.colorGradeFilter },
+        halationFilter: { ...DEFAULT_STUDIO_CONFIG.halationFilter, ...config.halationFilter },
         ditherFilter: { ...DEFAULT_STUDIO_CONFIG.ditherFilter, ...config.ditherFilter },
         phosphorFilter: { ...DEFAULT_STUDIO_CONFIG.phosphorFilter, ...config.phosphorFilter },
         contourFilter: { ...DEFAULT_STUDIO_CONFIG.contourFilter, ...config.contourFilter },
