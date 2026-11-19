@@ -779,10 +779,13 @@ export interface DitherFilterConfig {
   inkColor: string
   /** Custom palette: the dark cells' color as '#rrggbb' (mode 'custom') */
   paperColor: string
-  /** React to beat — the glow flares on the song's low end; between beats
-   *  the dither plays exactly as dialed in */
+  /** React to beat — the Bayer engines' glow flares on the song's low end
+   *  and MacPaint's Threshold climbs (the print slams heavier ink on kicks);
+   *  between beats the dither plays exactly as dialed in */
   beatReactive: boolean
-  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
+  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) —
+   *  the flare size on the glowing engines, the Threshold shift on
+   *  MacPaint (a full kick at 100% moves it +0.35) */
   beatStrength: number
   /** MacPaint: which of the 38 bitmap patterns the density matcher may
    *  pick from — array of pattern slot indices 0..37. The published preset

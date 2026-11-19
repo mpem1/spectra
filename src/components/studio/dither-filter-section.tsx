@@ -432,14 +432,23 @@ export function DitherFilterSection() {
                 onChange={set('strength')}
                 format={(v) => `${Math.round(v * 100)}%`}
               />
+              <BeatPunchRow
+                on={filter.beatReactive}
+                strength={filter.beatStrength}
+                onToggle={(beatReactive) => patchDitherFilter({ beatReactive })}
+                onStrength={(beatStrength) => patchDitherFilter({ beatStrength })}
+                strengthLabel="Beat shift"
+              />
               <p className="text-[10px] leading-snug text-zinc-600">
                 MacPaint: the grid spans Bitmap width cells along the longer
                 side (fine widths melt the screens into grey shades);
                 Threshold + Contrast set where each tone snaps between the
                 screens; Smooth flattens noise into even tones, Sharpen
                 crispens (negative denoises) at Radius reach; Edges read the
-                picture's contours; Grain jitters flat areas. Skipped on
-                transparent backgrounds so alpha recordings stay clean.
+                picture's contours; Grain jitters flat areas. React to beat
+                climbs the Threshold on the song's low end, slamming heavier
+                ink on kicks. Skipped on transparent backgrounds so alpha
+                recordings stay clean.
               </p>
             </>
           ) : (

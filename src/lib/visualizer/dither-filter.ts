@@ -48,7 +48,7 @@
  * backgrounds skip the pass.
  */
 import type { AudioFrame, DitherFilterConfig, RenderContext } from './types'
-import { beatBoost, clamp01, getWork, resetWork } from './filter-utils'
+import { beatAmount, beatBoost, clamp01, getWork, resetWork } from './filter-utils'
 import { MacpaintGL, type MacpaintParams } from './dither-macpaint-gl'
 import {
   ANCHOR_INK_RGB,
@@ -132,6 +132,11 @@ const MP_PATTERN: readonly [number, number][] = [
 
 const MP_SLOTS = 38
 export { MP_SLOTS as MACPAINT_SLOT_COUNT }
+
+/** React to beat — how far the Threshold dial climbs on a FULL low-end hit
+ *  at 100% Beat shift (the print slams heavier ink, then relaxes back to the
+ *  dialed-in look between hits). */
+const MAC_BEAT_SHIFT = 0.35
 
 /** Ink coverage per pattern — the density matcher picks the enabled slot
  *  closest to each cell's target coverage (published table, verbatim). */
@@ -319,6 +324,7 @@ function drawMacpaintGlFrame(
   cfg: DitherFilterConfig,
   strength: number,
   bitmapWidth: number,
+  threshold: number,
 ): void {
   const { ctx, width: W, height: H } = rc
   const [slotsLo, slotsHi] = packMacSlots(cfg.macPatterns)
@@ -331,7 +337,7 @@ function drawMacpaintGlFrame(
     slotsLo,
     slotsHi,
     bitmapWidth,
-    threshold: Math.min(1, Math.max(0, cfg.macThreshold ?? 0.354)),
+    threshold,
     contrast: Math.min(4, Math.max(0.1, cfg.macContrast ?? 2.5)),
     grain: clamp01(cfg.macGrain ?? 0),
     smoothing: Math.min(3, Math.max(0, Math.round(cfg.macSmoothing ?? 1))),
@@ -366,22 +372,32 @@ function drawMacpaintGlFrame(
  * (smooth: picks the flattest diagonal quadrant of the raw grid, keeps the
  * sharpen detail on top) → optional Sobel edges (Ink stamps them, Shade
  * pushes them to paper) → the threshold/contrast curve → density-matched
- * bitmap pattern → ink/paper.
+ * bitmap pattern → ink/paper. Spectra extension: React to beat climbs the
+ * Threshold on the song's low end so the print slams heavier ink on kicks
+ * (the ink is this effect's energy — the flare analog of the glowing
+ * engines' bloom), resting exactly at the dialed value between hits.
  */
 function drawMacpaintGrid(
   rc: RenderContext,
   cfg: DitherFilterConfig,
   strength: number,
+  bass: number,
 ): void {
   const { width: W, height: H } = rc
   const bitmapDial = Math.min(4096, Math.max(32, Math.round(cfg.macBitmapWidth ?? 342)))
+  // The beat-reactive Threshold, computed ONCE so GL and CPU kick on the
+  // same frames (deterministic — driven by frame.bass only).
+  const threshold = Math.min(
+    1,
+    Math.max(0, cfg.macThreshold ?? 0.354) + beatAmount(cfg, bass) * MAC_BEAT_SHIFT,
+  )
 
   // GPU first — the site's own shader prints the dial verbatim (blend = the
   // Strength dial, so the fade-back rides inside the pass).
   const gl = getMacGl(rc.ctx.canvas)
   if (gl) {
     try {
-      drawMacpaintGlFrame(rc, gl, cfg, strength, bitmapDial)
+      drawMacpaintGlFrame(rc, gl, cfg, strength, bitmapDial, threshold)
       return
     } catch {
       dropMacGl(rc.ctx.canvas)
@@ -400,7 +416,7 @@ function drawMacpaintGrid(
     const cols = Math.ceil(W / cell)
     const rows = Math.ceil(H / cell)
     if (cols * rows <= cap || bitmapWidth <= 32) {
-      drawMacpaintGridAt(rc, cfg, strength, bitmapWidth)
+      drawMacpaintGridAt(rc, cfg, strength, bitmapWidth, threshold)
       return
     }
     bitmapWidth = Math.max(32, Math.floor(bitmapWidth * Math.sqrt(cap / (cols * rows))))
@@ -412,13 +428,13 @@ function drawMacpaintGridAt(
   cfg: DitherFilterConfig,
   strength: number,
   bitmapWidth: number,
+  threshold: number,
 ): void {
   const { ctx, width: W, height: H } = rc
   const cell = Math.max(Math.max(W, H) / bitmapWidth, 1e-4)
   const cols = Math.max(2, Math.ceil(W / cell))
   const rows = Math.max(2, Math.ceil(H / cell))
 
-  const threshold = Math.min(1, Math.max(0, cfg.macThreshold ?? 0.354))
   const contrast = Math.min(4, Math.max(0.1, cfg.macContrast ?? 2.5))
   const grain = clamp01(cfg.macGrain ?? 0)
   const smoothing = Math.min(3, Math.max(0, Math.round(cfg.macSmoothing ?? 1)))
@@ -681,9 +697,10 @@ export function drawDitherFilter(
 
   // MacPaint mode — effect.app's pattern-matched bitmap engine, a completely
   // different pipeline from the Bayer modes below (own grid sizing, own
-  // threshold/contrast curve, no bloom): hand the whole frame over.
+  // threshold/contrast curve, no bloom): hand the whole frame over. The
+  // beat-reactive Threshold rides in with the frame's bass.
   if (mode === 'macpaint') {
-    drawMacpaintGrid(rc, cfg, strength)
+    drawMacpaintGrid(rc, cfg, strength, clamp01(frame.bass ?? 0))
     return
   }
 
