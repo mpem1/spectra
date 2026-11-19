@@ -340,7 +340,7 @@ export function PreviewCanvas() {
         const ctx = canvas.getContext('2d')
         if (ctx) {
           renderFrame(
-            { ctx, width: canvas.width, height: canvas.height, frame: frameCount++ },
+            { ctx, width: canvas.width, height: canvas.height, frame: frameCount++, interactive: true },
             frame,
             currentConfig
           )

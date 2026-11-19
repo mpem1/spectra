@@ -993,10 +993,10 @@ export interface AnaglyphFilterConfig {
  * Neon Split filter — the effect.app "neon split" preset, rebuilt from the
  * preset's own published definition and effect shaders (fetched off the site
  * and decrypted — nothing measured/eyeballed). The whole picture runs through
- * the preset's exact chain: a masked inversion across the top of the frame
- * (the real "split"), the preset's bloom (6-level mip pyramid, screen blend in
- * linear light), its film-grain noise (colored speckle in linear light, static
- * like the published preset), its 4-stop gradient map (#000000 → #002266 →
+ * the preset's exact chain: a masked inversion across the lower part of the
+ * frame (the real "split"), the preset's bloom (6-level mip pyramid, screen blend in
+ * linear light), its film-grain noise (colored speckle in linear light, still
+ * like the published preset or rolled like film via the speed dial), its 4-stop gradient map (#000000 → #002266 →
  * #D55FEC → #FFD6FA) that carries all of the color, the master curve, and the
  * two paper-texture layers (screen + hard light) that leave the crease marks.
  * There is no overlay veil anywhere — the color IS the gradient map.
@@ -1017,8 +1017,14 @@ export interface NeonSplitFilterConfig {
   contrast: number
   /** Film grain 0..1 — the preset's noise layer strength (exp2-dialed like
    *  the real thing: 0.5 = the published 1.78; the speckle is colored
-   *  (chroma 0.69), heavier in highlights than shadows, and static). */
+   *  (chroma 0.69), heavier in highlights than shadows). */
   grain: number
+  /** Grain speed 0..1 — how fast the film grain churns. 0 = the published
+   *  preset's still grain (the speckle field is pinned); higher values re-roll
+   *  the grain field like film — 0.5 ≈ 12 steps/s, 1 = 24 steps/s. Absent in
+   *  old saves → 0.5. Deterministic: derived from song time, so exports
+   *  match the preview frame for frame. */
+  grainSpeed?: number
   /** Neon bloom 0..1 — the preset's bloom intensity (0.5 = the published 3.0;
    *  threshold 0.1 / knee 0.29 / factor 0.65 stay the preset's own). */
   glow: number
@@ -1202,6 +1208,10 @@ export interface RenderContext {
   height: number
   /** Frame index (deterministic export uses integer frames) */
   frame: number
+  /** Live-preview marker: full-frame filters may adapt internal resolution
+   *  for interactivity on slow GPUs. The exporter never sets it, so exported
+   *  frames always render at full fidelity. */
+  interactive?: boolean
 }
 
 /** Stateless, pure render call: same inputs → same pixels. */
@@ -1603,6 +1613,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     ramp: 'violet',
     contrast: 0.5,
     grain: 0.5,
+    grainSpeed: 0.5,
     glow: 0.6,
     wash: 1,
     split: 0,

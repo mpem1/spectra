@@ -6,16 +6,21 @@
  * with the same constants, then the result is drawn back onto the 2D context.
  *
  * Fidelity notes (why each stage exists — the user asked for the REAL thing):
- *   levels+mask   the published preset inverts the top of the frame behind a
- *                 vertical smooth gradient mask (center 0.074,-0.094, width
- *                 0.3, rotation 90) — that IS the "split".
+ *   levels+mask   the published preset inverts the lower part of the frame
+ *                 behind a vertical smooth gradient mask (center 0.074,-0.094,
+ *                 width 0.3, rotation 90) — that IS the "split". (The frame
+ *                 is uploaded Y-flipped so this runs in the engine's own
+ *                 Y-up space — see the constructor note.)
  *   bloom         threshold 0.1 / knee 0.29 / intensity 3 bright pass into a
  *                 real 6-level mip pyramid, sampled LOD 0-5, ×0.65, screen
  *                 blend in linear light (the engine's bloom-1/bloom-3 pair).
  *   noise         the noise shader verbatim: 3-octave value noise on the
  *                 1103515245 uint hash, cell 0.5, chroma 0.69, tone weights
  *                 0.25/0.4/0.53, strength exp2-dialed, applied in linear
- *                 light with the min-grain weight floor. Static (speed 0).
+ *                 light with the min-grain weight floor. The lookup position
+ *                 can be offset per frame (uGrainOffset) so the grain can
+ *                 churn like film — 0 offset = the published preset's still
+ *                 grain.
  *   gradient map  luminance (Rec.709) → the preset's own 4-stop gradient.
  *   curves        the preset's master curve, apply-mode L (setLuma), node
  *                 opacity 0.54.
@@ -130,6 +135,7 @@ void main() {
 const FRAG_NOISE = COMMON + `
 uniform sampler2D iChannel0;
 uniform vec2 iResolution;
+uniform vec2 uGrainOffset;   // animated grain position (px) — 0 = the still preset
 uniform float strength;
 uniform float grainSize;
 uniform float minGrain;
@@ -169,7 +175,7 @@ float fractalNoise(vec2 p, float cell) {
   return sum / norm;
 }
 void main() {
-  vec2 fragCoord = vUV * iResolution;
+  vec2 fragCoord = vUV * iResolution + uGrainOffset;
   vec3 texSrgb = texture(iChannel0, vUV).rgb;
   vec3 base = srgbToLinear(texSrgb);
   float cell = max(grainSize, 0.5);
@@ -343,6 +349,8 @@ export class NeonSplitGL {
   private canvas: HTMLCanvasElement
   private w = 0
   private h = 0
+  private srcW = 0
+  private srcH = 0
   private quadVao: WebGLVertexArrayObject | null = null
   private quadBuf: WebGLBuffer | null = null
   private passes = new Map<string, GlPass>()
@@ -376,11 +384,38 @@ export class NeonSplitGL {
     this.initGeometry()
     this.initLuts()
     this.initPapers()
+    // From here on, canvas-backed uploads (the source frame) go in with Y
+    // flipped: WebGL textures put the first pixel row at v=0, and without the
+    // flip every pass samples the picture upside down — the whole output came
+    // out inverted vertically. Flipping at upload puts the chain in the same
+    // Y-up space effect.app's engine runs in, so the preset's own mask
+    // (center 0.074,-0.094 → inverts the lower part of the frame), grain and
+    // paper rotations all land exactly where the real thing puts them.
+    // LUT uploads are typed arrays (unaffected by the flip) and the paper
+    // textures were already uploaded above, orientation-neutral.
+    this.gl.pixelStorei(this.gl.UNPACK_FLIP_Y_WEBGL, true)
     this.compileAll()
   }
 
   get isLost(): boolean {
-    return this.lost
+    return this.lost || this.gl.isContextLost()
+  }
+
+  /** Free every GL resource (context loss recovery — a fresh instance takes
+   *  over on a new canvas afterwards). */
+  dispose(): void {
+    try {
+      this.gl.getExtension('WEBGL_lose_context')?.loseContext()
+    } catch {
+      /* already lost */
+    }
+    this.passes.clear()
+    this.fbos = []
+    this.pyramid = null
+    this.srcTex = null
+    this.lutTexs.clear()
+    this.paperTex1 = null
+    this.paperTex2 = null
   }
 
   private initGeometry() {
@@ -493,7 +528,7 @@ export class NeonSplitGL {
     this.makePass(
       'noise',
       FRAG_NOISE,
-      ['iChannel0', 'iResolution', 'strength', 'grainSize', 'minGrain', 'chroma', 'shadowWeight', 'midWeight', 'highlightWeight'],
+      ['iChannel0', 'iResolution', 'uGrainOffset', 'strength', 'grainSize', 'minGrain', 'chroma', 'shadowWeight', 'midWeight', 'highlightWeight'],
     )
     this.makePass('gradient', FRAG_GRADIENT, ['iChannel0', 'iLut'])
     this.makePass('curves', FRAG_CURVES, ['iChannel0', 'iLut', 'uOpacity'])
@@ -544,6 +579,18 @@ export class NeonSplitGL {
     gl.generateMipmap(gl.TEXTURE_2D)
     this.pyramidW = w
     this.pyramidH = h
+    this.w = w
+    this.h = h
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+  }
+
+  /** The source-frame texture always matches the SOURCE canvas pixel size —
+   *  the pass chain may render at a smaller internal scale while sampling
+   *  this full-res texture (linear filtered), so a perf-stressed live
+   *  preview can drop resolution without touching the pipeline. */
+  private ensureSrcSize(w: number, h: number) {
+    if (this.srcW === w && this.srcH === h) return
+    const gl = this.gl
     if (this.srcTex) gl.deleteTexture(this.srcTex)
     this.srcTex = gl.createTexture()!
     gl.bindTexture(gl.TEXTURE_2D, this.srcTex)
@@ -552,9 +599,8 @@ export class NeonSplitGL {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-    this.w = w
-    this.h = h
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    this.srcW = w
+    this.srcH = h
   }
 
   private use(texUnit: number, tex: WebGLTexture | null, loc: WebGLUniformLocation | null) {
@@ -582,38 +628,48 @@ export class NeonSplitGL {
   /** Run the whole preset chain over the given 2D source; returns the GL
    *  canvas holding the finished frame (draw it onto the 2D context).
    *  bloomIntensity / noiseStrength / paperAmount / curveMix arrive already
-   *  mapped from the config dials (0.5 = the published preset's own value). */
-  render(
-    source: HTMLCanvasElement,
-    bloomIntensity: number,
-    noiseStrength: number,
-    paperAmount: number,
-    curveMix: number,
-    curveLut: Float32Array,
-    ramp: string,
-  ): HTMLCanvasElement {
+   *  mapped from the config dials (0.5 = the published preset's own value).
+   *  grainOffsetX/Y shift the noise lattice per frame (animated grain — 0/0
+   *  is the published preset's still grain). scale < 1 renders the chain at
+   *  a lower internal resolution (perf escape hatch for the live preview). */
+  render(p: {
+    source: HTMLCanvasElement
+    bloomIntensity: number
+    noiseStrength: number
+    paperAmount: number
+    curveMix: number
+    curveLut: Float32Array
+    ramp: string
+    grainOffsetX: number
+    grainOffsetY: number
+    scale: number
+  }): HTMLCanvasElement {
     const gl = this.gl
-    const w = source.width
-    const h = source.height
+    const w = p.source.width
+    const h = p.source.height
     if (gl.isContextLost() || this.lost) throw new Error('gl lost')
-    this.ensureSize(w, h)
+    this.ensureSrcSize(w, h)
+    const rw = Math.max(8, Math.round(w * p.scale))
+    const rh = Math.max(8, Math.round(h * p.scale))
+    this.ensureSize(rw, rh)
 
     // the curves LUT follows the contrast dial — re-upload when it moves
-    const curveKey = Math.round(curveMix * 100)
+    const curveKey = Math.round(p.curveMix * 100)
     if (this.lastCurveKey !== curveKey) {
       const lut = new Float32Array(256)
       for (let i = 0; i < 256; i++) {
         const t = i / 255
-        lut[i] = t + (curveLut[i] - t) * curveMix
+        lut[i] = t + (p.curveLut[i] - t) * p.curveMix
       }
       gl.bindTexture(gl.TEXTURE_2D, this.lutTexs.get('curve')!)
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, scalarLutPixels(lut))
       this.lastCurveKey = curveKey
     }
 
-    // upload the source frame
+    // upload the source frame (full-res, Y-flipped at upload — see the
+    // constructor note on UNPACK_FLIP_Y_WEBGL)
     gl.bindTexture(gl.TEXTURE_2D, this.srcTex)
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, source)
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, p.source)
 
     const aspect = w / h
     const A = this.fbos[0]
@@ -634,13 +690,13 @@ export class NeonSplitGL {
       this.use(0, A.tex, P('bright').uniforms.iChannel0)
       gl.uniform1f(P('bright').uniforms.uThreshold, 0.1)
       gl.uniform1f(P('bright').uniforms.uKnee, 0.29)
-      gl.uniform1f(P('bright').uniforms.uIntensity, bloomIntensity)
+      gl.uniform1f(P('bright').uniforms.uIntensity, p.bloomIntensity)
     })
     // copy the bright pass into the mip pyramid (the engine uploads the
     // bright pass as a texture and runs generateMipmap)
     gl.bindFramebuffer(gl.FRAMEBUFFER, B.fb)
     gl.bindTexture(gl.TEXTURE_2D, this.pyramid)
-    gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, w, h)
+    gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, this.w, this.h)
     gl.generateMipmap(gl.TEXTURE_2D)
 
     // 3) bloom-3: 6-LOD average ×0.65 screened over the levels output  → B
@@ -653,8 +709,9 @@ export class NeonSplitGL {
     // 4) film grain (linear-light, verbatim noise shader)  B → A
     this.renderPass(P('noise'), A.fb, () => {
       this.use(0, B.tex, P('noise').uniforms.iChannel0)
-      gl.uniform2f(P('noise').uniforms.iResolution, w, h)
-      gl.uniform1f(P('noise').uniforms.strength, noiseStrength)
+      gl.uniform2f(P('noise').uniforms.iResolution, this.w, this.h)
+      gl.uniform2f(P('noise').uniforms.uGrainOffset, p.grainOffsetX, p.grainOffsetY)
+      gl.uniform1f(P('noise').uniforms.strength, p.noiseStrength)
       gl.uniform1f(P('noise').uniforms.grainSize, 0.5)
       gl.uniform1f(P('noise').uniforms.minGrain, 0.14)
       gl.uniform1f(P('noise').uniforms.chroma, 0.69)
@@ -666,7 +723,7 @@ export class NeonSplitGL {
     // 5) gradient map — the preset's own gradient  A → B
     this.renderPass(P('gradient'), B.fb, () => {
       this.use(0, A.tex, P('gradient').uniforms.iChannel0)
-      this.use(1, this.lutTexs.get('grad:' + ramp) ?? this.lutTexs.get('grad:violet')!, P('gradient').uniforms.iLut)
+      this.use(1, this.lutTexs.get('grad:' + p.ramp) ?? this.lutTexs.get('grad:violet')!, P('gradient').uniforms.iLut)
     })
 
     // 6) curves — apply mode L + node opacity 0.54  B → A
@@ -684,11 +741,11 @@ export class NeonSplitGL {
       this.use(2, this.lutTexs.get('texCurve')!, U.iTexCurve)
       this.use(3, this.lutTexs.get('rampOnes')!, U.iRampCurrent)
       this.use(4, this.lutTexs.get('rampOnes')!, U.iRampUnder)
-      gl.uniform2f(U.iResolution, w, h)
+      gl.uniform2f(U.iResolution, this.w, this.h)
       gl.uniform1f(U.uAspect, aspect)
       gl.uniform1f(U.uFit, 0)
       gl.uniform1f(U.uBlendMode, 2)
-      gl.uniform1f(U.uOpacity, 0.8 * paperAmount)
+      gl.uniform1f(U.uOpacity, 0.8 * p.paperAmount)
       gl.uniform1f(U.uTexScale, 1.22)
       gl.uniform1f(U.uTexRotation, -180)
       gl.uniform1f(U.uTexCurveOn, 0)
@@ -702,11 +759,11 @@ export class NeonSplitGL {
       this.use(2, this.lutTexs.get('curve')!, U.iTexCurve) // unused (uTexCurveOn 1)
       this.use(3, this.lutTexs.get('rampCurrent')!, U.iRampCurrent)
       this.use(4, this.lutTexs.get('rampUnder')!, U.iRampUnder)
-      gl.uniform2f(U.iResolution, w, h)
+      gl.uniform2f(U.iResolution, this.w, this.h)
       gl.uniform1f(U.uAspect, aspect)
       gl.uniform1f(U.uFit, 2)
       gl.uniform1f(U.uBlendMode, 5)
-      gl.uniform1f(U.uOpacity, 0.32 * paperAmount)
+      gl.uniform1f(U.uOpacity, 0.32 * p.paperAmount)
       gl.uniform1f(U.uTexScale, 0.63)
       gl.uniform1f(U.uTexRotation, 90)
       gl.uniform1f(U.uTexCurveOn, 1)

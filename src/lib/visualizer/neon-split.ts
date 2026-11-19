@@ -4,11 +4,13 @@
  * decrypted: /api/presets/shared/neon-split plus the gradient-map / bloom /
  * noise / curves / layer-mix GLSL the editor runs). Nothing here is eyeballed:
  *
- *   1. Levels — the preset inverts the top of the picture (input levels [1,0])
- *      behind a vertical smooth gradient mask (center 0.074,-0.094, width 0.3,
- *      rotation 90). That masked inversion IS the "split": bright areas at the
- *      top flip dark, shadows flip glowing, and the look fades out by ~60% of
- *      the height.
+ *   1. Levels — the preset inverts the lower part of the picture (input levels
+ *      [1,0]) behind a vertical smooth gradient mask (center 0.074,-0.094,
+ *      width 0.3, rotation 90). That masked inversion IS the "split": bright
+ *      areas at the bottom flip dark, shadows flip glowing, and the look fades
+ *      out upward, gone by ~40% of the height from the bottom (matches the
+ *      preset's own cover render — the frame is processed in the engine's
+ *      Y-up space after the GL chain's flip-at-upload).
  *   2. Bloom — threshold 0.1, knee 0.29, intensity 3, factor 0.65: a bright
  *      pass in linear light feeds a 6-level mip pyramid, the LOD 0-5 average
  *      screens back over the picture (the engine's bloom-1/bloom-3 pair).
@@ -16,8 +18,10 @@
  *      1103515245 uint hash, cell 0.5px, chroma 0.69 (colored speckle), more
  *      grain in highlights than shadows (weights 0.25/0.4/0.53), strength
  *      exp2-dialed (1.78 = 2.44x at the default dial), applied in linear
- *      light with a 0.14 min-grain floor. Static — the published preset pins
- *      grainSpeed 0. Deterministic: same frame in, same pixels out.
+ *      light with a 0.14 min-grain floor. Still like the published preset
+ *      (grainSpeed 0) — the speed dial rolls the noise lookup per film-frame
+ *      (deterministic hashed offsets) when the user wants living grain.
+ *      Deterministic: same frame in, same pixels out.
  *   4. Gradient map — every pixel's Rec.709 luminance re-reads as a position
  *      on the preset's own ramp: #000000 → #002266 (deep blue) → #D55FEC
  *      (orchid) → #FFD6FA (pale pink). The whole color of the filter comes
@@ -35,9 +39,23 @@
  * pixel-faithful and fast; without GL, a CPU path runs the same math in one
  * per-pixel pass with canvas-composited textures. Both deterministic, both
  * skipped on transparent backgrounds (alpha must stay clean).
- */
+ *
+ * Infrastructure notes:
+ *  - One GL instance per source canvas (preview and export each get their
+ *    own), so a live preview running next to an export can't thrash one
+ *    shared instance's framebuffers between two resolutions every frame —
+ *    that churn is what made the filter take the whole app down. A lost
+ *    context is disposed and retried on a fresh canvas after a cooldown,
+ *    instead of pinning the app to the CPU path forever.
+ *  - The live preview may drop the chain's internal resolution (adaptive
+ *    scale 1 → 0.75 → 0.5) when the GPU can't keep up (software GL); exports
+ *    always render at full scale so every frame stays faithful.
+ *  - The grain is the preset's own noise field; a speed dial offsets the
+ *    noise lookup per film-frame so the speckle churns (0 = the published
+ *    still grain). Offsets derive from song/style time via integer hashing —
+ *    deterministic, so exports match the preview frame for frame. */
 import type { AudioFrame, NeonSplitFilterConfig, RenderContext } from './types'
-import { clamp01, getWork, resetWork } from './filter-utils'
+import { clamp01, getWork, hash01, resetWork } from './filter-utils'
 import {
   buildCurveLut as buildCurveLutData,
   buildRampLut,
@@ -72,21 +90,49 @@ function mapPaperAmount(wash: number): number {
   return clamp01(wash) * 2
 }
 
-/* ------------------------------- GL instance ------------------------------- */
+/* ------------------------------- GL instances ------------------------------ */
 
-let glInstance: NeonSplitGL | null = null
+/** One GL chain per source canvas — the preview canvas and the exporter's
+ *  canvas each own an instance, so rendering an export can't resize a shared
+ *  instance's framebuffers back and forth between two resolutions. */
+type GlEntry = {
+  inst: NeonSplitGL
+  /** Internal render scale (1 = full res; the live preview may drop it) */
+  scale: number
+  /** EMA of render+composite cost, ms */
+  ema: number
+  /** Consecutive cheap frames (scale-up hysteresis) */
+  cool: number
+}
+const glEntries = new WeakMap<HTMLCanvasElement, GlEntry>()
 let glBroken = false
+/** performance.now() of the last context loss / construction failure — new
+ *  instances wait this out so a dead GPU can't spin a recreate-storm. */
+let lastGlFailAt = -Infinity
+const GL_FAIL_COOLDOWN_MS = 4000
 
-function getGL(): NeonSplitGL | null {
+function getGlEntry(source: HTMLCanvasElement): GlEntry | null {
   if (glBroken) return null
-  if (glInstance) return glInstance.isLost ? null : glInstance
-  try {
-    glInstance = new NeonSplitGL()
-    return glInstance
-  } catch {
-    glBroken = true
-    return null
+  let entry = glEntries.get(source)
+  if (entry && entry.inst.isLost) {
+    // The GPU dropped this context. Dispose it and wait out the cooldown
+    // before building a fresh one — the CPU path covers the gap.
+    entry.inst.dispose()
+    glEntries.delete(source)
+    lastGlFailAt = performance.now()
+    entry = undefined
   }
+  if (!entry) {
+    if (performance.now() - lastGlFailAt < GL_FAIL_COOLDOWN_MS) return null
+    try {
+      entry = { inst: new NeonSplitGL(), scale: 1, ema: 0, cool: 0 }
+      glEntries.set(source, entry)
+    } catch {
+      glBroken = true
+      return null
+    }
+  }
+  return entry
 }
 
 /* ------------------------------ shared state ------------------------------- */
@@ -126,6 +172,20 @@ function curveLutFor(contrast: number): Float32Array {
 let grainField: Float32Array | null = null
 let grainW = 0
 let grainH = 0
+
+// post-levels byte buffer (CPU path), cached per size — 1.7 MB at 720p that
+// used to be re-allocated every frame
+let postLevelsBuf: Uint8ClampedArray | null = null
+let postLevelsW = 0
+let postLevelsH = 0
+
+function ensurePostLevels(w: number, h: number): Uint8ClampedArray {
+  if (postLevelsBuf && postLevelsW === w && postLevelsH === h) return postLevelsBuf
+  postLevelsBuf = new Uint8ClampedArray(w * h * 3)
+  postLevelsW = w
+  postLevelsH = h
+  return postLevelsBuf
+}
 
 // procedural paper textures, built once
 let paper1: HTMLCanvasElement | null = null
@@ -184,11 +244,13 @@ function ensureCurvedPaper1(): { canvas: HTMLCanvasElement; ramp: Float32Array }
 
 /** The published preset's gradient-mask coverage per row (rotation 90 → the
  *  band runs vertically; smooth curve). Mirror of the mask shader in rel
- *  space, sampled per pixel row. */
+ *  space, sampled per pixel row — row 0 is the TOP of the picture and the
+ *  mask inverts the LOWER part of the frame (rel.y runs bottom = −1 → top =
+ *  +1, exactly like the GL chain after its Y-flip upload). */
 function splitMaskRow(y: number, h: number, w: number): number {
   const aspect = w / h
   const relScaleY = aspect > 1 ? 1 : 1 / aspect
-  const rel = ((y + 0.5) / h) * 2 - 1
+  const rel = 1 - ((y + 0.5) / h) * 2
   const relY = rel * relScaleY
   const centerY = -0.094 * relScaleY
   const s = (relY - centerY) / 0.3
@@ -211,6 +273,8 @@ function drawNeonSplitCPU(
   bloomIntensity: number,
   noiseStrength: number,
   paperAmount: number,
+  grainOffsetX: number,
+  grainOffsetY: number,
 ): void {
   const { ctx, width: W, height: H } = rc
   const aspect = W / H
@@ -226,13 +290,17 @@ function drawNeonSplitCPU(
 
   const grain = noiseStrength > 0.001 ? ensureGrain(W, H) : null
   const strengthGain = Math.pow(2, noiseStrength) - 1
+  // animated grain: the static field is sampled through a wrapping window
+  // offset per film-frame (0/0 = the published preset's still grain)
+  const ox = ((Math.round(grainOffsetX) % W) + W) % W
+  const oy = ((Math.round(grainOffsetY) % H) + H) % H
 
   // PASS 1 — levels (invert behind the vertical mask) + bloom bright pass
   const bw = Math.max(2, W >> 1)
   const bh = Math.max(2, H >> 1)
   const brightImg = bctx.createImageData(bw, bh)
   const bd = brightImg.data
-  const postLevels = new Uint8ClampedArray(W * H * 3)
+  const postLevels = ensurePostLevels(W, H)
   const rowMask = new Float32Array(H)
   for (let y = 0; y < H; y++) rowMask[y] = splitMaskRow(y, H, W)
 
@@ -245,13 +313,17 @@ function drawNeonSplitCPU(
       const r0 = (sd[o] * inv + (255 - sd[o]) * m) / 255
       const g0 = (sd[o + 1] * inv + (255 - sd[o + 1]) * m) / 255
       const b0 = (sd[o + 2] * inv + (255 - sd[o + 2]) * m) / 255
-      postLevels[(y * W + x) * 3] = Math.round(r0 * 255)
-      postLevels[(y * W + x) * 3 + 1] = Math.round(g0 * 255)
-      postLevels[(y * W + x) * 3 + 2] = Math.round(b0 * 255)
-      // bloom bright pass in linear light (exact sRGB transfer)
-      const rl = r0 <= 0.04045 ? r0 / 12.92 : Math.pow((r0 + 0.055) / 1.055, 2.4)
-      const gl2 = g0 <= 0.04045 ? g0 / 12.92 : Math.pow((g0 + 0.055) / 1.055, 2.4)
-      const bl = b0 <= 0.04045 ? b0 / 12.92 : Math.pow((b0 + 0.055) / 1.055, 2.4)
+      const p3 = (y * W + x) * 3
+      const rByte = Math.round(r0 * 255)
+      const gByte = Math.round(g0 * 255)
+      const bByte = Math.round(b0 * 255)
+      postLevels[p3] = rByte
+      postLevels[p3 + 1] = gByte
+      postLevels[p3 + 2] = bByte
+      // bloom bright pass in linear light (exact sRGB transfer, LUT-speed)
+      const rl = linExact[rByte]
+      const gl2 = linExact[gByte]
+      const bl = linExact[bByte]
       const Y = 0.2126729 * rl + 0.7151522 * gl2 + 0.072175 * bl
       const kn = 0.29
       const xk = Math.max(Y - (0.1 - kn), 0)
@@ -307,9 +379,15 @@ function drawNeonSplitCPU(
   const outImg = baseCtx.createImageData(W, H)
   const od = outImg.data
   for (let y = 0; y < H; y++) {
+    // animated grain: the static field is read through a wrapping window
+    // shifted by the film-frame offset (same field, moving sample position —
+    // the GL chain shifts the noise lookup the same way)
+    const gRow = (((y + oy) % H) * W) * 3
     for (let x = 0; x < W; x++) {
       const o3 = (y * W + x) * 3
       const o4 = (y * W + x) * 4
+      // grain samples at the offset position (wraps around the field)
+      const g3 = gRow + ((x + ox) % W) * 3
       // bloom color from the summed pyramid (× the preset's factor)
       const brl = (bloomData[o4] / 255) * PRESET_BLOOM_FACTOR
       const bgl = (bloomData[o4 + 1] / 255) * PRESET_BLOOM_FACTOR
@@ -342,9 +420,9 @@ function drawNeonSplitCPU(
         const wR = Math.min(0.25, Math.max(0.14, baseR * (1 - baseR) + 0.14 * (1 - 4 * Math.min(0.25, baseR * (1 - baseR)))))
         const wG = Math.min(0.25, Math.max(0.14, baseG * (1 - baseG) + 0.14 * (1 - 4 * Math.min(0.25, baseG * (1 - baseG)))))
         const wB = Math.min(0.25, Math.max(0.14, baseB * (1 - baseB) + 0.14 * (1 - 4 * Math.min(0.25, baseB * (1 - baseB)))))
-        outByteR = srgb22[Math.min(255, Math.max(0, Math.round((baseR + grain[o3] * gain * wR) * 255)))]
-        outByteG = srgb22[Math.min(255, Math.max(0, Math.round((baseG + grain[o3 + 1] * gain * wG) * 255)))]
-        outByteB = srgb22[Math.min(255, Math.max(0, Math.round((baseB + grain[o3 + 2] * gain * wB) * 255)))]
+        outByteR = srgb22[Math.min(255, Math.max(0, Math.round((baseR + grain[g3] * gain * wR) * 255)))]
+        outByteG = srgb22[Math.min(255, Math.max(0, Math.round((baseG + grain[g3 + 1] * gain * wG) * 255)))]
+        outByteB = srgb22[Math.min(255, Math.max(0, Math.round((baseB + grain[g3 + 2] * gain * wB) * 255)))]
       }
       // gradient map (Rec.709 luminance of the noise output → the preset's ramp)
       const t =
@@ -482,10 +560,28 @@ function gradLutFor(ramp: string): Uint8ClampedArray {
 
 /* ------------------------------- the filter -------------------------------- */
 
+/** Grain churn: the speed dial maps to film-frame steps per second (24 at
+ *  full speed, 0 = the published preset's still grain); each step offsets the
+ *  noise lookup by a deterministic hashed vector so the field re-rolls like
+ *  film. Derived from style time (wall clock live, song time in exports), so
+ *  exports stay frame-exact. */
+function grainOffsetFor(speed: number, styleTime: number): { x: number; y: number } {
+  const s = clamp01(speed)
+  if (s <= 0.001) return { x: 0, y: 0 }
+  const phase = Math.floor(styleTime * s * 24)
+  if (phase <= 0) return { x: 0, y: 0 }
+  // large prime-ish spreads; the value-noise lattice decorrelates after 1px,
+  // so any integer offset reads as a fresh grain field
+  return {
+    x: Math.floor(hash01(phase, 911) * 65536),
+    y: Math.floor(hash01(phase, 919) * 65536),
+  }
+}
+
 export function drawNeonSplitFilter(
   rc: RenderContext,
   cfg: NeonSplitFilterConfig | undefined,
-  frame: Pick<AudioFrame, 'bass' | 'time'>,
+  frame: Pick<AudioFrame, 'bass' | 'time' | 'styleTime'>,
   transparent: boolean,
 ): void {
   if (!cfg?.enabled || transparent) return
@@ -502,6 +598,7 @@ export function drawNeonSplitFilter(
   const noiseStrength = mapNoiseStrength(cfg.grain ?? 0.5)
   const paperAmount = mapPaperAmount(cfg.wash ?? 0.5)
   const curveMix = Math.min(1, clamp01(cfg.contrast ?? 0.5) * 2)
+  const grainOff = grainOffsetFor(cfg.grainSpeed ?? 0.5, frame.styleTime ?? frame.time ?? 0)
 
   // the untouched frame — the split region and the mix dial fade back to it
   const needsSnap = split > 0.001 || strength < 0.999
@@ -514,32 +611,66 @@ export function drawNeonSplitFilter(
   }
 
   let done = false
-  const gl = getGL()
-  if (gl) {
+  const entry = getGlEntry(ctx.canvas)
+  if (entry) {
+    const t0 = performance.now()
     try {
-      const out = gl.render(
-        ctx.canvas,
+      const out = entry.inst.render({
+        source: ctx.canvas,
         bloomIntensity,
         noiseStrength,
         paperAmount,
         curveMix,
-        curveLutBase,
-        cfg.ramp ?? 'violet',
-      )
+        curveLut: curveLutBase,
+        ramp: cfg.ramp ?? 'violet',
+        grainOffsetX: grainOff.x,
+        grainOffsetY: grainOff.y,
+        scale: entry.scale,
+      })
       ctx.save()
       ctx.globalCompositeOperation = 'source-over'
       ctx.globalAlpha = 1
       ctx.drawImage(out, 0, 0, W, H)
       ctx.restore()
       done = true
-    } catch {
-      glBroken = true
+    } catch (err) {
+      // The chain itself failed (lost context mid-frame, driver hiccup).
+      // Drop the instance and let the cooldown decide when GL may retry —
+      // never pin the app to a dead context.
+      console.warn('[neon-split] WebGL chain failed this frame, CPU fallback:', err)
+      entry.inst.dispose()
+      glEntries.delete(ctx.canvas)
+      lastGlFailAt = performance.now()
       done = false
+    }
+
+    // Adaptive internal resolution (live preview only): track render +
+    // composite cost; step the scale down when the GPU can't keep up so the
+    // app stays interactive (software GL / weak iGPUs), and back up once
+    // frames are cheap again. Exports never set `interactive`, so exported
+    // frames always render at full scale and stay faithful.
+    if (done && rc.interactive) {
+      const ms = performance.now() - t0
+      entry.ema = entry.ema > 0 ? entry.ema * 0.85 + ms * 0.15 : ms
+      if (entry.ema > 45 && entry.scale > 0.5) {
+        entry.scale = entry.scale >= 0.85 ? 0.75 : 0.5
+        entry.ema = 0
+        entry.cool = 0
+      } else if (entry.ema < 14) {
+        entry.cool++
+        if (entry.cool > 90 && entry.scale < 1) {
+          entry.scale = entry.scale <= 0.55 ? 0.75 : 1
+          entry.ema = 0
+          entry.cool = 0
+        }
+      } else {
+        entry.cool = 0
+      }
     }
   }
 
   if (!done) {
-    drawNeonSplitCPU(rc, cfg, bloomIntensity, noiseStrength, paperAmount)
+    drawNeonSplitCPU(rc, cfg, bloomIntensity, noiseStrength, paperAmount, grainOff.x, grainOff.y)
   }
 
   // the split — below a soft line the untouched picture fades back in

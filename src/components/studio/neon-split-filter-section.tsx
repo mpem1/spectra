@@ -51,13 +51,13 @@ const RAMPS: {
 /**
  * Neon Split filter card — the effect.app "neon split" preset, rebuilt from
  * the preset's own published definition and effect shaders (fetched off the
- * site — the same numbers the real thing runs). The top of the frame inverts
- * behind a soft vertical band (the actual "split"), the highlights bloom
- * through a mip pyramid, colored film grain sits in the light, every pixel's
- * brightness re-reads through the preset's own gradient map, and two paper
- * texture layers leave the crease marks. An optional split line lets the
- * bottom of the frame keep its own colors. Baked into every export; skipped
- * on transparent backgrounds.
+ * site — the same numbers the real thing runs). The lower part of the frame
+ * inverts behind a soft vertical band (the actual "split"), the highlights
+ * bloom through a mip pyramid, colored film grain sits in the light and can
+ * churn at a set speed, every pixel's brightness re-reads through the
+ * preset's own gradient map, and two paper texture layers leave the crease
+ * marks. An optional split line lets the bottom of the frame keep its own
+ * colors. Baked into every export; skipped on transparent backgrounds.
  */
 export function NeonSplitFilterSection() {
   const filter = useStudioStore((s) => s.config.neonSplitFilter)
@@ -81,12 +81,12 @@ export function NeonSplitFilterSection() {
       </div>
       <p className="text-[11px] leading-snug text-zinc-600">
         The effect.app neon-split preset, rebuilt from its own published
-        shader code — the top of the frame inverts behind a soft band (the real
-        &ldquo;split&rdquo;), the highlights bloom, colored film grain sits in the
-        light, and every pixel&apos;s brightness re-reads through the
-        preset&apos;s own gradient map (deep blue → orchid → pale pink). No
-        overlay — the color IS the map. Turn on Split to let the bottom of the
-        frame keep its own colors. Baked into every export.
+        shader code — the lower part of the frame inverts behind a soft band
+        (the real &ldquo;split&rdquo;), the highlights bloom, colored film
+        grain sits in the light, and every pixel&apos;s brightness re-reads
+        through the preset&apos;s own gradient map (deep blue → orchid → pale
+        pink). No overlay — the color IS the map. Turn on Split to let the
+        bottom of the frame keep its own colors. Baked into every export.
       </p>
 
       {filter.enabled ? (
@@ -155,6 +155,15 @@ export function NeonSplitFilterSection() {
             format={(v) => (v <= 0.025 ? 'Clean' : v <= 0.525 ? 'Preset' : `+${Math.round((v - 0.5) * 100)}%`)}
           />
           <SliderRow
+            label="Grain speed"
+            value={filter.grainSpeed ?? 0.5}
+            min={0}
+            max={1}
+            step={0.05}
+            onChange={set('grainSpeed')}
+            format={(v) => (v <= 0.025 ? 'Still' : `${Math.round(v * 24)} steps/s`)}
+          />
+          <SliderRow
             label="Neon bloom"
             value={filter.glow}
             min={0}
@@ -201,8 +210,9 @@ export function NeonSplitFilterSection() {
             (a charcoal sheet screened over the frame and a folded-paper sheet
             whose creases mark the highlights — 50% = the preset&apos;s own
             opacities). Film grain is the preset&apos;s colored speckle in
-            linear light — heavier in highlights than shadows, still like the
-            published preset, deterministic for exports. Neon bloom drives the
+            linear light — heavier in highlights than shadows; Grain speed
+            rolls it like film (0 = the published still grain, 24 steps/s at
+            full — exports stay frame-exact). Neon bloom drives the
             preset&apos;s mip-pyramid glow (50% = its intensity 3). Split
             fades the untouched picture back in from the bottom (0% keeps the
             whole frame neon). Mix blends the whole look back toward the
