@@ -51,12 +51,13 @@ const RAMPS: {
 /**
  * Neon Split filter card — the effect.app "neon split" preset, rebuilt from
  * the preset's own published definition and effect shaders (fetched off the
- * site — the same numbers the real thing runs). The lower part of the frame
- * inverts behind a soft vertical band (the actual "split"), the highlights
+ * site — the same numbers the real thing runs). The upper part of the frame
+ * inverts behind a soft vertical band (the actual "split", fading out just
+ * past mid-height), the highlights
  * bloom through a mip pyramid, colored film grain sits in the light and can
  * churn at a set speed, every pixel's brightness re-reads through the
  * preset's own gradient map, and two paper texture layers leave the crease
- * marks. An optional split line lets the bottom of the frame keep its own
+ * marks. An optional split line lets the frame below the line keep its own
  * colors. Baked into every export; skipped on transparent backgrounds.
  */
 export function NeonSplitFilterSection() {
@@ -81,12 +82,12 @@ export function NeonSplitFilterSection() {
       </div>
       <p className="text-[11px] leading-snug text-zinc-600">
         The effect.app neon-split preset, rebuilt from its own published
-        shader code — the lower part of the frame inverts behind a soft band
+        shader code — the upper part of the frame inverts behind a soft band
         (the real &ldquo;split&rdquo;), the highlights bloom, colored film
         grain sits in the light, and every pixel&apos;s brightness re-reads
         through the preset&apos;s own gradient map (deep blue → orchid → pale
         pink). No overlay — the color IS the map. Turn on Split to let the
-        bottom of the frame keep its own colors. Baked into every export.
+        frame below the line keep its own colors. Baked into every export.
       </p>
 
       {filter.enabled ? (

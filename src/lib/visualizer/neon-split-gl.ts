@@ -6,11 +6,14 @@
  * with the same constants, then the result is drawn back onto the 2D context.
  *
  * Fidelity notes (why each stage exists — the user asked for the REAL thing):
- *   levels+mask   the published preset inverts the lower part of the frame
+ *   levels+mask   the published preset inverts the UPPER part of the frame
  *                 behind a vertical smooth gradient mask (center 0.074,-0.094,
- *                 width 0.3, rotation 90) — that IS the "split". (The frame
- *                 is uploaded Y-flipped so this runs in the engine's own
- *                 Y-up space — see the constructor note.)
+ *                 width 0.3, rotation 90) — that IS the "split": full invert
+ *                 from the top edge, fade centered ~45% down, gone by ~55%
+ *                 (measured off effect.app's own render of a luminance-ramp
+ *                 test image). The engine's mask frame is Y-down (mask y=-1
+ *                 = the image's TOP edge), so the shader negates vUV.y to
+ *                 enter that frame — see the constructor note.
  *   bloom         threshold 0.1 / knee 0.29 / intensity 3 bright pass into a
  *                 real 6-level mip pyramid, sampled LOD 0-5, ×0.65, screen
  *                 blend in linear light (the engine's bloom-1/bloom-3 pair).
@@ -62,7 +65,7 @@ out vec4 outColor;
 /* --- P1: levels (full invert) behind the vertical smooth gradient mask --- */
 const FRAG_LEVELS = COMMON + `
 uniform sampler2D iChannel0;
-uniform vec2 uCenter;     // image-normalized -1..1
+uniform vec2 uCenter;     // engine mask frame: x right, y DOWN (-1 = image top)
 uniform float uWidth;     // rel units (1 = half the short side)
 uniform float uRotation;  // degrees
 uniform float uAspect;
@@ -71,7 +74,10 @@ void main() {
   vec3 rgb = texture(iChannel0, vUV).rgb;
   vec3 inv = vec3(1.0) - rgb;                       // input_levels [1,0] → invert
   vec2 relScale = uAspect > 1.0 ? vec2(uAspect, 1.0) : vec2(1.0, 1.0 / uAspect);
-  vec2 rel = (vUV * 2.0 - 1.0) * relScale;
+  // vUV is display-upright (v=1 = the image's top edge after the
+  // flip-at-upload); the engine's mask frame is Y-down, so negate y —
+  // full invert lands at the TOP of the picture, exactly like effect.app
+  vec2 rel = vec2(vUV.x * 2.0 - 1.0, 1.0 - vUV.y * 2.0) * relScale;
   vec2 c = uCenter * relScale;
   float a = radians(uRotation);
   vec2 dir = vec2(cos(a), sin(a));
@@ -387,12 +393,16 @@ export class NeonSplitGL {
     // From here on, canvas-backed uploads (the source frame) go in with Y
     // flipped: WebGL textures put the first pixel row at v=0, and without the
     // flip every pass samples the picture upside down — the whole output came
-    // out inverted vertically. Flipping at upload puts the chain in the same
-    // Y-up space effect.app's engine runs in, so the preset's own mask
-    // (center 0.074,-0.094 → inverts the lower part of the frame), grain and
-    // paper rotations all land exactly where the real thing puts them.
-    // LUT uploads are typed arrays (unaffected by the flip) and the paper
-    // textures were already uploaded above, orientation-neutral.
+    // out inverted vertically (bars hung from the top). Flipping at upload
+    // keeps the picture upright end to end. The preset's gradient mask does
+    // NOT live in this display space: the engine defines its mask frame
+    // Y-down (mask y=-1 = the image's TOP edge) — measured off the site's own
+    // render of a calibrated luminance-ramp (full invert to ~38% height, fade
+    // centered ~45%, gone by ~55%) — so the levels shader negates vUV.y to
+    // enter that frame, which is what puts the inversion band over the TOP of
+    // the picture exactly where effect.app puts it. LUT uploads are typed
+    // arrays (unaffected by the flip) and the paper textures were already
+    // uploaded above, orientation-neutral.
     this.gl.pixelStorei(this.gl.UNPACK_FLIP_Y_WEBGL, true)
     this.compileAll()
   }

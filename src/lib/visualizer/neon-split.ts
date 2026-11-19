@@ -4,13 +4,13 @@
  * decrypted: /api/presets/shared/neon-split plus the gradient-map / bloom /
  * noise / curves / layer-mix GLSL the editor runs). Nothing here is eyeballed:
  *
- *   1. Levels — the preset inverts the lower part of the picture (input levels
+ *   1. Levels — the preset inverts the upper part of the picture (input levels
  *      [1,0]) behind a vertical smooth gradient mask (center 0.074,-0.094,
- *      width 0.3, rotation 90). That masked inversion IS the "split": bright
- *      areas at the bottom flip dark, shadows flip glowing, and the look fades
- *      out upward, gone by ~40% of the height from the bottom (matches the
- *      preset's own cover render — the frame is processed in the engine's
- *      Y-up space after the GL chain's flip-at-upload).
+ *      width 0.3, rotation 90; the engine's mask frame is Y-down, -1 = image
+ *      top). That masked inversion IS the "split": bright areas at the top
+ *      flip dark, shadows flip glowing, and the look fades out downward —
+ *      full invert to ~38% of the height, fade centered ~45%, gone by ~55%
+ *      (measured off effect.app's own render of a luminance-ramp test image).
  *   2. Bloom — threshold 0.1, knee 0.29, intensity 3, factor 0.65: a bright
  *      pass in linear light feeds a 6-level mip pyramid, the LOD 0-5 average
  *      screens back over the picture (the engine's bloom-1/bloom-3 pair).
@@ -243,14 +243,16 @@ function ensureCurvedPaper1(): { canvas: HTMLCanvasElement; ramp: Float32Array }
 /* ----------------------------- mask (the split) ---------------------------- */
 
 /** The published preset's gradient-mask coverage per row (rotation 90 → the
- *  band runs vertically; smooth curve). Mirror of the mask shader in rel
- *  space, sampled per pixel row — row 0 is the TOP of the picture and the
- *  mask inverts the LOWER part of the frame (rel.y runs bottom = −1 → top =
- *  +1, exactly like the GL chain after its Y-flip upload). */
+ *  band runs vertically; smooth curve). Mirror of the mask shader in the
+ *  engine's own Y-down mask frame — row 0 is the TOP of the picture and
+ *  relY = −relScaleY there (the engine's top edge), so the mask inverts the
+ *  UPPER part of the frame, fading out just past mid-height (measured off
+ *  effect.app's render of a luminance-ramp test image: full invert to ~38%
+ *  height, fade centered ~45%, gone by ~55%). Matches the GL chain. */
 function splitMaskRow(y: number, h: number, w: number): number {
   const aspect = w / h
   const relScaleY = aspect > 1 ? 1 : 1 / aspect
-  const rel = 1 - ((y + 0.5) / h) * 2
+  const rel = ((y + 0.5) / h) * 2 - 1
   const relY = rel * relScaleY
   const centerY = -0.094 * relScaleY
   const s = (relY - centerY) / 0.3

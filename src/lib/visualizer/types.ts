@@ -993,8 +993,10 @@ export interface AnaglyphFilterConfig {
  * Neon Split filter — the effect.app "neon split" preset, rebuilt from the
  * preset's own published definition and effect shaders (fetched off the site
  * and decrypted — nothing measured/eyeballed). The whole picture runs through
- * the preset's exact chain: a masked inversion across the lower part of the
- * frame (the real "split"), the preset's bloom (6-level mip pyramid, screen blend in
+ * the preset's exact chain: a masked inversion across the upper part of the
+ * frame (the real "split" — full invert from the top edge, fade centered
+ * ~45% down, gone by ~55%: the engine's own mask frame, measured off its
+ * render of a luminance-ramp test image), the preset's bloom (6-level mip pyramid, screen blend in
  * linear light), its film-grain noise (colored speckle in linear light, still
  * like the published preset or rolled like film via the speed dial), its 4-stop gradient map (#000000 → #002266 →
  * #D55FEC → #FFD6FA) that carries all of the color, the master curve, and the
