@@ -752,8 +752,11 @@ export interface DitherFilterConfig {
    *  paper, bright cells climb a navy → royal → electric → sky → ice ladder
    *  by their luminance), 'mono' = classic 1-bit black & white, 'color' =
    *  retro per-channel quantization (3 levels each, Bayer-steered),
-   *  'custom' = your own two colors */
-  mode: 'blue' | 'mono' | 'color' | 'custom'
+   *  'custom' = your own two colors, 'macpaint' = effect.app's MacPaint
+   *  engine — 38 hand-crafted 8×8 bitmap patterns picked per cell by
+   *  density matching (no Bayer matrix), with its own threshold curve,
+   *  edge stamping, smoothing and sharpen dials */
+  mode: 'blue' | 'mono' | 'color' | 'custom' | 'macpaint'
   /** Blue glow palette: the glow color as '#rrggbb' (mode 'blue') — the
    *  bright cells' shade ladder is rebuilt from this color's hue, so the
    *  default pick reproduces the original all-blue ramp exactly */
@@ -781,6 +784,52 @@ export interface DitherFilterConfig {
   beatReactive: boolean
   /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
   beatStrength: number
+  /** MacPaint: which of the 38 bitmap patterns the density matcher may
+   *  pick from — array of pattern slot indices 0..37. The published preset
+   *  enables slots 2, 6, 17, 28, 33, 36, 37 (a spread from near-empty to
+   *  solid); the card's swatch grid toggles them. Old saves without the
+   *  field load as that published spread. */
+  macPatterns: number[]
+  /** MacPaint: bitmap width 32..1024 — the dither grid is sized so the
+   *  LONGER frame side spans this many cells (the real effect's own
+   *  sizing; live preview caps the grid further for interactivity) */
+  macBitmapWidth: number
+  /** MacPaint: threshold 0..1 — the tone the 50% density pivot sits at
+   *  (published 0.354) */
+  macThreshold: number
+  /** MacPaint: contrast 0.1..4 — how hard tones snap across the threshold
+   *  pivot (published 2.5; higher = fewer mid patterns, lower = smoother
+   *  density ramps) */
+  macContrast: number
+  /** MacPaint: grain 0..1 — jitters the density lookup per cell with
+   *  deterministic hash noise so flat areas break up (published 0) */
+  macGrain: number
+  /** MacPaint: smooth 0..3 cells — flattens noise into even tones while
+   *  keeping edges (picks the flattest diagonal quadrant per cell by
+   *  variance; published 1) */
+  macSmoothing: number
+  /** MacPaint: sharpen −1..2 — unsharp mask over the cell colors;
+   *  negative values denoise (published −0.83), positive crisp edges */
+  macSharpen: number
+  /** MacPaint: radius 0.5..5 cells — the sharpen/denoise stencil reach
+   *  (published 1.2) */
+  macRadius: number
+  /** MacPaint: edges — 0 = Off, 1 = Ink (stamps solid ink along picture
+   *  edges), 2 = Shade (pushes edges toward paper so patterns read around
+   *  them). Published default Ink. */
+  macEdgeMode: number
+  /** MacPaint: edge threshold 0.01..1 — how strong a Sobel gradient must
+   *  be to count as an edge (published 0.1) */
+  macEdgeThreshold: number
+  /** MacPaint: edge width 0.5..3 cells — the Sobel sample reach
+   *  (published 1.1) */
+  macEdgeWidth: number
+  /** MacPaint: the ink the dark pattern dots print in, '#rrggbb'
+   *  (published near-black #0f0f12) */
+  macInkColor: string
+  /** MacPaint: the paper behind the pattern dots, '#rrggbb' (published
+   *  warm paper white #f7f5eb) */
+  macPaperColor: string
 }
 
 /**
@@ -1855,6 +1904,19 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     paperColor: '#030a24',
     beatReactive: false,
     beatStrength: 0.5,
+    macPatterns: [2, 6, 17, 28, 33, 36, 37],
+    macBitmapWidth: 342,
+    macThreshold: 0.354,
+    macContrast: 2.5,
+    macGrain: 0,
+    macSmoothing: 1,
+    macSharpen: -0.83,
+    macRadius: 1.2,
+    macEdgeMode: 1,
+    macEdgeThreshold: 0.1,
+    macEdgeWidth: 1.1,
+    macInkColor: '#0f0f12',
+    macPaperColor: '#f7f5eb',
   },
   phosphorFilter: {
     enabled: false,
