@@ -40,7 +40,11 @@ export function ControlPanel() {
           onValueChange={(value) => setActiveTab(value as StudioTab)}
           className="flex min-h-0 flex-1 flex-col gap-3"
         >
-          <TabsList className="grid w-full shrink-0 grid-cols-3 gap-1 bg-zinc-950/70 p-1">
+          {/* h-auto: the base TabsList is h-9 (36px, one row) — six tabs in a
+              3×2 grid need two rows, and the fixed height made the second row
+              (Lyrics / Export / Presets) bleed out of the list and float over
+              the panel content. h-auto lets the grid size itself. */}
+          <TabsList className="grid h-auto w-full shrink-0 grid-cols-3 gap-1 bg-zinc-950/70 p-1">
             {TABS.map((tab) => (
               <TabsTrigger
                 key={tab.id}
