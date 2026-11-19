@@ -502,7 +502,9 @@ export function drawHalationFilter(
   //   'print'   — the untouched picture rests between kicks (early return,
   //               zero cost — but the detector still advances) and the
   //               halation stamps in on the kick, holds, fades back out
-  const flipTo = cfg.beatFlipTo ?? 'around'
+  // (factory default 'print' — the kick stamps the halo in from a clean
+  //  frame; old saves without the field land here too)
+  const flipTo = cfg.beatFlipTo ?? 'print'
   const flipToPicture = !!cfg.beatFlip && flipTo === 'picture'
   const flipToPrint = !!cfg.beatFlip && flipTo === 'print'
   const flipT = cfg.beatFlip

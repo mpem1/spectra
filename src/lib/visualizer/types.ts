@@ -1838,7 +1838,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     beatReactive: false,
     beatStrength: 0.5,
     beatFlip: false,
-    beatFlipTo: 'around',
+    beatFlipTo: 'print',
     flipSensitivity: 0.1,
     flipHold: 0.2,
   },

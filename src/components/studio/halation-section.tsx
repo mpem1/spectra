@@ -86,6 +86,10 @@ export function HalationSection() {
     patch({ [key]: value } as Partial<HalationFilterConfig>)
 
   const currentTint = (filter.tint ?? '#ff4d21').toLowerCase()
+  // Flip direction with the factory default ('print') applied — chips and
+  // helper text below all read this so a save without the field agrees
+  // with the renderer's own fallback.
+  const flipTo = filter.beatFlipTo ?? 'print'
 
   return (
     <section className={sectionShell('rose')}>
@@ -240,26 +244,26 @@ export function HalationSection() {
                   <OptionChip
                     label="Around"
                     sub="color inverts"
-                    active={(filter.beatFlipTo ?? 'around') === 'around'}
+                    active={flipTo === 'around'}
                     onClick={() => patch({ beatFlipTo: 'around' })}
                   />
                   <OptionChip
                     label="The picture"
                     sub="halo between kicks"
-                    active={filter.beatFlipTo === 'picture'}
+                    active={flipTo === 'picture'}
                     onClick={() => patch({ beatFlipTo: 'picture' })}
                   />
                   <OptionChip
                     label="The print"
                     sub="picture between kicks"
-                    active={filter.beatFlipTo === 'print'}
+                    active={flipTo === 'print'}
                     onClick={() => patch({ beatFlipTo: 'print' })}
                   />
                 </div>
                 <p className="text-[10px] leading-snug text-zinc-600">
-                  {filter.beatFlipTo === 'picture'
+                  {flipTo === 'picture'
                     ? 'The halo rests on the frame between kicks; on a kick it lifts clean off so the untouched picture flashes through, then the glow settles back.'
-                    : filter.beatFlipTo === 'print'
+                    : flipTo === 'print'
                       ? 'The untouched picture rests on the frame between kicks; on a kick the halation stamps in, holds, then fades back out.'
                       : 'The halo rests on the frame between kicks; on a kick the whole glow flips to the opposite color — the tint\'s complement — holds, then swings back to the color you picked.'}
                 </p>
