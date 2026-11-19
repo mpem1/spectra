@@ -448,8 +448,10 @@ export function NeonSplitFilterSection() {
           />
           {filter.beatReactive ? (
             <p className="text-[10px] leading-snug text-zinc-600">
-              On every kick the bloom flares with the bass, then settles back
-              exactly as dialed in between beats.
+              On every kick the bloom flares brighter, the gradient ramp
+              slides a step so the colors ride the hit, and the grain churns
+              harder — then everything settles back exactly as dialed in
+              between beats.
             </p>
           ) : null}
           <SliderRow
@@ -483,8 +485,10 @@ export function NeonSplitFilterSection() {
             which tones catch the speckle. Frame: Contrast shapes the master
             tone curve (50% = the preset&apos;s own curve), Split fades the
             untouched picture back in from the bottom, Mix blends the whole
-            look back toward the original. Skipped on transparent backgrounds
-            so alpha recordings stay clean.
+            look back toward the original. React to beat flares the bloom,
+            slides the ramp a step and punches the grain together on every
+            kick — Beat punch sets how hard. Skipped on transparent
+            backgrounds so alpha recordings stay clean.
           </p>
       </div>
     </section>

@@ -1096,8 +1096,11 @@ export interface NeonSplitFilterConfig {
   /** Mix 0..1 — the full neon look blended back over the untouched picture
    *  (1 = the grade replaces the frame, lower values dial it back). */
   strength: number
-  /** React to beat — on kicks the bloom flares; between beats the look rests
-   *  exactly as dialed in. */
+  /** React to beat — every kick flares the bloom brighter, slides the
+   *  gradient ramp a step (the colors ride the hit) and punches the grain;
+   *  between beats the look rests exactly as dialed in. Listens to the clean
+   *  30–130 Hz kick channel (frame.sub), not the dB-clipped bass meter that
+   *  pins in loud masters. */
   beatReactive: boolean
   /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
   beatStrength: number
