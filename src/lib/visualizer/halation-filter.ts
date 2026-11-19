@@ -1,7 +1,8 @@
 /**
  * Halation filter — the film highlight-bleed glow over the whole finished
- * picture: bright spots bloom a red/orange halo the way light bleeds
- * through film emulsion into the base and reflects back (the Kodak look).
+ * picture: bright spots bloom a halo in the picked tint color the way
+ * light bleeds through film emulsion into the base and reflects back (the
+ * Kodak look, in whatever stock color the picker dials in).
  *
  * The math is effect.app's own Halation effect, ported from its decrypted
  * shaders (see halation-gl.ts for the four passes and the verbatim GLSL).
@@ -16,6 +17,13 @@
  * the composite per pixel. Both deterministic — same frame in, same pixels
  * out — and both skipped on transparent backgrounds (alpha stays clean).
  *
+ * React to beat (opt-in, default off) — a beat multiplier scales the glow
+ * energy with the song's low end (frame.bass through the shared beatBoost
+ * helper; up to strength × 1.6 on a full kick) and rests at exactly 1
+ * between kicks, so the dialed-in look is untouched while the song is
+ * quiet — the live preview and the offline export flare on the exact same
+ * frames.
+ *
  * Infrastructure mirrors neon-split.ts: one GL instance per source canvas
  * (the live preview and an export each own one, so they can't thrash a
  * shared instance's framebuffers between two resolutions), lost contexts
@@ -24,8 +32,41 @@
  * render at full scale.
  */
 import type { AudioFrame, HalationFilterConfig, RenderContext } from './types'
-import { clamp01, getWork, resetWork } from './filter-utils'
+import { beatBoost, clamp01, getWork, resetWork } from './filter-utils'
 import { HalationGL } from './halation-gl'
+
+/* --------------------------------- halo tint --------------------------------- */
+
+/** The default halo tint (the Kodak look) — also the fallback when a saved
+ *  config carries a color the parser cannot read. */
+const DEFAULT_TINT = '#ff4d21'
+
+/** "Beat flare" ceiling: at strength 1 the glow energy multiplies up to
+ *  2.6× on a full low-end hit (the cap handed to the shared beatBoost
+ *  helper — the flare reads as the whole halo blooming brighter per kick). */
+const HALATION_BEAT_KICK = 1.6
+
+/** "#rrggbb" / "#rgb" → linear-light RGB triplet for the tint uniform.
+ *  Unparseable input falls back to the Kodak default, never to black. */
+function hexToLinearTint(hex: string): [number, number, number] {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(typeof hex === 'string' ? hex.trim() : '')
+  let r = 255
+  let g = 77
+  let b = 33
+  if (m) {
+    const s = m[1]
+    if (s.length === 3) {
+      r = parseInt(s[0] + s[0], 16)
+      g = parseInt(s[1] + s[1], 16)
+      b = parseInt(s[2] + s[2], 16)
+    } else {
+      r = parseInt(s.slice(0, 2), 16)
+      g = parseInt(s.slice(2, 4), 16)
+      b = parseInt(s.slice(4, 6), 16)
+    }
+  }
+  return [srgbToLinear(r / 255), srgbToLinear(g / 255), srgbToLinear(b / 255)]
+}
 
 /* --------------------------- config dial mapping --------------------------- */
 
@@ -192,9 +233,10 @@ function drawHalationCPU(
   localDiffusion: number,
   globalDiffusion: number,
   intensity: number,
-  hue: number,
+  tint: [number, number, number],
   backgroundGain: number,
   blueComp: number,
+  beat: number,
 ): void {
   const { ctx, width: W, height: H } = rc
   const work = getWork('halation:base', W, H)
@@ -203,14 +245,15 @@ function drawHalationCPU(
   const img = wctx.getImageData(0, 0, W, H)
   const d = img.data
 
-  // PASS 1 — bright pass (linear-light luminance through the soft knee)
+  // PASS 1 — bright pass (linear-light luminance through the soft knee,
+  // times the beat flare multiplier — exactly 1 when the flare is off)
   const bright = new Float32Array(W * H)
   for (let i = 0, p = 0; i < d.length; i += 4, p++) {
     const r = srgbToLinear(d[i] / 255)
     const g = srgbToLinear(d[i + 1] / 255)
     const b = srgbToLinear(d[i + 2] / 255)
     const y = 0.2126729 * r + 0.7151522 * g + 0.072175 * b
-    bright[p] = softKnee(y, threshold, Math.max(0.02, knee)) * (0.4 + boost * 1.8)
+    bright[p] = softKnee(y, threshold, Math.max(0.02, knee)) * (0.4 + boost * 1.8) * beat
   }
 
   // PASS 2 — horizontal diffusion (local + global, both from the energy)
@@ -222,7 +265,10 @@ function drawHalationCPU(
   const globalHV = blurSweep(globalH, W, H, globalDiffusion, false, 'zero')
 
   // PASS 4 — composite (screen back over the original in linear light)
-  const greenSensitivity = Math.min(1, Math.max(0, hue + boost * 0.4))
+  const heat = Math.min(1, Math.max(0, 0.5 + boost * 0.4))
+  const hotR = tint[0] + (1 - tint[0]) * 0.5
+  const hotG = tint[1] + (1 - tint[1]) * 0.5
+  const hotB = tint[2] + (1 - tint[2]) * 0.5
   const oneMinusBlueDampK = 1 - blueComp
   for (let i = 0, p = 0; i < d.length; i += 4, p++) {
     const glowL = Math.min(1, Math.max(0, localHV[p]))
@@ -233,14 +279,15 @@ function drawHalationCPU(
     const bgY = 0.2126729 * br + 0.7151522 * bg + 0.072175 * bb
 
     const energy = Math.min(1, Math.max(0, glowL * 3))
-    // red → orange by how hot the glow burns
-    const lr = 1 + (1 - 1) * energy * greenSensitivity
-    const lg = 0 + (0.45 - 0) * energy * greenSensitivity
-    const lb = 0 + (0.06 - 0) * energy * greenSensitivity
+    // toward the half-white-hot tint by how hot the glow burns
+    const m = energy * heat
+    const lr = tint[0] + (hotR - tint[0]) * m
+    const lg = tint[1] + (hotG - tint[1]) * m
+    const lb = tint[2] + (hotB - tint[2]) * m
 
-    let haloR = lr * glowL + 1 * glowG * 0.5
-    let haloG = lg * glowL
-    let haloB = lb * glowL
+    let haloR = lr * glowL + tint[0] * glowG * 0.5
+    let haloG = lg * glowL + tint[1] * glowG * 0.5
+    let haloB = lb * glowL + tint[2] * glowG * 0.5
 
     const darkOnly = 1 - smoothstep(0, 0.5, bgY)
     const bgGate = darkOnly * (1 - backgroundGain) + 1 * backgroundGain
@@ -274,7 +321,7 @@ function smoothstep(a: number, b: number, x: number): number {
 export function drawHalationFilter(
   rc: RenderContext,
   cfg: HalationFilterConfig | undefined,
-  _frame: Pick<AudioFrame, 'time' | 'styleTime'>,
+  frame: Pick<AudioFrame, 'time' | 'styleTime' | 'bass'>,
   transparent: boolean,
 ): void {
   if (!cfg?.enabled || transparent) return
@@ -288,9 +335,13 @@ export function drawHalationFilter(
   const localDiffusion = mapLocalDiffusion(cfg.localDiffusion ?? 0.04)
   const globalDiffusion = mapGlobalDiffusion(cfg.globalDiffusion ?? 0.12)
   const intensity = clamp01(cfg.intensity ?? 0.7)
-  const hue = clamp01(cfg.hue ?? 0.5)
   const backgroundGain = clamp01(cfg.backgroundGain ?? 0.85)
   const blueComp = clamp01(cfg.blueComp ?? 0.5)
+  // the halo tint — config hex → linear-light triplet (Kodak fallback)
+  const tint = hexToLinearTint(cfg.tint ?? DEFAULT_TINT)
+  // the beat flare — rests at exactly 1 while React to beat is off or the
+  // low end is quiet, punches up to strength × 1.6 on a full kick
+  const beat = beatBoost(cfg, frame.bass, HALATION_BEAT_KICK)
   if (intensity <= 0.001) return
 
   let done = false
@@ -306,7 +357,8 @@ export function drawHalationFilter(
         localDiffusion,
         globalDiffusion,
         intensity,
-        hue,
+        tint,
+        beat,
         backgroundGain,
         blueComp,
         scale: entry.scale,
@@ -349,6 +401,6 @@ export function drawHalationFilter(
   }
 
   if (!done) {
-    drawHalationCPU(rc, threshold, knee, boost, localDiffusion, globalDiffusion, intensity, hue, backgroundGain, blueComp)
+    drawHalationCPU(rc, threshold, knee, boost, localDiffusion, globalDiffusion, intensity, tint, backgroundGain, blueComp, beat)
   }
 }

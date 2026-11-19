@@ -6,15 +6,19 @@
  *
  *   Pass 1 (halation-1) — bright pass: the frame's linear-light Rec.709
  *   luminance through a soft-knee threshold, scaled by 0.4 + boost·1.8 into
- *   the glow energy channel.
+ *   the glow energy channel, times a beat multiplier (the React to beat
+ *   flare — exactly 1 when off, see halation-filter.ts).
  *   Pass 2 (halation-2) — horizontal diffusion: the energy blurs at TWO
  *   radii (a fraction of the frame width) — tight "local" + wide "global".
  *   Pass 3 (halation-3) — vertical diffusion: same two radii the other
  *   axis, so the pair becomes two separable blurs (local and global).
- *   Pass 4 (halation-4) — composite: the tight glow tints red → orange by
- *   how hot it burns (hue dial + boost), the wide halo stays red at half
- *   strength, everything screens back over the original in linear light
- *   behind a background gate (dark-only ↔ everywhere) and a blue damper.
+ *   Pass 4 (halation-4) — composite: the tight glow tints toward a half-
+ *   white-hot version of the picked halo color the hotter it burns (the
+ *   heat mix rises with boost), the wide halo stays the picked color at
+ *   half strength, everything screens back over the original in linear
+ *   light behind a background gate (dark-only ↔ everywhere) and a blue
+ *   damper. Spectra extension: the site's shader hardcodes the red→orange
+ *   pair; here the pair is the user-picked tint passed as a uniform.
  *
  * The blur is the site's own capped 80-tap sweep (step = max(1, radius/80),
  * quadratic-smoothed linear weights), sampled with CLAMP_TO_EDGE so halos
@@ -53,6 +57,7 @@ uniform sampler2D iChannel0;
 uniform float uThreshold;
 uniform float uKnee;
 uniform float uBoost;
+uniform float uBeat;
 
 vec3 sRGBToLinear(vec3 c) {
     vec3 lo = c / 12.92;
@@ -72,7 +77,7 @@ void main() {
     vec3 lin = sRGBToLinear(texture(iChannel0, uv).rgb);
     float y = luminance(lin);
     float src = softKnee(y, uThreshold, max(0.02, uKnee));
-    float energy = src * (0.4 + uBoost * 1.8);
+    float energy = src * (0.4 + uBoost * 1.8) * uBeat;
 
     outColor = vec4(energy, 0.0, 0.0, 1.0);
 }`
@@ -212,13 +217,14 @@ void main() {
     outColor = vec4(local, global, 0.0, 1.0);
 }`
 
-/* --- P4: composite (halation-4, verbatim — iChannel7 is the original
- *         source frame in the site's engine; texture unit 1 here) --- */
+/* --- P4: composite (halation-4 with the tint pair generalized to the
+ *         picked color — iChannel7 is the original source frame in the
+ *         site's engine; texture unit 1 here) --- */
 const FRAG_COMPOSITE = COMMON + `
 uniform sampler2D iChannel0;
 uniform sampler2D iChannel7;
 uniform float uIntensity;
-uniform float uHue;
+uniform vec3 uTint;
 uniform float uBackgroundGain;
 uniform float uBlueComp;
 uniform float uBoost;
@@ -246,12 +252,11 @@ void main() {
     float bgY = luminance(base);
 
     float energy = clamp(glow.r * 3.0, 0.0, 1.0);
-    vec3 red = vec3(1.0, 0.0, 0.0);
-    vec3 orange = vec3(1.0, 0.45, 0.06);
-    float greenSensitivity = clamp(uHue + uBoost * 0.4, 0.0, 1.0);
-    vec3 localTint = mix(red, orange, energy * greenSensitivity);
+    float heat = clamp(0.5 + uBoost * 0.4, 0.0, 1.0);
+    vec3 hotTint = mix(uTint, vec3(1.0), 0.5);
+    vec3 localTint = mix(uTint, hotTint, energy * heat);
 
-    vec3 halo = localTint * glow.r + red * glow.g * 0.5;
+    vec3 halo = localTint * glow.r + uTint * glow.g * 0.5;
 
     float darkOnly = 1.0 - smoothstep(0.0, 0.5, bgY);
     float bgGate = mix(darkOnly, 1.0, uBackgroundGain);
@@ -282,7 +287,10 @@ export type HalationParams = {
   localDiffusion: number
   globalDiffusion: number
   intensity: number
-  hue: number
+  /** Halo tint in LINEAR light (converted from the config hex upstream) */
+  tint: [number, number, number]
+  /** Beat flare multiplier on the bright-pass energy (1 = off / rest) */
+  beat: number
   backgroundGain: number
   blueComp: number
   scale: number
@@ -385,14 +393,14 @@ export class HalationGL {
   }
 
   private compileAll() {
-    this.makePass('bright', FRAG_BRIGHT, ['iChannel0', 'uThreshold', 'uKnee', 'uBoost'])
+    this.makePass('bright', FRAG_BRIGHT, ['iChannel0', 'uThreshold', 'uKnee', 'uBoost', 'uBeat'])
     this.makePass('blurH', FRAG_BLUR_H, ['iChannel0', 'iResolution', 'uLocalDiffusion', 'uGlobalDiffusion'])
     this.makePass('blurV', FRAG_BLUR_V, ['iChannel0', 'iResolution', 'uLocalDiffusion', 'uGlobalDiffusion'])
     this.makePass('composite', FRAG_COMPOSITE, [
       'iChannel0',
       'iChannel7',
       'uIntensity',
-      'uHue',
+      'uTint',
       'uBackgroundGain',
       'uBlueComp',
       'uBoost',
@@ -490,6 +498,7 @@ export class HalationGL {
       gl.uniform1f(P('bright').uniforms.uThreshold, p.threshold)
       gl.uniform1f(P('bright').uniforms.uKnee, p.knee)
       gl.uniform1f(P('bright').uniforms.uBoost, p.boost)
+      gl.uniform1f(P('bright').uniforms.uBeat, p.beat)
     })
 
     // 2) horizontal diffusion  A → B (R = local H, G = global H)
@@ -513,7 +522,7 @@ export class HalationGL {
       this.use(0, C.tex, P('composite').uniforms.iChannel0)
       this.use(1, this.srcTex, P('composite').uniforms.iChannel7)
       gl.uniform1f(P('composite').uniforms.uIntensity, p.intensity)
-      gl.uniform1f(P('composite').uniforms.uHue, p.hue)
+      gl.uniform3f(P('composite').uniforms.uTint, p.tint[0], p.tint[1], p.tint[2])
       gl.uniform1f(P('composite').uniforms.uBackgroundGain, p.backgroundGain)
       gl.uniform1f(P('composite').uniforms.uBlueComp, p.blueComp)
       gl.uniform1f(P('composite').uniforms.uBoost, p.boost)

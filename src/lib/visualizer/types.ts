@@ -1125,14 +1125,18 @@ export interface ColorGradeFilterConfig {
 
 /**
  * Halation filter — the classic film optical artifact over the whole
- * finished picture: bright highlights bleed a red/orange glow into the
+ * finished picture: bright highlights bleed a glowing halo into the
  * frame around them, exactly the way light blooms through film into the
- * film base and reflects back (the look Kodak stocks are famous for).
+ * film base and reflects back (the look Kodak stocks are famous for —
+ * in whatever halo color the tint below picks).
  *
  * Rebuilt from effect.app's own Halation effect — the four encrypted GLSL
  * passes (bright pass / horizontal diffusion / vertical diffusion / halo
  * composite) were fetched off the site and decrypted verbatim; every dial
  * below is the shader's own uniform at the shader's published default.
+ * Two Spectra extensions on top: the shader's hardcoded red→orange tint
+ * pair is generalized to any picked color, and an opt-in beat flare
+ * multiplies the glow energy with the song's low end.
  *
  * The chain, exactly as the site runs it:
  *   1. Bright pass — the frame's Rec.709 luminance (in linear light) goes
@@ -1143,18 +1147,20 @@ export interface ColorGradeFilterConfig {
  *      wide "global" halo. The blur is a capped 80-tap sweep with
  *      quadratic-smoothed linear weights (the exact window the site's
  *      shader runs).
- *   4. Composite — the tight glow tints from red toward orange the hotter
- *      it burns (driven by the hue dial), the wide halo stays red at half
- *      strength; everything screens back over the original in linear light.
- *      A background gate (dark-only ↔ everywhere) decides what tonal range
+ *   4. Composite — the tight glow tints toward a half-white-hot version of
+ *      the picked halo color the hotter it burns (the heat mix rises with
+ *      boost), the wide halo stays the picked color at half strength;
+ *      everything screens back over the original in linear light. A
+ *      background gate (dark-only ↔ everywhere) decides what tonal range
  *      can catch the halo, and a blue damper keeps skies/cool pixels from
  *      blushing.
  *
- * No beat reaction by design — this look's charm is the steady optical
- * glow; per-kick flashing was explicitly removed from the neon look for
- * strain and would be worse here. Deterministic (same frame in, same
- * pixels out); skipped on transparent backgrounds like every full-frame
- * filter.
+ * React to beat (opt-in, default off) — the flare multiplies the glow
+ * energy while the song's low end (frame.bass) hits, up to
+ * strength × 1.6 on a full kick through the shared beatBoost helper, and
+ * rests at exactly 1 between kicks so the dialed-in look is untouched
+ * while the song is quiet. Deterministic (same frame in, same pixels
+ * out); skipped on transparent backgrounds like every full-frame filter.
  */
 export interface HalationFilterConfig {
   enabled: boolean
@@ -1176,9 +1182,15 @@ export interface HalationFilterConfig {
   /** Intensity 0..1 — how strongly the halo lands on the frame (published
    *  0.7). */
   intensity: number
-  /** Hue 0..1 — how far the hot core of the glow shifts from red toward
-   *  orange (published 0.5). */
-  hue: number
+  /** The halo color, a CSS hex string ("#rrggbb") — the picker or a preset.
+   *  The hottest core of the glow drifts toward a half-white-hot version of
+   *  it; absent in old saves → the Kodak default "#ff4d21". */
+  tint: string
+  /** Beat flare switch — when on, the glow energy multiplies while the
+   *  song's low end hits and rests at the dialed-in look between kicks. */
+  beatReactive: boolean
+  /** How hard the beat flare hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
   /** Background gain 0..1 — where the halo may land: 0 = over dark tones
    *  only, 1 = over the whole frame (published 0.85). */
   backgroundGain: number
@@ -1780,16 +1792,19 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
   },
   halationFilter: {
     enabled: false,
-    // the published defaults of effect.app's own Halation shaders
+    // effect.app's published Halation defaults — the tint is the Kodak-look
+    // halo color
     threshold: 0.6,
     knee: 0.25,
     boost: 0.5,
     localDiffusion: 0.04,
     globalDiffusion: 0.12,
     intensity: 0.7,
-    hue: 0.5,
+    tint: '#ff4d21',
     backgroundGain: 0.85,
     blueComp: 0.5,
+    beatReactive: false,
+    beatStrength: 0.5,
   },
   ditherFilter: {
     enabled: false,

@@ -4,7 +4,9 @@ import { Aperture } from 'lucide-react'
 import type { HalationFilterConfig } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
-import { SliderRow, sectionShell, MicroLabel } from '@/components/studio/controls'
+import { ColorPickerButton } from '@/components/studio/color-picker'
+import { SliderRow, BeatPunchRow, sectionShell, MicroLabel } from '@/components/studio/controls'
+import { cn } from '@/lib/utils'
 
 /** Group divider inside the card — a small uppercase header with a rule. */
 function Group({ children }: { children: React.ReactNode }) {
@@ -21,13 +23,26 @@ function Group({ children }: { children: React.ReactNode }) {
 /** Percent readout, 0-100. */
 const pct = (v: number) => `${Math.round(v * 100)}%`
 
+/** One-click halo colors — the Kodak default plus a spread of looks. */
+const HALO_PRESETS: { name: string; hex: string }[] = [
+  { name: 'Kodak', hex: '#ff4d21' },
+  { name: 'Cherry', hex: '#ff2436' },
+  { name: 'Gold', hex: '#ffb020' },
+  { name: 'Magenta', hex: '#ff2fa0' },
+  { name: 'Violet', hex: '#8b5cf6' },
+  { name: 'Ice', hex: '#35d0ff' },
+  { name: 'White', hex: '#ffffff' },
+]
+
 /**
  * Halation filter card — effect.app's Halation effect, rebuilt from its own
  * decrypted shaders. The classic film artifact: bright highlights bleed a
- * red/orange glow into the frame around them (light blooming through film
- * into the base and reflecting back — the look Kodak stocks are famous
- * for). Like the other filter cards, the card collapses to one line while
- * the switch is off; flipping it on opens the full dial set.
+ * glow into the frame around them, in whatever halo color you pick (the
+ * Kodak look, with the stock color of your choice — presets or the full
+ * picker). React to beat flares the whole glow brighter on every kick,
+ * scaled by the Beat flare dial. Like the other filter cards, the card
+ * collapses to one line while the switch is off; flipping it on opens the
+ * full dial set.
  */
 export function HalationSection() {
   const filter = useStudioStore((s) => s.config.halationFilter)
@@ -35,6 +50,8 @@ export function HalationSection() {
 
   const set = (key: keyof HalationFilterConfig) => (value: number) =>
     patch({ [key]: value } as Partial<HalationFilterConfig>)
+
+  const currentTint = (filter.tint ?? '#ff4d21').toLowerCase()
 
   return (
     <section className={sectionShell('rose')}>
@@ -57,11 +74,13 @@ export function HalationSection() {
         <>
           <p className="text-[11px] leading-snug text-zinc-600">
             The film highlight-bleed glow — bright parts of the picture bloom
-            a red/orange halo the way light bleeds through film into the base
-            and reflects back (the look Kodak stocks are famous for).
-            Rebuilt from effect.app&apos;s own Halation shaders — every dial
-            below is the real effect&apos;s own parameter at its published
-            default. Everything here bakes into the preview and every export.
+            a halo in whatever color you pick below, the way light bleeds
+            through film into the base and reflects back (the Kodak look, in
+            any stock color you like). Rebuilt from effect.app&apos;s own
+            Halation shaders — every dial below is the real effect&apos;s own
+            parameter at its published default, plus the free halo color and
+            the beat flare. Everything here bakes into the preview and every
+            export.
           </p>
 
           <div className="space-y-3">
@@ -124,17 +143,31 @@ export function HalationSection() {
               onChange={set('intensity')}
               format={(v) => (v <= 0.005 ? 'Off' : pct(v))}
             />
-            <SliderRow
-              label="Hue"
-              value={filter.hue ?? 0.5}
-              min={0}
-              max={1}
-              step={0.01}
-              onChange={set('hue')}
-              format={(v) =>
-                v <= 0.03 ? 'Red only' : v >= 0.97 ? 'Full orange shift' : `${Math.round(v * 100)}% toward orange`
-              }
-            />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <MicroLabel>Halo color</MicroLabel>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {HALO_PRESETS.map((p) => (
+                  <button
+                    key={p.hex}
+                    type="button"
+                    aria-label={`Use the ${p.name} halo color`}
+                    aria-pressed={currentTint === p.hex.toLowerCase()}
+                    onClick={() => patch({ tint: p.hex })}
+                    className={cn(
+                      'size-5 rounded-full border transition-transform hover:scale-110',
+                      currentTint === p.hex.toLowerCase() ? 'border-zinc-300' : 'border-zinc-700'
+                    )}
+                    style={{ backgroundColor: p.hex }}
+                  />
+                ))}
+                <ColorPickerButton
+                  value={filter.tint ?? '#ff4d21'}
+                  onChange={(tint) => patch({ tint })}
+                  ariaLabel="Halo color"
+                  className="ml-1"
+                />
+              </div>
+            </div>
             <SliderRow
               label="Background gain"
               value={filter.backgroundGain ?? 0.85}
@@ -154,26 +187,36 @@ export function HalationSection() {
               format={(v) => (v <= 0.005 ? 'No blue damping' : v >= 0.995 ? 'None' : pct(v))}
             />
 
+            <BeatPunchRow
+              on={filter.beatReactive ?? false}
+              strength={filter.beatStrength ?? 0.5}
+              onToggle={(beatReactive) => patch({ beatReactive })}
+              onStrength={(beatStrength) => patch({ beatStrength })}
+              strengthLabel="Beat flare"
+            />
+
             <p className="text-[10px] leading-snug text-zinc-600">
               Bright pass: Threshold sets how bright a pixel must be before it
               halos, Knee eases mid-tones into the glow (higher = softer
               cutoff), Boost pushes extra energy through. Diffusion: Local
               glow is the tight bloom hugging the highlight, Global halo is
-              the wide red wash — both sized as a fraction of the frame
-              width. Glow: Intensity scales the whole effect, Hue shifts the
-              hot core from red toward orange, Background gain decides what
-              tones can catch the halo (dark only ↔ everywhere), Compensation
-              tames the halo over blue-leaning pixels so skies stay cool.
-              Skipped on transparent backgrounds so alpha recordings stay
-              clean.
+              the wide wash — both sized as a fraction of the frame width.
+              Glow: Intensity scales the whole effect, Halo color picks the
+              glow color (tap a preset dot or open the swatch for the full
+              picker — the hottest core drifts toward white), Background gain
+              decides what tones can catch the halo (dark only ↔ everywhere),
+              Compensation tames the halo over blue-leaning pixels so skies
+              stay cool. React to beat flares the whole glow brighter on
+              every kick — Beat flare sets how hard. Skipped on transparent
+              backgrounds so alpha recordings stay clean.
             </p>
           </div>
         </>
       ) : (
         <p className="text-[11px] leading-snug text-zinc-600">
-          The film highlight-bleed glow — bright spots bloom red/orange
-          halos. Flip the switch on to open the threshold, diffusion and glow
-          controls.
+          The film highlight-bleed glow — bright spots bloom halos in the
+          color you pick. Flip the switch on to open the threshold,
+          diffusion, glow and beat controls.
         </p>
       )}
     </section>
