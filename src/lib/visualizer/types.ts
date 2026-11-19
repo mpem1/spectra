@@ -1009,6 +1009,13 @@ export interface AnaglyphFilterConfig {
  * Deterministic like every full-frame filter (hash-based grain, fixed
  * pipeline). Skipped on transparent backgrounds (alpha must stay clean).
  */
+/** One editable stop of the Neon Split gradient map — position 0..1 on the
+ *  luminance axis and an sRGB hex color (same shape as the preset ramps). */
+export interface NeonMapStop {
+  t: number
+  c: string
+}
+
 export interface NeonSplitFilterConfig {
   enabled: boolean
   /** Which neon ramp the luminance maps onto. 'violet' is the published
@@ -1048,8 +1055,25 @@ export interface NeonSplitFilterConfig {
   /** Gradient map amount 0..1 — how fully every pixel's color is replaced by
    *  its ramp position (1 = the published full map, the color IS the ramp;
    *  lower blends the original colors back through it). Absent in old saves
-   *  → 1. */
+   *  → 1. Shown in the UI as the map's Opacity (effect.app's own label). */
   mapAmount?: number
+  /** The gradient map's EDITABLE stops — the real gradient-map feature: drag
+   *  stops, recolor them, add and remove them. Absent in old saves → derived
+   *  from `ramp`. The preset chips write this field (they load their stops
+   *  into the editor), so after the first edit this is the source of truth. */
+  mapStops?: NeonMapStop[]
+  /** Gradient shift −1..1 — slides the ramp window along the luminance axis
+   *  (effect.app's Gradient shift; the published preset is 0). Wrapped: colors
+   *  that slide off one end re-enter from the other, so shadows can pick up
+   *  the ramp's bright end. Absent in old saves → 0. */
+  mapShift?: number
+  /** Gradient repeat 1..8 — how many times the ramp tiles across the
+   *  luminance range (effect.app's Gradient repeat; the published preset is
+   *  1). Absent in old saves → 1. */
+  mapRepeat?: number
+  /** Gradient map blend mode — how the mapped color lands on each pixel
+   *  (effect.app's Blend dropdown). Absent in old saves → 'normal'. */
+  mapBlend?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'add'
   /** Film grain size dial 0..1 — the noise cell size in px (0.5 = the
    *  published 0.5px fine speckle; higher = chunkier grain, range 0.5..4).
    *  Absent in old saves → 0.5. */

@@ -132,18 +132,36 @@ export function buildCurveLut(points: [number, number][]): Float32Array {
 /** Gradient LUT as RGBA pixels — the preset's stops, linear-interpolated
  *  across 256 entries (how the engine's gradient texture behaves). */
 export function gradientLutPixels(ramp: string): Uint8Array {
-  const stops = RAMPS[ramp] ?? RAMPS.violet
+  return gradientLutPixelsFromStops(RAMPS[ramp] ?? RAMPS.violet)
+}
+
+/** Gradient LUT (256×1 RGBA pixels) from ARBITRARY editable stops — the
+ *  gradient map's own editor output. Stops need not be sorted (they are here);
+ *  positions outside 0..1 clamp; a single stop yields a flat color. */
+export function gradientLutPixelsFromStops(stops: { t: number; c: string }[]): Uint8Array {
+  const sorted = [...stops].sort((a, b) => a.t - b.t)
   const px = new Uint8Array(256 * 4)
-  const cols = stops.map((s) => {
+  const cols = sorted.map((s) => {
     const n = parseInt(s.c.slice(1), 16)
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
   })
+  const ts = sorted.map((s) => Math.min(1, Math.max(0, s.t)))
+  if (sorted.length < 2) {
+    const [r, g, b] = cols[0] ?? [0, 0, 0]
+    for (let i = 0; i < 256; i++) {
+      px[i * 4] = r
+      px[i * 4 + 1] = g
+      px[i * 4 + 2] = b
+      px[i * 4 + 3] = 255
+    }
+    return px
+  }
   for (let i = 0; i < 256; i++) {
     const t = i / 255
     let j = 0
-    while (j < cols.length - 2 && t > stops[j + 1].t) j++
-    const [x0, c0] = [stops[j].t, cols[j]]
-    const [x1, c1] = [stops[j + 1].t, cols[j + 1]]
+    while (j < cols.length - 2 && t > ts[j + 1]) j++
+    const [x0, c0] = [ts[j], cols[j]]
+    const [x1, c1] = [ts[j + 1], cols[j + 1]]
     const f = x1 > x0 ? Math.min(1, Math.max(0, (t - x0) / (x1 - x0))) : 0
     px[i * 4] = Math.round(c0[0] + (c1[0] - c0[0]) * f)
     px[i * 4 + 1] = Math.round(c0[1] + (c1[1] - c0[1]) * f)

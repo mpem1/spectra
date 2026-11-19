@@ -201,17 +201,38 @@ void main() {
   outColor = vec4(linearToSrgb(outCol), 1.0);
 }`
 
-/* --- P5: gradient map (Rec.709 luminance → ramp LUT, amount-blended) --- */
+/* --- P5: gradient map (Rec.709 luminance → editable gradient LUT, shifted /
+ *         repeated / blend-moded like effect.app's own gradient-map node) --- */
 const FRAG_GRADIENT = COMMON + `
 uniform sampler2D iChannel0;
 uniform sampler2D iLut;
 uniform float uMix;
+uniform float uShift;
+uniform float uRepeat;
+uniform int uBlend;
+vec3 mapBlend(int mode, vec3 base, vec3 mapped) {
+  if (mode == 1) return base * mapped;                       // multiply
+  if (mode == 2) return 1.0 - (1.0 - base) * (1.0 - mapped); // screen
+  if (mode == 3) return base <= vec3(0.5)                     // overlay
+    ? 2.0 * base * mapped
+    : 1.0 - 2.0 * (1.0 - base) * (1.0 - mapped);
+  if (mode == 4) return min(base + mapped, 1.0);             // add
+  return mapped;                                              // normal
+}
 void main() {
   vec4 base = texture(iChannel0, vUV);
   float luminance = dot(base.rgb, vec3(0.2126, 0.7152, 0.0722));
-  float t = luminance;
+  // At the published defaults (repeat 1, shift 0) the lookup stays a plain
+  // clamped luminance read — byte-identical to the preset's own map. Once the
+  // user slides the window (shift) or tiles it (repeat), the coordinate wraps
+  // so the ramp's ends re-enter from the other side (shadows can pick up the
+  // bright end — the effect.app behavior).
+  float t = (uShift == 0.0 && uRepeat == 1.0)
+    ? luminance
+    : fract(luminance * uRepeat + uShift);
   vec3 mapped = texture(iLut, vec2(t, 0.5)).rgb;
-  outColor = vec4(mix(base.rgb, mapped, uMix), base.a);
+  vec3 blended = mapBlend(uBlend, base.rgb, mapped);
+  outColor = vec4(mix(base.rgb, blended, uMix), base.a);
 }`
 
 /* --- P6: curves (apply mode L: setLuma(base, curvedLuma)) + node opacity —
@@ -267,6 +288,7 @@ export class NeonSplitGL {
   private srcTex: WebGLTexture | null = null
   private lutTexs = new Map<string, WebGLTexture>()
   private lastCurveKey = -1
+  private lastGradKey = ''
   private lost = false
 
   constructor() {
@@ -351,10 +373,13 @@ export class NeonSplitGL {
     // curve LUT — the preset's master curve, contrast-neutral (identity is
     // blended in JS per config and re-uploaded when the dial moves)
     this.lutTexs.set('curve', this.makeLutTex(scalarLutPixels(buildCurveLut(CURVE_POINTS))))
-    // gradient LUTs per ramp
+    // gradient LUTs per ramp (preset quick-chips) + the EDITABLE map's own
+    // LUT — re-uploaded whenever the stop set changes (gradKey)
     for (const ramp of ['violet', 'uv', 'acid', 'ember', 'ice']) {
       this.lutTexs.set('grad:' + ramp, this.makeLutTex(gradientLutPixels(ramp)))
     }
+    this.lutTexs.set('grad:custom', this.makeLutTex(gradientLutPixels('violet')))
+    this.lastGradKey = ''
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)
   }
 
@@ -402,7 +427,7 @@ export class NeonSplitGL {
       FRAG_NOISE,
       ['iChannel0', 'iResolution', 'uGrainOffset', 'strength', 'grainSize', 'minGrain', 'chroma', 'shadowWeight', 'midWeight', 'highlightWeight'],
     )
-    this.makePass('gradient', FRAG_GRADIENT, ['iChannel0', 'iLut', 'uMix'])
+    this.makePass('gradient', FRAG_GRADIENT, ['iChannel0', 'iLut', 'uMix', 'uShift', 'uRepeat', 'uBlend'])
     this.makePass('curves', FRAG_CURVES, ['iChannel0', 'iLut', 'uOpacity'])
   }
 
@@ -508,7 +533,15 @@ export class NeonSplitGL {
     mapMix: number
     curveMix: number
     curveLut: Float32Array
-    ramp: string
+    /** The gradient map's LUT pixels (256×1 RGBA, built from the editable
+     *  stops) + a signature — the texture re-uploads only when it changes. */
+    gradPixels: Uint8Array
+    gradKey: string
+    /** Gradient shift (−1..1) and repeat (1..8) — the ramp window. */
+    mapShift: number
+    mapRepeat: number
+    /** Blend mode: 0 normal, 1 multiply, 2 screen, 3 overlay, 4 add. */
+    mapBlend: number
     grainOffsetX: number
     grainOffsetY: number
     scale: number
@@ -533,6 +566,13 @@ export class NeonSplitGL {
       gl.bindTexture(gl.TEXTURE_2D, this.lutTexs.get('curve')!)
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, scalarLutPixels(lut))
       this.lastCurveKey = curveKey
+    }
+
+    // the gradient map's LUT follows the editable stops — re-upload on change
+    if (this.lastGradKey !== p.gradKey) {
+      gl.bindTexture(gl.TEXTURE_2D, this.lutTexs.get('grad:custom')!)
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, p.gradPixels)
+      this.lastGradKey = p.gradKey
     }
 
     // upload the source frame (full-res, Y-flipped at upload — see the
@@ -589,11 +629,14 @@ export class NeonSplitGL {
       gl.uniform1f(P('noise').uniforms.highlightWeight, p.highlightWeight)
     })
 
-    // 5) gradient map — the preset's own gradient, amount-blended  A → B
+    // 5) gradient map — the editable gradient, shift/repeat/blend + opacity  A → B
     this.renderPass(P('gradient'), B.fb, () => {
       this.use(0, A.tex, P('gradient').uniforms.iChannel0)
-      this.use(1, this.lutTexs.get('grad:' + p.ramp) ?? this.lutTexs.get('grad:violet')!, P('gradient').uniforms.iLut)
+      this.use(1, this.lutTexs.get('grad:custom')!, P('gradient').uniforms.iLut)
       gl.uniform1f(P('gradient').uniforms.uMix, p.mapMix)
+      gl.uniform1f(P('gradient').uniforms.uShift, p.mapShift)
+      gl.uniform1f(P('gradient').uniforms.uRepeat, p.mapRepeat)
+      gl.uniform1i(P('gradient').uniforms.uBlend, p.mapBlend)
     })
 
     // 6) curves — apply mode L + node opacity 0.54  B → canvas (final pass;

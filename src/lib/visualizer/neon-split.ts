@@ -57,11 +57,12 @@
  *    noise lookup per film-frame so the speckle churns (0 = the published
  *    still grain). Offsets derive from song/style time via integer hashing —
  *    deterministic, so exports match the preview frame for frame. */
-import type { AudioFrame, NeonSplitFilterConfig, RenderContext } from './types'
+import type { AudioFrame, NeonMapStop, NeonSplitFilterConfig, RenderContext } from './types'
 import { clamp01, getWork, hash01, resetWork } from './filter-utils'
 import {
+  RAMPS,
   buildCurveLut as buildCurveLutData,
-  gradientLutPixels,
+  gradientLutPixelsFromStops,
   linear22Lut,
   linearExactLut,
   makeGrainField,
@@ -378,7 +379,14 @@ function drawNeonSplitCPU(
   // exact sRGB transfer's linear space, the grain rides the noise shader's
   // pow-2.2 linear space on the bloom's output bytes)
   const curveLut = curveLutFor(cfg.contrast ?? 0.5)
-  const gc = gradLutFor(cfg.ramp)
+  // the gradient map — editable stops, shift/repeat window, blend mode
+  // (identical math to the GL chain's gradient pass, byte for byte)
+  const mapStops = mapStopsFor(cfg)
+  const gradKey = gradKeyFor(mapStops)
+  const gc = gradLutFor(gradKey, mapStops)
+  const mapShift = Math.min(1, Math.max(-1, cfg.mapShift ?? 0))
+  const mapRepeat = Math.round(Math.min(8, Math.max(1, cfg.mapRepeat ?? 1)))
+  const mapBlendId = GRAD_BLEND_IDS.indexOf((cfg.mapBlend ?? 'normal') as (typeof GRAD_BLEND_IDS)[number])
   const outImg = baseCtx.createImageData(W, H)
   const od = outImg.data
   for (let y = 0; y < H; y++) {
@@ -427,19 +435,49 @@ function drawNeonSplitCPU(
         outByteG = srgb22[Math.min(255, Math.max(0, Math.round((baseG + grain[g3 + 1] * gain * wG) * 255)))]
         outByteB = srgb22[Math.min(255, Math.max(0, Math.round((baseB + grain[g3 + 2] * gain * wB) * 255)))]
       }
-      // gradient map (Rec.709 luminance of the noise output → the preset's
-      // ramp), blended back toward the original colors by the amount dial —
-      // exactly what the GL chain's uMix does inside the map pass
+      // gradient map (Rec.709 luminance of the noise output → the editable
+      // gradient), shifted/repeated like effect.app's window (wrapped once the
+      // window moves — clamped ends at the published defaults) and landed on
+      // the pixel through the blend mode, then blended back toward the
+      // original colors by the opacity dial — exactly what the GL chain's map
+      // pass does
       const t =
         (0.2126 * outByteR + 0.7152 * outByteG + 0.0722 * outByteB) / 255
-      const gi2 = Math.min(255, Math.max(0, Math.round(t * 255)))
-      let colR = gc[gi2 * 3] / 255
-      let colG = gc[gi2 * 3 + 1] / 255
-      let colB = gc[gi2 * 3 + 2] / 255
+      const tw =
+        mapShift === 0 && mapRepeat === 1 ? t : (t * mapRepeat + mapShift) - Math.floor(t * mapRepeat + mapShift)
+      const gi2 = Math.min(255, Math.max(0, Math.round(tw * 255)))
+      const mappedR = gc[gi2 * 3] / 255
+      const mappedG = gc[gi2 * 3 + 1] / 255
+      const mappedB = gc[gi2 * 3 + 2] / 255
+      const pxR = outByteR / 255
+      const pxG = outByteG / 255
+      const pxB = outByteB / 255
+      // the blend mode (effect.app's Blend dropdown) — same per-channel math
+      // as the shader's mapBlend()
+      let colR = mappedR
+      let colG = mappedG
+      let colB = mappedB
+      if (mapBlendId === 1) {
+        colR = pxR * mappedR
+        colG = pxG * mappedG
+        colB = pxB * mappedB
+      } else if (mapBlendId === 2) {
+        colR = 1 - (1 - pxR) * (1 - mappedR)
+        colG = 1 - (1 - pxG) * (1 - mappedG)
+        colB = 1 - (1 - pxB) * (1 - mappedB)
+      } else if (mapBlendId === 3) {
+        colR = pxR <= 0.5 ? 2 * pxR * mappedR : 1 - 2 * (1 - pxR) * (1 - mappedR)
+        colG = pxG <= 0.5 ? 2 * pxG * mappedG : 1 - 2 * (1 - pxG) * (1 - mappedG)
+        colB = pxB <= 0.5 ? 2 * pxB * mappedB : 1 - 2 * (1 - pxB) * (1 - mappedB)
+      } else if (mapBlendId === 4) {
+        colR = Math.min(1, pxR + mappedR)
+        colG = Math.min(1, pxG + mappedG)
+        colB = Math.min(1, pxB + mappedB)
+      }
       if (mapMix < 0.999) {
-        colR = (outByteR / 255) * (1 - mapMix) + colR * mapMix
-        colG = (outByteG / 255) * (1 - mapMix) + colG * mapMix
-        colB = (outByteB / 255) * (1 - mapMix) + colB * mapMix
+        colR = pxR * (1 - mapMix) + colR * mapMix
+        colG = pxG * (1 - mapMix) + colG * mapMix
+        colB = pxB * (1 - mapMix) + colB * mapMix
       }
       // curves — apply mode L: shift luma, keep hue; node opacity 0.54
       // (the curve rides the MIXED color's luma, same as the GL chain)
@@ -472,20 +510,42 @@ function smoothstepInv(e0: number, x: number): number {
 
 /* ------------------------------- ramp cache -------------------------------- */
 
-const gradLuts = new Map<string, Uint8ClampedArray>()
+const GRAD_BLEND_IDS = ['normal', 'multiply', 'screen', 'overlay', 'add'] as const
 
-function gradLutFor(ramp: string): Uint8ClampedArray {
-  const hit = gradLuts.get(ramp)
+/** The gradient map's effective stops: the editable set when present, else
+ *  the legacy ramp id (old saves carry `ramp` without `mapStops`). */
+function mapStopsFor(cfg: NeonSplitFilterConfig): NeonMapStop[] {
+  if (cfg.mapStops && cfg.mapStops.length >= 1) return cfg.mapStops
+  return RAMPS[cfg.ramp] ?? RAMPS.violet
+}
+
+const gradLuts = new Map<string, Uint8ClampedArray>()
+const gradPixelsCache = new Map<string, Uint8Array>()
+
+function gradKeyFor(stops: NeonMapStop[]): string {
+  return stops.map((s) => `${Math.round(s.t * 1000)}:${s.c}`).join('|')
+}
+
+function gradLutFor(key: string, stops: NeonMapStop[]): Uint8ClampedArray {
+  const hit = gradLuts.get(key)
   if (hit) return hit
-  const px = gradientLutPixels(ramp)
+  const px = gradientLutPixelsFromStops(stops)
   const lut = new Uint8ClampedArray(256 * 3)
   for (let i = 0; i < 256; i++) {
     lut[i * 3] = px[i * 4]
     lut[i * 3 + 1] = px[i * 4 + 1]
     lut[i * 3 + 2] = px[i * 4 + 2]
   }
-  gradLuts.set(ramp, lut)
+  gradLuts.set(key, lut)
   return lut
+}
+
+function gradPixelsFor(key: string, stops: NeonMapStop[]): Uint8Array {
+  const hit = gradPixelsCache.get(key)
+  if (hit) return hit
+  const px = gradientLutPixelsFromStops(stops)
+  gradPixelsCache.set(key, px)
+  return px
 }
 
 /* ------------------------------- the filter -------------------------------- */
@@ -535,6 +595,8 @@ export function drawNeonSplitFilter(
   const shadowWeight = mapShadowWeight(cfg.grainShadow ?? 0.5)
   const highlightWeight = mapHighlightWeight(cfg.grainHighlight ?? 0.5)
   const mapMix = clamp01(cfg.mapAmount ?? 1)
+  const mapStops = mapStopsFor(cfg)
+  const gradKey = gradKeyFor(mapStops)
   const curveMix = Math.min(1, clamp01(cfg.contrast ?? 0.5) * 2)
   const grainOff = grainOffsetFor(cfg.grainSpeed ?? 0.5, frame.styleTime ?? frame.time ?? 0)
 
@@ -567,7 +629,11 @@ export function drawNeonSplitFilter(
         mapMix,
         curveMix,
         curveLut: curveLutBase,
-        ramp: cfg.ramp ?? 'violet',
+        gradPixels: gradPixelsFor(gradKey, mapStops),
+        gradKey,
+        mapShift: Math.min(1, Math.max(-1, cfg.mapShift ?? 0)),
+        mapRepeat: Math.round(Math.min(8, Math.max(1, cfg.mapRepeat ?? 1))),
+        mapBlend: GRAD_BLEND_IDS.indexOf((cfg.mapBlend ?? 'normal') as (typeof GRAD_BLEND_IDS)[number]),
         grainOffsetX: grainOff.x,
         grainOffsetY: grainOff.y,
         scale: entry.scale,
