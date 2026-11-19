@@ -5,7 +5,7 @@ import type { HalationFilterConfig } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
 import { ColorPickerButton } from '@/components/studio/color-picker'
-import { SliderRow, BeatPunchRow, sectionShell, MicroLabel } from '@/components/studio/controls'
+import { SliderRow, BeatPunchRow, ToggleRow, sectionShell, MicroLabel } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 
 /** Group divider inside the card — a small uppercase header with a rule. */
@@ -17,6 +17,37 @@ function Group({ children }: { children: React.ReactNode }) {
       </span>
       <span className="h-px flex-1 bg-zinc-800/80" aria-hidden />
     </div>
+  )
+}
+
+/** One option in the flip-direction chip chooser — active chip picks up
+ *  the section's rose (the same chooser the 3D glasses card runs). */
+function OptionChip({
+  label,
+  sub,
+  active,
+  onClick,
+}: {
+  label: string
+  sub: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        'flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border px-1 py-1.5 transition-colors',
+        active
+          ? 'border-rose-400/70 bg-rose-500/15 text-rose-200'
+          : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200',
+      )}
+    >
+      <span className="text-xs font-medium">{label}</span>
+      <span className="text-[9px] leading-none text-zinc-500">{sub}</span>
+    </button>
   )
 }
 
@@ -39,10 +70,13 @@ const HALO_PRESETS: { name: string; hex: string }[] = [
  * decrypted shaders. The classic film artifact: bright highlights bleed a
  * glow into the frame around them, in whatever halo color you pick (the
  * Kodak look, with the stock color of your choice — presets or the full
- * picker). React to beat flares the whole glow brighter on every kick,
- * scaled by the Beat flare dial. Like the other filter cards, the card
- * collapses to one line while the switch is off; flipping it on opens the
- * full dial set.
+ * picker). React to beat pushes both the glow energy and the finished halo
+ * with every kick, scaled by the Beat flare dial, and Flip on kick swaps
+ * the whole look per detected kick — the 3D glasses' flip, translated to
+ * the halo: the color inverts, the halo lifts off, or the halation stamps
+ * in from a clean frame. Like the other filter cards, the card collapses
+ * to one line while the switch is off; flipping it on opens the full dial
+ * set.
  */
 export function HalationSection() {
   const filter = useStudioStore((s) => s.config.halationFilter)
@@ -78,9 +112,9 @@ export function HalationSection() {
             through film into the base and reflects back (the Kodak look, in
             any stock color you like). Rebuilt from effect.app&apos;s own
             Halation shaders — every dial below is the real effect&apos;s own
-            parameter at its published default, plus the free halo color and
-            the beat flare. Everything here bakes into the preview and every
-            export.
+            parameter at its published default, plus the free halo color, the
+            beat flare and the kick flip. Everything here bakes into the
+            preview and every export.
           </p>
 
           <div className="space-y-3">
@@ -195,6 +229,71 @@ export function HalationSection() {
               strengthLabel="Beat flare"
             />
 
+            <ToggleRow
+              label="Flip on kick"
+              checked={filter.beatFlip ?? false}
+              onCheckedChange={(beatFlip) => patch({ beatFlip })}
+            />
+            {filter.beatFlip ? (
+              <>
+                <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="What the kick shows">
+                  <OptionChip
+                    label="Around"
+                    sub="color inverts"
+                    active={(filter.beatFlipTo ?? 'around') === 'around'}
+                    onClick={() => patch({ beatFlipTo: 'around' })}
+                  />
+                  <OptionChip
+                    label="The picture"
+                    sub="halo between kicks"
+                    active={filter.beatFlipTo === 'picture'}
+                    onClick={() => patch({ beatFlipTo: 'picture' })}
+                  />
+                  <OptionChip
+                    label="The print"
+                    sub="picture between kicks"
+                    active={filter.beatFlipTo === 'print'}
+                    onClick={() => patch({ beatFlipTo: 'print' })}
+                  />
+                </div>
+                <p className="text-[10px] leading-snug text-zinc-600">
+                  {filter.beatFlipTo === 'picture'
+                    ? 'The halo rests on the frame between kicks; on a kick it lifts clean off so the untouched picture flashes through, then the glow settles back.'
+                    : filter.beatFlipTo === 'print'
+                      ? 'The untouched picture rests on the frame between kicks; on a kick the halation stamps in, holds, then fades back out.'
+                      : 'The halo rests on the frame between kicks; on a kick the whole glow flips to the opposite color — the tint\'s complement — holds, then swings back to the color you picked.'}
+                </p>
+                <SliderRow
+                  label="Kick sensitivity"
+                  value={filter.flipSensitivity ?? 0.1}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  onChange={set('flipSensitivity')}
+                  format={(v) =>
+                    v <= 0.025 ? 'Slams only' : v >= 0.975 ? 'Every hit' : `${Math.round(v * 100)}%`
+                  }
+                />
+                <SliderRow
+                  label="Flip hold"
+                  value={filter.flipHold ?? 0.2}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  onChange={set('flipHold')}
+                  format={(v) => (v < 0.025 ? 'Quick flash' : `${(v * 2).toFixed(1)}s`)}
+                />
+                <p className="text-[10px] leading-snug text-zinc-600">
+                  The same kick detector the halftone print and the 3D glasses
+                  flip on (each card keeps its own dials, so dialed the same
+                  they fire together): sensitivity listens for the HIT on a
+                  clean sub-bass channel — lower = only the hardest slams,
+                  higher = every tap. Hold keeps the swapped look fully
+                  swapped that long before the quick 0.25s fade-back.
+                </p>
+              </>
+            ) : null}
+
             <p className="text-[10px] leading-snug text-zinc-600">
               Bright pass: Threshold sets how bright a pixel must be before it
               halos, Knee eases mid-tones into the glow (higher = softer
@@ -206,9 +305,13 @@ export function HalationSection() {
               picker — the hottest core drifts toward white), Background gain
               decides what tones can catch the halo (dark only ↔ everywhere),
               Compensation tames the halo over blue-leaning pixels so skies
-              stay cool. React to beat flares the whole glow brighter on
-              every kick — Beat flare sets how hard. Skipped on transparent
-              backgrounds so alpha recordings stay clean.
+              stay cool. React to beat pushes BOTH the glow energy and the
+              finished halo with every kick — Beat flare sets how hard, so
+              the whole bloom visibly breathes with the low end. Flip on kick
+              swaps the whole look per detected kick: Around inverts the halo
+              color, The picture flashes the untouched frame through, The
+              print stamps the halation in from a clean frame. Skipped on
+              transparent backgrounds so alpha recordings stay clean.
             </p>
           </div>
         </>
@@ -216,7 +319,7 @@ export function HalationSection() {
         <p className="text-[11px] leading-snug text-zinc-600">
           The film highlight-bleed glow — bright spots bloom halos in the
           color you pick. Flip the switch on to open the threshold,
-          diffusion, glow and beat controls.
+          diffusion, glow, beat flare and kick flip controls.
         </p>
       )}
     </section>

@@ -1134,9 +1134,13 @@ export interface ColorGradeFilterConfig {
  * passes (bright pass / horizontal diffusion / vertical diffusion / halo
  * composite) were fetched off the site and decrypted verbatim; every dial
  * below is the shader's own uniform at the shader's published default.
- * Two Spectra extensions on top: the shader's hardcoded red→orange tint
- * pair is generalized to any picked color, and an opt-in beat flare
- * multiplies the glow energy with the song's low end.
+ * Spectra extensions on top: the shader's hardcoded red→orange tint pair
+ * is generalized to any picked color, an opt-in beat flare pushes both
+ * the bright-pass energy AND the finished halo with the song's low end,
+ * and an opt-in Flip on kick swaps the whole look per detected kick —
+ * the same flipGate detector the halftone print and the 3D glasses
+ * share, with the same Around / The picture / The print directions
+ * translated to what a halo is made of (color / the untouched frame).
  *
  * The chain, exactly as the site runs it:
  *   1. Bright pass — the frame's Rec.709 luminance (in linear light) goes
@@ -1155,11 +1159,24 @@ export interface ColorGradeFilterConfig {
  *      can catch the halo, and a blue damper keeps skies/cool pixels from
  *      blushing.
  *
- * React to beat (opt-in, default off) — the flare multiplies the glow
- * energy while the song's low end (frame.bass) hits, up to
- * strength × 1.6 on a full kick through the shared beatBoost helper, and
- * rests at exactly 1 between kicks so the dialed-in look is untouched
- * while the song is quiet. Deterministic (same frame in, same pixels
+ * React to beat (opt-in, default off) — two flares ride the same Beat
+ * flare dial through the shared beatBoost helper while the song's low
+ * end (frame.bass) hits: the bright-pass energy multiplies up to
+ * strength × 1.6 (the fringe grows into the glow) and the FINISHED halo
+ * in the composite multiplies up to strength × 2 (the visible glow —
+ * hot core included — blooms brighter per kick, which is where the
+ * reaction reads). Both rest at exactly 1 between kicks so the
+ * dialed-in look is untouched while the song is quiet.
+ *
+ * Flip on kick (opt-in, default off) — on a bass ONSET on the clean
+ * sub-band channel (the shared flipGate detector, per-filter state) the
+ * whole look swaps for the Flip hold time, then falls back over a short
+ * release, in the direction beatFlipTo chooses: 'around' swings the tint
+ * to its linear-light complement (the halo changes color, holds, swings
+ * back — byte-identical to flip off at rest); 'picture' rests the halo
+ * on the frame and on a kick lifts it clean off so the untouched picture
+ * flashes through; 'print' rests as the untouched picture and stamps the
+ * halation in on the kick. Deterministic (same frame in, same pixels
  * out); skipped on transparent backgrounds like every full-frame filter.
  */
 export interface HalationFilterConfig {
@@ -1186,11 +1203,26 @@ export interface HalationFilterConfig {
    *  The hottest core of the glow drifts toward a half-white-hot version of
    *  it; absent in old saves → the Kodak default "#ff4d21". */
   tint: string
-  /** Beat flare switch — when on, the glow energy multiplies while the
-   *  song's low end hits and rests at the dialed-in look between kicks. */
+  /** Beat flare switch — when on, the glow energy AND the finished halo
+   *  multiply while the song's low end hits and rest at the dialed-in
+   *  look between kicks. */
   beatReactive: boolean
   /** How hard the beat flare hits, 0..1 (only matters when beatReactive) */
   beatStrength: number
+  /** Flip on kick switch — on a solid low-end hit the whole look swaps
+   *  for the hold time, then falls back (the 3D glasses flip, with its
+   *  same detector and dials). */
+  beatFlip: boolean
+  /** Which side of the swap the kick reveals — 'around' flips the tint
+   *  to its complement, 'picture' flashes the untouched frame through,
+   *  'print' rests clean and stamps the halation in on the kick. */
+  beatFlipTo: 'around' | 'picture' | 'print'
+  /** Kick detector sensitivity 0..1 — lower = only the hardest slams
+   *  fire the flip, higher = every tap (only matters when beatFlip). */
+  flipSensitivity: number
+  /** Flip hold 0..1 — how long the swapped look stays fully swapped
+   *  before the quick 0.25s fall-back (only matters when beatFlip). */
+  flipHold: number
   /** Background gain 0..1 — where the halo may land: 0 = over dark tones
    *  only, 1 = over the whole frame (published 0.85). */
   backgroundGain: number
@@ -1805,6 +1837,10 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     blueComp: 0.5,
     beatReactive: false,
     beatStrength: 0.5,
+    beatFlip: false,
+    beatFlipTo: 'around',
+    flipSensitivity: 0.1,
+    flipHold: 0.2,
   },
   ditherFilter: {
     enabled: false,

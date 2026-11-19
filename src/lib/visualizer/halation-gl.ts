@@ -18,7 +18,11 @@
  *   half strength, everything screens back over the original in linear
  *   light behind a background gate (dark-only ↔ everywhere) and a blue
  *   damper. Spectra extension: the site's shader hardcodes the red→orange
- *   pair; here the pair is the user-picked tint passed as a uniform.
+ *   pair; here the pair is the user-picked tint passed as a uniform, and
+ *   the React-to-beat flare multiplies the finished halo (uFlare — rest
+ *   1, so the dialed-in look never moves between kicks; this is where
+ *   the beat reaction actually READS, because the blurred energy the
+ *   site's own beat analog multiplies saturates at the hot core).
  *
  * The blur is the site's own capped 80-tap sweep (step = max(1, radius/80),
  * quadratic-smoothed linear weights), sampled with CLAMP_TO_EDGE so halos
@@ -31,6 +35,12 @@
  *
  * Architecture mirrors neon-split-gl.ts: one offscreen WebGL2 canvas, full-
  * frame quads, RGBA8 FBOs, the source frame uploaded per render() call.
+ * A construction-time SELF-TEST pushes a synthetic bright frame through the
+ * real chain and requires the glow energy to land in the framebuffer — some
+ * GL stacks hand out program objects that link, validate and report no
+ * errors yet silently draw nothing, which would otherwise render the whole
+ * effect as nothing at all; the probe recompiles the programs and, if the
+ * chain still can't draw, throws so the proven CPU fallback takes over.
  * `scale` < 1 renders the chain at lower internal resolution — the live
  * preview's perf escape hatch; exports always call with 1.
  */
@@ -228,6 +238,7 @@ uniform vec3 uTint;
 uniform float uBackgroundGain;
 uniform float uBlueComp;
 uniform float uBoost;
+uniform float uFlare;
 
 vec3 sRGBToLinear(vec3 c) {
     vec3 lo = c / 12.92;
@@ -264,7 +275,7 @@ void main() {
     float blueBg = max(0.0, base.b - bgY);
     float blueDamp = 1.0 - blueBg * (1.0 - uBlueComp);
 
-    halo *= bgGate * blueDamp * uIntensity;
+    halo *= bgGate * blueDamp * uIntensity * uFlare;
 
     vec3 result = 1.0 - (1.0 - base) * (1.0 - halo);
     outColor = vec4(linearTosRGB(result), original.a);
@@ -291,6 +302,9 @@ export type HalationParams = {
   tint: [number, number, number]
   /** Beat flare multiplier on the bright-pass energy (1 = off / rest) */
   beat: number
+  /** Beat flare multiplier on the FINISHED halo in the composite pass
+   *  (1 = off / rest) — the visible-glow side of the flare */
+  flare: number
   backgroundGain: number
   blueComp: number
   scale: number
@@ -332,6 +346,109 @@ export class HalationGL {
     // same note neon-split's chain carries).
     this.gl.pixelStorei(this.gl.UNPACK_FLIP_Y_WEBGL, true)
     this.compileAll()
+    this.selfTest()
+  }
+
+  /**
+   * Construction-time self-test: push a synthetic bright frame through the
+   * REAL four-pass chain (canvas upload → bright pass → readPixels) and
+   * require the glow energy to actually LAND in the framebuffer. Some GL
+   * stacks (software rasterizers in particular) hand out program objects
+   * that link and validate yet silently fail to draw — every uniform reads
+   * back correct, the draw reports no error, and the output is simply
+   * empty. Without this probe such an environment renders the halation as
+   * NOTHING AT ALL: no halo, no tint, no beat flare, no error anywhere.
+   *
+   * The test re-runs compileAll() up to SELF_TEST_RETRIES times (programs
+   * recompiled on the same context draw fine — it is the objects born in
+   * the first moments of a fresh context that break), and throws when the
+   * chain still can't produce energy, so drawHalationFilter's constructor
+   * catch gives up on GL and the proven CPU path takes over. Cost: a few
+   * one-time milliseconds per instance, never per frame.
+   */
+  private selfTest(): void {
+    const gl = this.gl
+    const T = 16
+    const probe = document.createElement('canvas')
+    probe.width = T
+    probe.height = T
+    const pctx = probe.getContext('2d')!
+    pctx.fillStyle = '#ffffff'
+    pctx.fillRect(0, 0, T, T)
+
+    // tiny FBO to hold the bright pass's output during the probe
+    const tex = gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D, tex)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, T, T, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    const fb = gl.createFramebuffer()
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0)
+
+    const attempt = (): boolean => {
+      const P = this.passes.get('bright')!
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
+      gl.viewport(0, 0, T, T)
+      gl.useProgram(P.program)
+      gl.bindVertexArray(this.quadVao)
+      gl.activeTexture(gl.TEXTURE0)
+      gl.bindTexture(gl.TEXTURE_2D, tex)
+      // first draw samples the (empty) probe texture — it only proves the
+      // program DRAWS; the real sample check needs the uploaded frame
+      gl.uniform1i(P.uniforms.iChannel0, 0)
+      gl.uniform1f(P.uniforms.uThreshold, 0.2)
+      gl.uniform1f(P.uniforms.uKnee, 0.25)
+      gl.uniform1f(P.uniforms.uBoost, 1)
+      gl.uniform1f(P.uniforms.uBeat, 1)
+      gl.drawArrays(gl.TRIANGLES, 0, 3)
+      if (gl.getError() !== gl.NO_ERROR) return false
+      const px = new Uint8Array(T * T * 4)
+      gl.readPixels(0, 0, T, T, gl.RGBA, gl.UNSIGNED_BYTE, px)
+      // alpha 1 everywhere but energy 0 ⇒ the sampler reads black ⇒ broken
+      let maxA = 0
+      for (let i = 3; i < px.length; i += 4) if (px[i] > maxA) maxA = px[i]
+      if (maxA < 200) return false
+      // now upload the bright probe frame and require real energy: y = 1
+      // through softKnee(0.2, 0.25) · (0.4 + 1·1.8) · 1 ⇒ R ≈ 190+
+      gl.bindTexture(gl.TEXTURE_2D, tex)
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, probe)
+      gl.drawArrays(gl.TRIANGLES, 0, 3)
+      if (gl.getError() !== gl.NO_ERROR) return false
+      gl.readPixels(0, 0, T, T, gl.RGBA, gl.UNSIGNED_BYTE, px)
+      let maxR = 0
+      for (let i = 0; i < px.length; i += 4) if (px[i] > maxR) maxR = px[i]
+      return maxR > 100
+    }
+
+    try {
+      let ok = attempt()
+      let tries = 1
+      while (!ok && tries < 4) {
+        // Discard every program object and recompile — fresh program objects
+        // draw reliably even on the stacks whose first batch breaks.
+        for (const [, pass] of this.passes) {
+          gl.deleteProgram(pass.program)
+        }
+        this.passes.clear()
+        this.compileAll()
+        ok = attempt()
+        tries++
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+      gl.deleteFramebuffer(fb)
+      gl.deleteTexture(tex)
+      if (!ok) {
+        throw new Error('halation gl self-test failed: the chain draws no energy')
+      }
+    } catch (err) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+      gl.deleteFramebuffer(fb)
+      gl.deleteTexture(tex)
+      throw err
+    }
   }
 
   get isLost(): boolean {
@@ -404,6 +521,7 @@ export class HalationGL {
       'uBackgroundGain',
       'uBlueComp',
       'uBoost',
+      'uFlare',
     ])
   }
 
@@ -526,6 +644,7 @@ export class HalationGL {
       gl.uniform1f(P('composite').uniforms.uBackgroundGain, p.backgroundGain)
       gl.uniform1f(P('composite').uniforms.uBlueComp, p.blueComp)
       gl.uniform1f(P('composite').uniforms.uBoost, p.boost)
+      gl.uniform1f(P('composite').uniforms.uFlare, p.flare)
     })
 
     return this.canvas

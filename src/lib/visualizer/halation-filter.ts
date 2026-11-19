@@ -17,12 +17,28 @@
  * the composite per pixel. Both deterministic — same frame in, same pixels
  * out — and both skipped on transparent backgrounds (alpha stays clean).
  *
- * React to beat (opt-in, default off) — a beat multiplier scales the glow
- * energy with the song's low end (frame.bass through the shared beatBoost
- * helper; up to strength × 1.6 on a full kick) and rests at exactly 1
- * between kicks, so the dialed-in look is untouched while the song is
- * quiet — the live preview and the offline export flare on the exact same
- * frames.
+ * React to beat (opt-in, default off) — TWO flares ride the one Beat flare
+ * dial through the shared beatBoost helper while the song's low end
+ * (frame.bass) hits: the bright-pass energy multiplies up to strength × 1.6
+ * (the fringe of mid-bright pixels grows into the glow) and the FINISHED
+ * halo in the composite multiplies up to strength × 2 (the visible bloom —
+ * hot core included — which is where the reaction actually READS: the old
+ * energy-only flare saturated at the hot cores and moved nothing there).
+ * Both rest at exactly 1 between kicks, so the dialed-in look is untouched
+ * while the song is quiet — the live preview and the offline export flare
+ * on the exact same frames.
+ *
+ * Flip on kick (opt-in, default off) — the same flip the 3D glasses card
+ * runs (the shared flipGate onset detector, per-filter state, Kick
+ * sensitivity + Flip hold dials): on a bass ONSET on the clean sub-band
+ * channel the whole look swaps for the hold time, then falls back over a
+ * short release, in the direction beatFlipTo chooses — 'around' swings the
+ * tint to its linear-light complement (the halo changes color and swings
+ * back, the halation answer to the glasses' stack mirror), 'picture' rests
+ * the halo on the frame and lifts it clean off on the kick so the untouched
+ * picture flashes through, 'print' rests as the untouched picture (early
+ * return, zero cost — but the detector still advances) and stamps the
+ * halation in on the kick.
  *
  * Infrastructure mirrors neon-split.ts: one GL instance per source canvas
  * (the live preview and an export each own one, so they can't thrash a
@@ -33,6 +49,7 @@
  */
 import type { AudioFrame, HalationFilterConfig, RenderContext } from './types'
 import { beatBoost, clamp01, getWork, resetWork } from './filter-utils'
+import { flipGate } from './halftone-filter'
 import { HalationGL } from './halation-gl'
 
 /* --------------------------------- halo tint --------------------------------- */
@@ -41,10 +58,19 @@ import { HalationGL } from './halation-gl'
  *  config carries a color the parser cannot read. */
 const DEFAULT_TINT = '#ff4d21'
 
-/** "Beat flare" ceiling: at strength 1 the glow energy multiplies up to
- *  2.6× on a full low-end hit (the cap handed to the shared beatBoost
- *  helper — the flare reads as the whole halo blooming brighter per kick). */
+/** "Beat flare" ceiling on the bright-pass energy: at strength 1 the glow
+ *  energy multiplies up to 2.6× on a full low-end hit (the cap handed to
+ *  the shared beatBoost helper — the fringe of mid-bright pixels grows
+ *  into the glow). */
 const HALATION_BEAT_KICK = 1.6
+
+/** "Beat flare" ceiling on the FINISHED halo (the composite pass): at
+ *  strength 1 the visible glow — hot core included — multiplies up to 3×
+ *  on a full kick. This is where the beat reaction actually reads: the
+ *  bright-pass energy saturates at the hot cores (multiplier does nothing
+ *  there), while multiplying the composited halo brightens every lit
+ *  pixel of the bloom in the picked tint. Rests at exactly 1. */
+const HALATION_BEAT_HALO = 2.0
 
 /** "#rrggbb" / "#rgb" → linear-light RGB triplet for the tint uniform.
  *  Unparseable input falls back to the Kodak default, never to black. */
@@ -237,6 +263,12 @@ function drawHalationCPU(
   backgroundGain: number,
   blueComp: number,
   beat: number,
+  flare: number,
+  /** The untouched pre-halation frame (picture/print flip dissolves) */
+  snap: HTMLCanvasElement | null,
+  flipToPicture: boolean,
+  flipToPrint: boolean,
+  flipT: number,
 ): void {
   const { ctx, width: W, height: H } = rc
   const work = getWork('halation:base', W, H)
@@ -294,7 +326,7 @@ function drawHalationCPU(
     const blueBg = Math.max(0, bb - bgY)
     const blueDamp = 1 - blueBg * oneMinusBlueDampK
 
-    const hk = bgGate * blueDamp * intensity
+    const hk = bgGate * blueDamp * intensity * flare
     haloR *= hk
     haloG *= hk
     haloB *= hk
@@ -309,6 +341,20 @@ function drawHalationCPU(
   }
   wctx.putImageData(img, 0, 0)
   ctx.drawImage(work, 0, 0)
+
+  // The flip's picture/print directions dissolve the untouched frame over
+  // the finished look as the kick lands and falls back — the GL path runs
+  // the identical overlay on its snapshot.
+  if (snap && flipToPicture && flipT > 0.001) {
+    ctx.globalAlpha = flipT
+    ctx.drawImage(snap, 0, 0)
+    ctx.globalAlpha = 1
+  }
+  if (snap && flipToPrint && flipT < 0.999) {
+    ctx.globalAlpha = 1 - flipT
+    ctx.drawImage(snap, 0, 0)
+    ctx.globalAlpha = 1
+  }
 }
 
 function smoothstep(a: number, b: number, x: number): number {
@@ -321,7 +367,7 @@ function smoothstep(a: number, b: number, x: number): number {
 export function drawHalationFilter(
   rc: RenderContext,
   cfg: HalationFilterConfig | undefined,
-  frame: Pick<AudioFrame, 'time' | 'styleTime' | 'bass'>,
+  frame: Pick<AudioFrame, 'time' | 'styleTime' | 'bass' | 'sub'>,
   transparent: boolean,
 ): void {
   if (!cfg?.enabled || transparent) return
@@ -339,10 +385,67 @@ export function drawHalationFilter(
   const blueComp = clamp01(cfg.blueComp ?? 0.5)
   // the halo tint — config hex → linear-light triplet (Kodak fallback)
   const tint = hexToLinearTint(cfg.tint ?? DEFAULT_TINT)
-  // the beat flare — rests at exactly 1 while React to beat is off or the
-  // low end is quiet, punches up to strength × 1.6 on a full kick
+  // the beat flares — rest at exactly 1 while React to beat is off or the
+  // low end is quiet; on a full kick the bright-pass energy multiplies up
+  // to strength × 1.6 (fringe growth) and the finished halo up to
+  // strength × 2 (the visible bloom — hot core included — which is where
+  // the reaction actually reads)
   const beat = beatBoost(cfg, frame.bass, HALATION_BEAT_KICK)
+  const flare = beatBoost(cfg, frame.bass, HALATION_BEAT_HALO)
   if (intensity <= 0.001) return
+
+  // Flip on kick — the same onset detector the halftone print's flip and
+  // the 3D glasses' flip share: bass ONSETS on the clean sub-band channel
+  // fire once per hit and pin the swap for the hold dial's time, then it
+  // falls back over a short release. beatFlipTo chooses what the kick
+  // reveals:
+  //   'around'  — the tint swings to its linear-light complement: the halo
+  //               changes color, holds, and swings back through the resting
+  //               look — byte-identical to flip off (the halation answer to
+  //               the glasses' stack mirror; color is what a halo is made
+  //               of, so color is what flips)
+  //   'picture' — the halo rests on the frame between kicks; on a kick it
+  //               lifts clean off so the untouched picture flashes through
+  //               and settles back
+  //   'print'   — the untouched picture rests between kicks (early return,
+  //               zero cost — but the detector still advances) and the
+  //               halation stamps in on the kick, holds, fades back out
+  const flipTo = cfg.beatFlipTo ?? 'around'
+  const flipToPicture = !!cfg.beatFlip && flipTo === 'picture'
+  const flipToPrint = !!cfg.beatFlip && flipTo === 'print'
+  const flipT = cfg.beatFlip
+    ? flipGate(
+        ctx,
+        Math.min(1, Math.max(0, frame.sub ?? frame.bass)),
+        frame.time,
+        Math.min(1, Math.max(0, cfg.flipSensitivity ?? 0.1)),
+        Math.min(1, Math.max(0, cfg.flipHold ?? 0.2)) * 2,
+        'halation',
+      )
+    : 0
+
+  // Print direction at rest: the untouched picture alone — zero cost.
+  if (flipToPrint && flipT <= 0.001) return
+
+  // 'around': per-channel lerp from the picked tint to its linear-light
+  // complement as the kick lands (the heat mix and the half-white-hot core
+  // derive from the tint inside both render paths, so the whole look flips
+  // coherently); flipT 0 = the picked color, byte-identical to flip off.
+  const mixChannel = (a: number) => a + (1 - a - a) * flipT
+  const tintUsed: [number, number, number] =
+    flipTo === 'around' && flipT > 0.001
+      ? [mixChannel(tint[0]), mixChannel(tint[1]), mixChannel(tint[2])]
+      : tint
+
+  // The untouched pre-halation frame, for the flip's picture/print
+  // dissolves — snapshotted before either render path touches the canvas.
+  let snap: HTMLCanvasElement | null = null
+  if ((flipToPicture || flipToPrint) && flipT > 0.001) {
+    snap = getWork('halation:snap', W, H)
+    const sc = resetWork(snap.getContext('2d')!)
+    sc.clearRect(0, 0, W, H)
+    sc.drawImage(ctx.canvas, 0, 0)
+  }
 
   let done = false
   const entry = getGlEntry(ctx.canvas)
@@ -357,8 +460,9 @@ export function drawHalationFilter(
         localDiffusion,
         globalDiffusion,
         intensity,
-        tint,
+        tint: tintUsed,
         beat,
+        flare,
         backgroundGain,
         blueComp,
         scale: entry.scale,
@@ -368,6 +472,19 @@ export function drawHalationFilter(
       ctx.globalAlpha = 1
       ctx.drawImage(out, 0, 0, W, H)
       ctx.restore()
+      // The flip's picture/print directions dissolve the untouched frame
+      // (the snap) over the finished look as the kick lands and falls back
+      // — the CPU fallback runs the identical overlay.
+      if (snap && flipToPicture && flipT > 0.001) {
+        ctx.globalAlpha = flipT
+        ctx.drawImage(snap, 0, 0)
+        ctx.globalAlpha = 1
+      }
+      if (snap && flipToPrint && flipT < 0.999) {
+        ctx.globalAlpha = 1 - flipT
+        ctx.drawImage(snap, 0, 0)
+        ctx.globalAlpha = 1
+      }
       done = true
     } catch (err) {
       // The chain itself failed (lost context mid-frame, driver hiccup).
@@ -401,6 +518,23 @@ export function drawHalationFilter(
   }
 
   if (!done) {
-    drawHalationCPU(rc, threshold, knee, boost, localDiffusion, globalDiffusion, intensity, tint, backgroundGain, blueComp, beat)
+    drawHalationCPU(
+      rc,
+      threshold,
+      knee,
+      boost,
+      localDiffusion,
+      globalDiffusion,
+      intensity,
+      tintUsed,
+      backgroundGain,
+      blueComp,
+      beat,
+      flare,
+      snap,
+      flipToPicture,
+      flipToPrint,
+      flipT,
+    )
   }
 }
