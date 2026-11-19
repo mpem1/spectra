@@ -96,16 +96,22 @@ export function NeonSplitFilterSection() {
       </div>
       <p className="text-[11px] leading-snug text-zinc-600">
         The effect.app neon-split preset, rebuilt from its own published
-        shader code — the upper part of the frame inverts behind a soft band
-        (the real &ldquo;split&rdquo;), the highlights bloom, colored film
-        grain sits in the light, and every pixel&apos;s brightness re-reads
-        through the preset&apos;s own gradient map (deep blue → orchid → pale
-        pink). No overlay — the color IS the map. Turn on Split to let the
-        frame below the line keep its own colors. Baked into every export.
+        shader code — with its effect sections on dials right below:
+        Gradient map (the color IS the ramp — deep blue → orchid → pale
+        pink, no overlay), Noise (the colored film grain) and Bloom (the
+        highlight glow). The upper part of the frame inverts behind a soft
+        band — the real &ldquo;split&rdquo;. Every dial sits at the preset&apos;s
+        own value in the middle; flip the switch on to bake the look into
+        the preview and every export.
       </p>
 
-      {filter.enabled ? (
-        <>
+      {/* The dials stay visible even when the filter is off — dimmed and
+          locked — so every section is discoverable without flipping the
+          switch first. */}
+      <div
+        className={cn('space-y-3', !filter.enabled && 'pointer-events-none opacity-50')}
+        aria-disabled={!filter.enabled}
+      >
           <Group>Gradient map</Group>
           <div className="space-y-1.5">
             <MicroLabel>Neon ramp</MicroLabel>
@@ -114,6 +120,7 @@ export function NeonSplitFilterSection() {
                 <button
                   key={r.id}
                   type="button"
+                  disabled={!filter.enabled}
                   aria-pressed={filter.ramp === r.id}
                   onClick={() => patchNeonSplitFilter({ ramp: r.id })}
                   className={cn(
@@ -150,6 +157,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('mapAmount')}
+            disabled={!filter.enabled}
             format={(v) => (v <= 0.025 ? 'Original colors' : `${Math.round(v * 100)}%`)}
           />
 
@@ -161,6 +169,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('glow')}
+            disabled={!filter.enabled}
             format={(v) => (v <= 0.025 ? 'Flat' : v <= 0.525 ? 'Preset' : `+${Math.round((v - 0.5) * 100)}%`)}
           />
           <SliderRow
@@ -170,6 +179,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('bloomThreshold')}
+            disabled={!filter.enabled}
             format={(v) => {
               const t = Math.round(Math.min(1, Math.max(0, 0.1 + (v - 0.5) * 1.4)) * 100)
               return t <= 1 ? 'Everything' : `${t}%`
@@ -182,6 +192,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('bloomSoftness')}
+            disabled={!filter.enabled}
             format={(v) => (v <= 0.025 ? 'Hard edge' : v <= 0.525 ? 'Preset' : 'Softest')}
           />
           <SliderRow
@@ -191,10 +202,12 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('bloomMix')}
+            disabled={!filter.enabled}
             format={(v) => (v <= 0.025 ? 'None' : `${Math.round(v * 130)}%`)}
           />
 
-          <Group>Film grain</Group>
+          {/* effect.app calls this section Noise — same colored speckle. */}
+          <Group>Noise · film grain</Group>
           <SliderRow
             label="Film grain"
             value={filter.grain}
@@ -202,6 +215,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('grain')}
+            disabled={!filter.enabled}
             format={(v) => (v <= 0.025 ? 'Clean' : v <= 0.525 ? 'Preset' : `+${Math.round((v - 0.5) * 100)}%`)}
           />
           <SliderRow
@@ -211,6 +225,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('grainSpeed')}
+            disabled={!filter.enabled}
             format={(v) => (v <= 0.025 ? 'Still' : `${Math.round(v * 24)} steps/s`)}
           />
           <SliderRow
@@ -220,6 +235,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('grainSize')}
+            disabled={!filter.enabled}
             format={(v) => {
               const cell = Math.max(0.5, 0.5 + (v - 0.5) * 7)
               return cell <= 0.51 ? 'Preset (fine)' : `${cell.toFixed(1)}px`
@@ -232,6 +248,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('grainChroma')}
+            disabled={!filter.enabled}
             format={(v) => (v <= 0.025 ? 'Monochrome' : Math.abs(v - 0.69) <= 0.03 ? 'Preset' : `${Math.round(v * 100)}% colored`)}
           />
           <SliderRow
@@ -241,6 +258,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('grainShadow')}
+            disabled={!filter.enabled}
             format={(v) => {
               const w = Math.round(Math.min(1, Math.max(0, 0.25 + (v - 0.5))) * 100)
               return w <= 1 ? 'None' : Math.abs(v - 0.5) <= 0.03 ? 'Preset' : `${w}%`
@@ -253,6 +271,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('grainHighlight')}
+            disabled={!filter.enabled}
             format={(v) => {
               const w = Math.round(Math.min(1, Math.max(0.06, 0.53 + (v - 0.5) * 0.94)) * 100)
               return Math.abs(v - 0.5) <= 0.03 ? 'Preset' : `${w}%`
@@ -267,6 +286,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('contrast')}
+            disabled={!filter.enabled}
             format={(v) => (v < 0.475 ? 'Washed' : v <= 0.525 ? 'Preset' : `+${Math.round((v - 0.5) * 100)}%`)}
           />
           <SliderRow
@@ -276,6 +296,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('split')}
+            disabled={!filter.enabled}
             format={(v) => (v <= 0.025 ? 'All neon' : `${Math.round(v * 100)}% original`)}
           />
           <BeatPunchRow
@@ -284,6 +305,7 @@ export function NeonSplitFilterSection() {
             onToggle={(beatReactive) => patchNeonSplitFilter({ beatReactive })}
             onStrength={(beatStrength) => patchNeonSplitFilter({ beatStrength })}
             strengthLabel="Beat punch"
+            disabled={!filter.enabled}
           />
           {filter.beatReactive ? (
             <p className="text-[10px] leading-snug text-zinc-600">
@@ -298,6 +320,7 @@ export function NeonSplitFilterSection() {
             max={1}
             step={0.05}
             onChange={set('strength')}
+            disabled={!filter.enabled}
             format={(v) => `${Math.round(v * 100)}%`}
           />
           <p className="text-[10px] leading-snug text-zinc-600">
@@ -319,8 +342,7 @@ export function NeonSplitFilterSection() {
             original. Skipped on transparent backgrounds so alpha recordings
             stay clean.
           </p>
-        </>
-      ) : null}
+      </div>
     </section>
   )
 }

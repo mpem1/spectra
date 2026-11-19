@@ -38,12 +38,17 @@ export function ColorGradeSection() {
       <p className="text-[11px] leading-snug text-zinc-600">
         The classic tone grades — Black &amp; white maps the picture to neutral
         luminance, Sepia runs it through the warm brown archive print. It
-        grades whatever is beneath it, so it stacks with Neon Split. Baked
-        into every export.
+        grades whatever is beneath it, so it stacks with Neon Split. Pick a
+        grade and dial it in below; flip the switch on to bake it into the
+        preview and every export.
       </p>
 
-      {filter.enabled ? (
-        <>
+      {/* Dials stay visible while the switch is off — dimmed and locked —
+          so the grade controls are discoverable without enabling first. */}
+      <div
+        className={cn('space-y-3', !filter.enabled && 'pointer-events-none opacity-50')}
+        aria-disabled={!filter.enabled}
+      >
           <div className="space-y-1.5">
             <MicroLabel>Grade</MicroLabel>
             <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="Color grade look">
@@ -51,6 +56,7 @@ export function ColorGradeSection() {
                 <button
                   key={look.id}
                   type="button"
+                  disabled={!filter.enabled}
                   aria-pressed={filter.look === look.id}
                   onClick={() => patch({ look: look.id })}
                   className={cn(
@@ -80,6 +86,7 @@ export function ColorGradeSection() {
             max={1}
             step={0.05}
             onChange={(strength) => patch({ strength })}
+            disabled={!filter.enabled}
             format={(v) => `${Math.round(v * 100)}%`}
           />
           <SliderRow
@@ -89,6 +96,7 @@ export function ColorGradeSection() {
             max={1}
             step={0.05}
             onChange={(contrast) => patch({ contrast })}
+            disabled={!filter.enabled}
             format={(v) => (v < 0.475 ? 'Washed' : v <= 0.525 ? 'Neutral' : `+${Math.round((v - 0.5) * 200)}%`)}
           />
           {filter.look === 'sepia' ? (
@@ -99,11 +107,11 @@ export function ColorGradeSection() {
               max={1}
               step={0.05}
               onChange={(warmth) => patch({ warmth })}
+              disabled={!filter.enabled}
               format={(v) => (v <= 0.025 ? 'Plain mono' : v <= 0.475 ? 'Light' : v <= 0.525 ? 'Classic' : 'Deep amber')}
             />
           ) : null}
-        </>
-      ) : null}
+      </div>
     </section>
   )
 }

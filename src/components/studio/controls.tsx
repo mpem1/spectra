@@ -217,18 +217,20 @@ export function BeatPunchRow({
   onToggle,
   onStrength,
   strengthLabel = 'Beat punch',
+  disabled,
 }: {
   on: boolean
   strength: number
   onToggle: (on: boolean) => void
   onStrength: (v: number) => void
   strengthLabel?: string
+  disabled?: boolean
 }) {
   return (
     <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5">
       <div className="flex h-5 items-center justify-between">
         <MicroLabel className="text-zinc-400">React to beat</MicroLabel>
-        <Switch aria-label="React to beat" checked={on} onCheckedChange={onToggle} />
+        <Switch aria-label="React to beat" checked={on} onCheckedChange={onToggle} disabled={disabled} />
       </div>
       {on ? (
         <>
@@ -239,6 +241,7 @@ export function BeatPunchRow({
             max={1}
             step={0.05}
             onChange={onStrength}
+            disabled={disabled}
             format={(v) => `${Math.round(v * 100)}%`}
           />
           <p className="text-[10px] leading-snug text-zinc-600">
