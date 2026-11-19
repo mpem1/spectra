@@ -90,8 +90,8 @@ function mapNoiseStrength(grain: number): number {
   return clamp01(grain) * 2 * PRESET_NOISE_STRENGTH
 }
 
-function mapBloomIntensity(glow: number, beatBoost: number): number {
-  return clamp01(glow) * 2 * PRESET_BLOOM_INTENSITY * beatBoost
+function mapBloomIntensity(glow: number): number {
+  return clamp01(glow) * 2 * PRESET_BLOOM_INTENSITY
 }
 
 /** Dial 0.5 = the published 0.1 threshold; the sweep reaches 0 (everything
@@ -278,9 +278,6 @@ function drawNeonSplitCPU(
   shadowWeight: number,
   highlightWeight: number,
   mapMix: number,
-  /** The ramp window WITH the beat punch already slid in — the CPU path
-   *  renders the exact same punched shift the GL chain does. */
-  mapShift: number,
   grainOffsetX: number,
   grainOffsetY: number,
 ): void {
@@ -391,6 +388,7 @@ function drawNeonSplitCPU(
   const mapStops = mapStopsFor(cfg)
   const gradKey = gradKeyFor(mapStops)
   const gc = gradLutFor(gradKey, mapStops)
+  const mapShift = Math.min(1, Math.max(-1, cfg.mapShift ?? 0))
   const mapRepeat = Math.round(Math.min(8, Math.max(1, cfg.mapRepeat ?? 1)))
   const mapBlendId = GRAD_BLEND_IDS.indexOf((cfg.mapBlend ?? 'normal') as (typeof GRAD_BLEND_IDS)[number])
   const outImg = baseCtx.createImageData(W, H)
@@ -577,7 +575,7 @@ function grainOffsetFor(speed: number, styleTime: number): { x: number; y: numbe
 export function drawNeonSplitFilter(
   rc: RenderContext,
   cfg: NeonSplitFilterConfig | undefined,
-  frame: Pick<AudioFrame, 'bass' | 'sub' | 'time' | 'styleTime'>,
+  frame: Pick<AudioFrame, 'time' | 'styleTime'>,
   transparent: boolean,
 ): void {
   if (!cfg?.enabled || transparent) return
@@ -588,29 +586,13 @@ export function drawNeonSplitFilter(
   if (strength <= 0.001) return
   const split = clamp01(cfg.split ?? 0)
 
-  // Beat punch — listens to the CLEAN kick channel (frame.sub, the 30–130 Hz
-  // RMS off the raw samples; the bass meter is dB-clipped and pins in loud
-  // masters, where a kick moves it by exactly zero — the old punch rode that
-  // pinned number, so it sat at a constant boost and never visibly pulsed).
-  // One kick drives THREE channels at once so the reaction reads at any dial
-  // setting: the bloom flares brighter (extraction intensity AND the screened
-  // glow amount — intensity alone barely moves an already-saturated bright
-  // pass), the gradient ramp slides a step toward the negative-shift look
-  // (shadows pick up the bright end — the colors ride the hit), and the grain
-  // churns harder — then everything settles back exactly as dialed in between
-  // beats. Same power curve as the halftone's beat pop: gentle low half, top
-  // end pushing past the ceiling on real kicks.
-  const kick = clamp01(frame.sub ?? frame.bass ?? 0)
-  const hit = cfg.beatReactive ? Math.pow(clamp01(cfg.beatStrength ?? 0.5), 1.3) * 1.9 * kick : 0
-  const hitCap = Math.min(hit, 1.3)
-
   // the dials — 0.5 = the published preset's own value (map amount and grain
   // color are direct dials; their presets are 1.0 and 0.69)
-  const bloomIntensity = mapBloomIntensity(cfg.glow ?? 0.5, 1 + hitCap * 0.75)
+  const bloomIntensity = mapBloomIntensity(cfg.glow ?? 0.5)
   const bloomThreshold = mapBloomThreshold(cfg.bloomThreshold ?? 0.5)
   const bloomKnee = mapBloomKnee(cfg.bloomSoftness ?? 0.5)
-  const bloomFactor = mapBloomMix(cfg.bloomMix ?? 0.5) * (1 + hitCap * 0.35)
-  const noiseStrength = mapNoiseStrength(cfg.grain ?? 0.5) * (1 + hit * 0.35)
+  const bloomFactor = mapBloomMix(cfg.bloomMix ?? 0.5)
+  const noiseStrength = mapNoiseStrength(cfg.grain ?? 0.5)
   const grainCell = mapGrainSize(cfg.grainSize ?? 0.5)
   const chroma = clamp01(cfg.grainChroma ?? 0.69)
   const shadowWeight = mapShadowWeight(cfg.grainShadow ?? 0.5)
@@ -619,10 +601,9 @@ export function drawNeonSplitFilter(
   const mapStops = mapStopsFor(cfg)
   const gradKey = gradKeyFor(mapStops)
   const curveMix = Math.min(1, clamp01(cfg.contrast ?? 0.5) * 2)
-  // the ramp window with the punch slid in (negative — shadows pick up the
-  // bright end on the kick, the reference's -0.55 look, clamped to the dial's
-  // own range)
-  const mapShift = Math.min(1, Math.max(-1, (cfg.mapShift ?? 0) - hit * 0.22))
+  // the ramp window — the punch slide is gone: this look's dark half maps to
+  // deep navy through the ramp, and any beat flash that pushes shadows toward
+  // the ramp's bright end reads as harsh white speckle on the frame
   const grainOff = grainOffsetFor(cfg.grainSpeed ?? 0.5, frame.styleTime ?? frame.time ?? 0)
 
   // the untouched frame — the split region and the mix dial fade back to it
@@ -656,7 +637,7 @@ export function drawNeonSplitFilter(
         curveLut: curveLutBase,
         gradPixels: gradPixelsFor(gradKey, mapStops),
         gradKey,
-        mapShift,
+        mapShift: Math.min(1, Math.max(-1, cfg.mapShift ?? 0)),
         mapRepeat: Math.round(Math.min(8, Math.max(1, cfg.mapRepeat ?? 1))),
         mapBlend: GRAD_BLEND_IDS.indexOf((cfg.mapBlend ?? 'normal') as (typeof GRAD_BLEND_IDS)[number]),
         grainOffsetX: grainOff.x,
@@ -719,7 +700,6 @@ export function drawNeonSplitFilter(
       shadowWeight,
       highlightWeight,
       mapMix,
-      mapShift,
       grainOff.x,
       grainOff.y,
     )

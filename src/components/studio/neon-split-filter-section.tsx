@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
-import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, SliderRow, sectionShell } from '@/components/studio/controls'
 import { ColorPickerButton } from '@/components/studio/color-picker'
 import { cn } from '@/lib/utils'
 
@@ -438,22 +438,6 @@ export function NeonSplitFilterSection() {
             disabled={!filter.enabled}
             format={(v) => (v <= 0.025 ? 'All neon' : `${Math.round(v * 100)}% original`)}
           />
-          <BeatPunchRow
-            on={filter.beatReactive}
-            strength={filter.beatStrength}
-            onToggle={(beatReactive) => patchNeonSplitFilter({ beatReactive })}
-            onStrength={(beatStrength) => patchNeonSplitFilter({ beatStrength })}
-            strengthLabel="Beat punch"
-            disabled={!filter.enabled}
-          />
-          {filter.beatReactive ? (
-            <p className="text-[10px] leading-snug text-zinc-600">
-              On every kick the bloom flares brighter, the gradient ramp
-              slides a step so the colors ride the hit, and the grain churns
-              harder — then everything settles back exactly as dialed in
-              between beats.
-            </p>
-          ) : null}
           <SliderRow
             label="Mix"
             value={filter.strength}
@@ -485,9 +469,7 @@ export function NeonSplitFilterSection() {
             which tones catch the speckle. Frame: Contrast shapes the master
             tone curve (50% = the preset&apos;s own curve), Split fades the
             untouched picture back in from the bottom, Mix blends the whole
-            look back toward the original. React to beat flares the bloom,
-            slides the ramp a step and punches the grain together on every
-            kick — Beat punch sets how hard. Skipped on transparent
+            look back toward the original. Skipped on transparent
             backgrounds so alpha recordings stay clean.
           </p>
       </div>
