@@ -100,7 +100,9 @@ function Group({ children }: { children: React.ReactNode }) {
  * bloom's threshold / softness / intensity / mix, and the grain's strength /
  * speed / size / color / shadow / highlight weighting. An optional split line
  * lets the frame below the line keep its own colors. Baked into every export;
- * skipped on transparent backgrounds.
+ * skipped on transparent backgrounds. With the switch off the card collapses
+ * to a single line — the same way the other filter cards keep the Color tab
+ * clean.
  */
 export function NeonSplitFilterSection() {
   const filter = useStudioStore((s) => s.config.neonSplitFilter)
@@ -128,25 +130,29 @@ export function NeonSplitFilterSection() {
           onCheckedChange={(enabled) => patchNeonSplitFilter({ enabled })}
         />
       </div>
-      <p className="text-[11px] leading-snug text-zinc-600">
-        The effect.app neon-split preset, rebuilt from its own published
-        shader code — with the full Gradient map node on dials below: an
-        editable gradient (every stop is a row — pick its color, slide its
-        position), its Opacity, Blend mode, Gradient shift and Gradient
-        repeat — plus
-        Noise (the colored film grain) and Bloom (the highlight glow). The
-        upper part of the frame inverts behind a soft band — the real
-        &ldquo;split&rdquo;. Flip the switch on to bake the look into the
-        preview and every export.
-      </p>
+      {/* Like most of the other filter cards, the card is minimized while
+          the switch is off — one line keeps it discoverable, flipping the
+          switch opens the full dial set. */}
+      {filter.enabled ? (
+        <p className="text-[11px] leading-snug text-zinc-600">
+          The effect.app neon-split preset, rebuilt from its own published
+          shader code — with the full Gradient map node on dials below: an
+          editable gradient (every stop is a row — pick its color, slide its
+          position), its Opacity, Blend mode, Gradient shift and Gradient
+          repeat — plus Noise (the colored film grain) and Bloom (the
+          highlight glow). The upper part of the frame inverts behind a soft
+          band — the real &ldquo;split&rdquo;. Everything here bakes into
+          the preview and every export.
+        </p>
+      ) : (
+        <p className="text-[11px] leading-snug text-zinc-600">
+          The effect.app neon-split preset on full dials — flip the switch
+          on to open the gradient map, bloom, grain and frame controls.
+        </p>
+      )}
 
-      {/* The dials stay visible even when the filter is off — dimmed and
-          locked — so every section is discoverable without flipping the
-          switch first. */}
-      <div
-        className={cn('space-y-3', !filter.enabled && 'pointer-events-none opacity-50')}
-        aria-disabled={!filter.enabled}
-      >
+      {filter.enabled && (
+      <div className="space-y-3">
           {/* effect.app's GRADIENT MAP node — the real feature set: Blend,
               Opacity, the editable gradient (one slider row per color stop),
               shift and repeat, with the five ramp presets as one-click
@@ -473,6 +479,7 @@ export function NeonSplitFilterSection() {
             backgrounds so alpha recordings stay clean.
           </p>
       </div>
+      )}
     </section>
   )
 }
