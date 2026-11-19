@@ -2,7 +2,7 @@
  * Neon Split filter — the effect.app "Neon split" preset, rebuilt from the
  * preset's own published definition and effect code (fetched off the site and
  * decrypted: /api/presets/shared/neon-split plus the gradient-map / bloom /
- * noise / curves / layer-mix GLSL the editor runs). Nothing here is eyeballed:
+ * noise / curves GLSL the editor runs). Nothing here is eyeballed:
  *
  *   1. Levels — the preset inverts the upper part of the picture (input levels
  *      [1,0]) behind a vertical smooth gradient mask (center 0.074,-0.094,
@@ -11,29 +11,32 @@
  *      flip dark, shadows flip glowing, and the look fades out downward —
  *      full invert to ~38% of the height, fade centered ~45%, gone by ~55%
  *      (measured off effect.app's own render of a luminance-ramp test image).
- *   2. Bloom — threshold 0.1, knee 0.29, intensity 3, factor 0.65: a bright
- *      pass in linear light feeds a 6-level mip pyramid, the LOD 0-5 average
- *      screens back over the picture (the engine's bloom-1/bloom-3 pair).
+ *   2. Bloom — the bright pass in linear light (threshold / knee / intensity
+ *      all dialable; the published 0.1 / 0.29 / 3) feeds a 6-level mip
+ *      pyramid, the LOD 0-5 average screens back over the picture scaled by
+ *      the mix dial (the published factor 0.65) — the engine's
+ *      bloom-1/bloom-3 pair.
  *   3. Noise — the preset's film grain verbatim: 3-octave value noise on the
- *      1103515245 uint hash, cell 0.5px, chroma 0.69 (colored speckle), more
- *      grain in highlights than shadows (weights 0.25/0.4/0.53), strength
- *      exp2-dialed (1.78 = 2.44x at the default dial), applied in linear
- *      light with a 0.14 min-grain floor. Still like the published preset
- *      (grainSpeed 0) — the speed dial rolls the noise lookup per film-frame
- *      (deterministic hashed offsets) when the user wants living grain.
- *      Deterministic: same frame in, same pixels out.
+ *      1103515245 uint hash, cell size dialable (published 0.5px), chroma
+ *      dialable (published 0.69, colored speckle), shadow/mid/highlight
+ *      weights dialable (published 0.25/0.4/0.53 — more grain in highlights
+ *      than shadows), strength exp2-dialed (1.78 = 2.44x at the default
+ *      dial), applied in linear light with a 0.14 min-grain floor. Still like
+ *      the published preset (grainSpeed 0) — the speed dial rolls the noise
+ *      lookup per film-frame (deterministic hashed offsets) when the user
+ *      wants living grain. Deterministic: same frame in, same pixels out.
  *   4. Gradient map — every pixel's Rec.709 luminance re-reads as a position
  *      on the preset's own ramp: #000000 → #002266 (deep blue) → #D55FEC
  *      (orchid) → #FFD6FA (pale pink). The whole color of the filter comes
  *      from this map — there is NO overlay/veil anywhere in the real preset.
+ *      The amount dial blends the original colors back through the map (1 =
+ *      the published full map).
  *   5. Curves — the preset's master curve (0.1295,0.0357)→(0.5625,0.4911)→
  *      (0.7813,0.7857)→(1,1), apply-mode L (luma shift, hue preserved), at the
  *      node's 0.54 opacity.
- *   6. Paper textures — a dark charcoal sheet screened over at 0.8 (fill 1.22,
- *      rot -180, through the preset's texture curve) and a folded-paper sheet
- *      hard-lit at 0.32 (tile 0.63, rot 90, blend-masked by two ramp LUTs so
- *      the creases only surface where the picture is bright). Procedural
- *      stand-ins synthesized in-code (no third-party assets), same roles.
+ *
+ * The preset's two paper-texture layers are deliberately NOT reproduced —
+ * removed by design choice (they added little to the look).
  *
  * On WebGL2 the whole chain runs as the preset's own shaders (neon-split-gl),
  * pixel-faithful and fast; without GL, a CPU path runs the same math in one
@@ -58,13 +61,10 @@ import type { AudioFrame, NeonSplitFilterConfig, RenderContext } from './types'
 import { clamp01, getWork, hash01, resetWork } from './filter-utils'
 import {
   buildCurveLut as buildCurveLutData,
-  buildRampLut,
   gradientLutPixels,
   linear22Lut,
   linearExactLut,
-  makeFoldedPaperTexture,
   makeGrainField,
-  makeBlackPaperTexture,
   srgb22Lut,
   srgbExactLut,
 } from './neon-split-data'
@@ -73,10 +73,17 @@ import { NeonSplitGL } from './neon-split-gl'
 /* --------------------------- config dial mapping --------------------------- */
 
 /** The dials are centered on the published preset: 0.5 = the preset's own
- *  value for grain / glow / texture / contrast. */
+ *  value for grain / glow / size / tone weights / threshold / softness /
+ *  mix; the map amount and chroma dials are direct (their preset values are
+ *  1.0 and 0.69). */
 const PRESET_NOISE_STRENGTH = 1.78
 const PRESET_BLOOM_INTENSITY = 3
+const PRESET_BLOOM_THRESHOLD = 0.1
+const PRESET_BLOOM_KNEE = 0.29
 const PRESET_BLOOM_FACTOR = 0.65
+const PRESET_GRAIN_SIZE = 0.5
+const PRESET_SHADOW_WEIGHT = 0.25
+const PRESET_HIGHLIGHT_WEIGHT = 0.53
 
 function mapNoiseStrength(grain: number): number {
   return clamp01(grain) * 2 * PRESET_NOISE_STRENGTH
@@ -86,11 +93,38 @@ function mapBloomIntensity(glow: number, beatBoost: number): number {
   return clamp01(glow) * 2 * PRESET_BLOOM_INTENSITY * beatBoost
 }
 
-function mapPaperAmount(wash: number): number {
-  return clamp01(wash) * 2
+/** Dial 0.5 = the published 0.1 threshold; the sweep reaches 0 (everything
+ *  blooms) at one end and 0.8 (bright highlights only) at the other. */
+function mapBloomThreshold(dial: number): number {
+  return Math.min(1, Math.max(0, PRESET_BLOOM_THRESHOLD + (clamp01(dial) - 0.5) * 1.4))
 }
 
-/* ------------------------------- GL instances ------------------------------ */
+/** Dial 0.5 = the published 0.29 soft-knee; 0.02 (hard cutoff) .. 0.59. */
+function mapBloomKnee(dial: number): number {
+  return Math.min(0.59, Math.max(0.02, PRESET_BLOOM_KNEE + (clamp01(dial) - 0.5) * 0.6))
+}
+
+/** Dial 0.5 = the published 0.65 factor; 0 (no glow) .. 1.3 (strong). */
+function mapBloomMix(dial: number): number {
+  return clamp01(dial) * 1.3
+}
+
+/** Dial 0.5 = the published 0.5px fine speckle; 0.5 .. 4px chunky grain. */
+function mapGrainSize(dial: number): number {
+  return Math.max(PRESET_GRAIN_SIZE, PRESET_GRAIN_SIZE + (clamp01(dial) - 0.5) * 7)
+}
+
+/** Dial 0.5 = the published 0.25 shadow weight; 0 .. 0.75. */
+function mapShadowWeight(dial: number): number {
+  return Math.min(1, Math.max(0, PRESET_SHADOW_WEIGHT + (clamp01(dial) - 0.5)))
+}
+
+/** Dial 0.5 = the published 0.53 highlight weight; 0.06 .. 1. */
+function mapHighlightWeight(dial: number): number {
+  return Math.min(1, Math.max(0.06, PRESET_HIGHLIGHT_WEIGHT + (clamp01(dial) - 0.5) * 0.94))
+}
+
+/* ------------------------------ GL instances ------------------------------ */
 
 /** One GL chain per source canvas — the preview canvas and the exporter's
  *  canvas each own an instance, so rendering an export can't resize a shared
@@ -168,10 +202,24 @@ function curveLutFor(contrast: number): Float32Array {
   return lut
 }
 
-// static per-size grain field (the preset's grain is stationary, speed 0)
-let grainField: Float32Array | null = null
-let grainW = 0
-let grainH = 0
+// static per-(size, cell, chroma) grain fields — the field depends on the
+// render size, the grain size dial (noise cell) and the chroma dial. A small
+// LRU keeps memory bounded (a 720p field is ~11 MB).
+const grainCache: { key: string; field: Float32Array }[] = []
+const GRAIN_CACHE_MAX = 3
+function grainFor(w: number, h: number, cell: number, chroma: number): Float32Array {
+  const key = `${w}x${h}|${cell.toFixed(3)}|${chroma.toFixed(3)}`
+  const hit = grainCache.findIndex((e) => e.key === key)
+  if (hit >= 0) {
+    const [e] = grainCache.splice(hit, 1)
+    grainCache.push(e)
+    return e.field
+  }
+  const field = makeGrainField(w, h, cell, chroma)
+  grainCache.push({ key, field })
+  while (grainCache.length > GRAIN_CACHE_MAX) grainCache.shift()
+  return field
+}
 
 // post-levels byte buffer (CPU path), cached per size — 1.7 MB at 720p that
 // used to be re-allocated every frame
@@ -185,59 +233,6 @@ function ensurePostLevels(w: number, h: number): Uint8ClampedArray {
   postLevelsW = w
   postLevelsH = h
   return postLevelsBuf
-}
-
-// procedural paper textures, built once
-let paper1: HTMLCanvasElement | null = null
-let paper2: HTMLCanvasElement | null = null
-let paper1Curved: { canvas: HTMLCanvasElement; ramp: Float32Array } | null = null
-const texCurveRamp = buildRampLut([
-  [0.0759, 0],
-  [0.433, 0.75],
-  [1, 1],
-])
-const rampCurrent = buildRampLut([
-  [0.1875, 1],
-  [1, 0],
-])
-const rampUnder = buildRampLut([
-  [0, 0],
-  [0.9598, 1],
-])
-
-function ensureGrain(w: number, h: number): Float32Array {
-  if (grainField && grainW === w && grainH === h) return grainField
-  grainField = makeGrainField(w, h, 0.5)
-  grainW = w
-  grainH = h
-  return grainField
-}
-
-function ensurePapers(): { paper1: HTMLCanvasElement; paper2: HTMLCanvasElement } {
-  if (!paper1) paper1 = makeBlackPaperTexture(512)
-  if (!paper2) paper2 = makeFoldedPaperTexture(512)
-  return { paper1, paper2 }
-}
-
-function ensureCurvedPaper1(): { canvas: HTMLCanvasElement; ramp: Float32Array } {
-  if (paper1Curved) return paper1Curved
-  const { paper1: p1 } = ensurePapers()
-  const cv = document.createElement('canvas')
-  cv.width = p1.width
-  cv.height = p1.height
-  const ctx = cv.getContext('2d')!
-  const img = ctx.createImageData(p1.width, p1.height)
-  const src = p1.getContext('2d')!.getImageData(0, 0, p1.width, p1.height)
-  for (let i = 0; i < src.data.length; i += 4) {
-    for (let c = 0; c < 3; c++) {
-      const v = src.data[i + c] / 255
-      img.data[i + c] = Math.round(texCurveRamp[Math.min(255, Math.max(0, Math.round(v * 255)))] * 255)
-    }
-    img.data[i + 3] = 255
-  }
-  ctx.putImageData(img, 0, 0)
-  paper1Curved = { canvas: cv, ramp: texCurveRamp }
-  return paper1Curved
 }
 
 /* ----------------------------- mask (the split) ---------------------------- */
@@ -266,20 +261,26 @@ function splitMaskRow(y: number, h: number, w: number): number {
 
 /**
  * One per-pixel pass runs levels-mask → bloom-screen → noise → gradient map →
- * curves (the exact chain math from the shaders); the two paper textures and
- * the bloom mip pyramid ride canvas composites (GPU-backed, deterministic).
+ * curves (the exact chain math from the shaders); the bloom mip pyramid rides
+ * canvas composites (GPU-backed, deterministic).
  */
 function drawNeonSplitCPU(
   rc: RenderContext,
   cfg: NeonSplitFilterConfig,
   bloomIntensity: number,
+  bloomThreshold: number,
+  bloomKnee: number,
+  bloomFactor: number,
   noiseStrength: number,
-  paperAmount: number,
+  grainCell: number,
+  chroma: number,
+  shadowWeight: number,
+  highlightWeight: number,
+  mapMix: number,
   grainOffsetX: number,
   grainOffsetY: number,
 ): void {
   const { ctx, width: W, height: H } = rc
-  const aspect = W / H
 
   // the bloom field: bright pass (per-pixel, half-res) → mip chain (canvas)
   const bright = getWork('neon:bright', W, H)
@@ -290,7 +291,7 @@ function drawNeonSplitCPU(
   const srcImg = baseCtx.getImageData(0, 0, W, H)
   const sd = srcImg.data
 
-  const grain = noiseStrength > 0.001 ? ensureGrain(W, H) : null
+  const grain = noiseStrength > 0.001 ? grainFor(W, H, grainCell, chroma) : null
   const strengthGain = Math.pow(2, noiseStrength) - 1
   // animated grain: the static field is sampled through a wrapping window
   // offset per film-frame (0/0 = the published preset's still grain)
@@ -327,8 +328,8 @@ function drawNeonSplitCPU(
       const gl2 = linExact[gByte]
       const bl = linExact[bByte]
       const Y = 0.2126729 * rl + 0.7151522 * gl2 + 0.072175 * bl
-      const kn = 0.29
-      const xk = Math.max(Y - (0.1 - kn), 0)
+      const kn = bloomKnee
+      const xk = Math.max(Y - (bloomThreshold - kn), 0)
       const mask = Math.min(1, (xk * xk) / (4 * kn * xk + 1e-6))
       const i = Math.min(bh - 1, y >> 1)
       const j = Math.min(bw - 1, x >> 1)
@@ -390,10 +391,10 @@ function drawNeonSplitCPU(
       const o4 = (y * W + x) * 4
       // grain samples at the offset position (wraps around the field)
       const g3 = gRow + ((x + ox) % W) * 3
-      // bloom color from the summed pyramid (× the preset's factor)
-      const brl = (bloomData[o4] / 255) * PRESET_BLOOM_FACTOR
-      const bgl = (bloomData[o4 + 1] / 255) * PRESET_BLOOM_FACTOR
-      const bbl = (bloomData[o4 + 2] / 255) * PRESET_BLOOM_FACTOR
+      // bloom color from the summed pyramid (× the bloom mix dial)
+      const brl = (bloomData[o4] / 255) * bloomFactor
+      const bgl = (bloomData[o4 + 1] / 255) * bloomFactor
+      const bbl = (bloomData[o4 + 2] / 255) * bloomFactor
       // post-levels sRGB → linear (EXACT transfer — the bloom shaders')
       const linR = linExact[postLevels[o3]]
       const linG = linExact[postLevels[o3 + 1]]
@@ -417,7 +418,7 @@ function drawNeonSplitCPU(
         const sh = smoothstepInv(0.4, luma)
         const hl = smoothstep(0.6, 1, luma)
         const md = Math.min(1, Math.max(0, 1 - sh - hl))
-        const toneGain = Math.pow(sh * 0.25 + md * 0.4 + hl * 0.53, 0.6)
+        const toneGain = Math.pow(sh * shadowWeight + md * 0.4 + hl * highlightWeight, 0.6)
         const gain = toneGain * strengthGain
         const wR = Math.min(0.25, Math.max(0.14, baseR * (1 - baseR) + 0.14 * (1 - 4 * Math.min(0.25, baseR * (1 - baseR)))))
         const wG = Math.min(0.25, Math.max(0.14, baseG * (1 - baseG) + 0.14 * (1 - 4 * Math.min(0.25, baseG * (1 - baseG)))))
@@ -426,15 +427,25 @@ function drawNeonSplitCPU(
         outByteG = srgb22[Math.min(255, Math.max(0, Math.round((baseG + grain[g3 + 1] * gain * wG) * 255)))]
         outByteB = srgb22[Math.min(255, Math.max(0, Math.round((baseB + grain[g3 + 2] * gain * wB) * 255)))]
       }
-      // gradient map (Rec.709 luminance of the noise output → the preset's ramp)
+      // gradient map (Rec.709 luminance of the noise output → the preset's
+      // ramp), blended back toward the original colors by the amount dial —
+      // exactly what the GL chain's uMix does inside the map pass
       const t =
         (0.2126 * outByteR + 0.7152 * outByteG + 0.0722 * outByteB) / 255
       const gi2 = Math.min(255, Math.max(0, Math.round(t * 255)))
       let colR = gc[gi2 * 3] / 255
       let colG = gc[gi2 * 3 + 1] / 255
       let colB = gc[gi2 * 3 + 2] / 255
+      if (mapMix < 0.999) {
+        colR = (outByteR / 255) * (1 - mapMix) + colR * mapMix
+        colG = (outByteG / 255) * (1 - mapMix) + colG * mapMix
+        colB = (outByteB / 255) * (1 - mapMix) + colB * mapMix
+      }
       // curves — apply mode L: shift luma, keep hue; node opacity 0.54
-      const shift = (curveLut[gi2] - t) * 0.54
+      // (the curve rides the MIXED color's luma, same as the GL chain)
+      const t2 = 0.2126 * colR + 0.7152 * colG + 0.0722 * colB
+      const ci = Math.min(255, Math.max(0, Math.round(t2 * 255)))
+      const shift = (curveLut[ci] - t2) * 0.54
       colR = Math.min(1, Math.max(0, colR + shift))
       colG = Math.min(1, Math.max(0, colG + shift))
       colB = Math.min(1, Math.max(0, colB + shift))
@@ -445,24 +456,6 @@ function drawNeonSplitCPU(
     }
   }
   baseCtx.putImageData(outImg, 0, 0)
-
-  // 6) paper textures via canvas composites (GPU-backed)
-  baseCtx.save()
-  const { paper1: p1, paper2: p2 } = ensurePapers()
-  const curved1 = ensureCurvedPaper1()
-  // mix #1: black paper, screen 0.8, fill 1.22, rot -180 (≈ 180° flip)
-  baseCtx.globalCompositeOperation = 'screen'
-  baseCtx.globalAlpha = Math.min(1, 0.8 * paperAmount)
-  drawFillTexture(baseCtx, curved1.canvas, W, H, aspect, 1.22, true)
-  // mix #2: folded paper, hard light 0.32, tile 0.63, rot 90, blend-masked
-  // by the static "this layer" ramp (baked) — the underlying ramp rides the
-  // global alpha (the CPU path's one approximation vs the GL path)
-  baseCtx.globalCompositeOperation = 'hard-light'
-  baseCtx.globalAlpha = Math.min(1, 0.32 * paperAmount)
-  drawTileTexture(baseCtx, p2, W, H, aspect, 0.63, 90)
-  baseCtx.restore()
-  baseCtx.globalCompositeOperation = 'source-over'
-  baseCtx.globalAlpha = 1
 
   ctx.drawImage(base, 0, 0)
 }
@@ -475,71 +468,6 @@ function smoothstepInv(e0: number, x: number): number {
   // smoothstep(0.40, 0.00, x) — inverted edges
   const t = Math.min(1, Math.max(0, (x - 0.4) / (0 - 0.4)))
   return t * t * (3 - 2 * t)
-}
-
-/** Fill-fit texture draw (the shader's Fill mapping + scale). */
-function drawFillTexture(
-  ctx: CanvasRenderingContext2D,
-  tex: HTMLCanvasElement,
-  W: number,
-  H: number,
-  aspect: number,
-  scale: number,
-  flip180: boolean,
-): void {
-  const texAspect = tex.width / tex.height
-  // sample window in texture UV space (centered), aspect-corrected
-  let ux = 0.5 / scale
-  let uy = 0.5 / scale
-  if (aspect > texAspect) {
-    uy = uy / (aspect / texAspect)
-  } else {
-    ux = ux / (texAspect / aspect)
-  }
-  ctx.save()
-  if (flip180) {
-    ctx.translate(W, H)
-    ctx.rotate(Math.PI)
-  }
-  ctx.drawImage(tex, (0.5 - ux) * tex.width, (0.5 - uy) * tex.height, ux * 2 * tex.width, uy * 2 * tex.height, 0, 0, W, H)
-  ctx.restore()
-}
-
-/** Tile texture draw (the shader's Tile mapping: rotate about the center in
- *  aspect-corrected space, then repeat the texture `scale` times across the
- *  rotated canvas). */
-function drawTileTexture(
-  ctx: CanvasRenderingContext2D,
-  tex: HTMLCanvasElement,
-  W: number,
-  H: number,
-  aspect: number,
-  scale: number,
-  rotationDeg: number,
-): void {
-  const texAspect = tex.width / tex.height
-  // repetitions across the rotated canvas (the shader's Tile math)
-  const repsX = scale * (aspect > texAspect ? aspect / texAspect : 1)
-  const repsY = scale * (aspect > texAspect ? 1 : texAspect / aspect)
-  // after rotating by θ, the pattern's x-axis runs along the canvas axis
-  // rotated by θ; one repeat covers 1/repsX of that axis' full length
-  const rad = (rotationDeg * Math.PI) / 180
-  ctx.save()
-  ctx.translate(W / 2, H / 2)
-  ctx.rotate(-rad)
-  // the rotated canvas spans: length along pattern-x = H when |θ|=90°,
-  // along pattern-y = W; for general θ use the projection lengths
-  const c = Math.abs(Math.cos(rad))
-  const s = Math.abs(Math.sin(rad))
-  const spanX = H * s + W * c
-  const spanY = W * s + H * c
-  ctx.scale(spanX / repsX / tex.width, spanY / repsY / tex.height)
-  const pattern = ctx.createPattern(tex, 'repeat')
-  if (pattern) {
-    ctx.fillStyle = pattern
-    ctx.fillRect(-spanX, -spanY, spanX * 2, spanY * 2)
-  }
-  ctx.restore()
 }
 
 /* ------------------------------- ramp cache -------------------------------- */
@@ -595,10 +523,18 @@ export function drawNeonSplitFilter(
   const bass = clamp01(frame.bass ?? 0)
   const split = clamp01(cfg.split ?? 0)
 
-  // the dials — 0.5 = the published preset's own value
+  // the dials — 0.5 = the published preset's own value (map amount and grain
+  // color are direct dials; their presets are 1.0 and 0.69)
   const bloomIntensity = mapBloomIntensity(cfg.glow ?? 0.5, 1 + (cfg.beatReactive ? clamp01(cfg.beatStrength ?? 0.5) * bass * 0.5 : 0))
+  const bloomThreshold = mapBloomThreshold(cfg.bloomThreshold ?? 0.5)
+  const bloomKnee = mapBloomKnee(cfg.bloomSoftness ?? 0.5)
+  const bloomFactor = mapBloomMix(cfg.bloomMix ?? 0.5)
   const noiseStrength = mapNoiseStrength(cfg.grain ?? 0.5)
-  const paperAmount = mapPaperAmount(cfg.wash ?? 0.5)
+  const grainCell = mapGrainSize(cfg.grainSize ?? 0.5)
+  const chroma = clamp01(cfg.grainChroma ?? 0.69)
+  const shadowWeight = mapShadowWeight(cfg.grainShadow ?? 0.5)
+  const highlightWeight = mapHighlightWeight(cfg.grainHighlight ?? 0.5)
+  const mapMix = clamp01(cfg.mapAmount ?? 1)
   const curveMix = Math.min(1, clamp01(cfg.contrast ?? 0.5) * 2)
   const grainOff = grainOffsetFor(cfg.grainSpeed ?? 0.5, frame.styleTime ?? frame.time ?? 0)
 
@@ -620,8 +556,15 @@ export function drawNeonSplitFilter(
       const out = entry.inst.render({
         source: ctx.canvas,
         bloomIntensity,
+        bloomThreshold,
+        bloomKnee,
+        bloomMix: bloomFactor,
         noiseStrength,
-        paperAmount,
+        grainSize: grainCell,
+        chroma,
+        shadowWeight,
+        highlightWeight,
+        mapMix,
         curveMix,
         curveLut: curveLutBase,
         ramp: cfg.ramp ?? 'violet',
@@ -672,7 +615,22 @@ export function drawNeonSplitFilter(
   }
 
   if (!done) {
-    drawNeonSplitCPU(rc, cfg, bloomIntensity, noiseStrength, paperAmount, grainOff.x, grainOff.y)
+    drawNeonSplitCPU(
+      rc,
+      cfg,
+      bloomIntensity,
+      bloomThreshold,
+      bloomKnee,
+      bloomFactor,
+      noiseStrength,
+      grainCell,
+      chroma,
+      shadowWeight,
+      highlightWeight,
+      mapMix,
+      grainOff.x,
+      grainOff.y,
+    )
   }
 
   // the split — below a soft line the untouched picture fades back in

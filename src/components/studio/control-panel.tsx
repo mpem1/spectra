@@ -4,16 +4,18 @@ import { useEffect, useRef } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useStudioStore, type StudioTab } from '@/store/studio'
 import { StyleTab } from '@/components/studio/style-tab'
+import { ColorTab } from '@/components/studio/color-tab'
 import { FiltersTab } from '@/components/studio/filters-tab'
 import { LyricsTab } from '@/components/studio/lyrics-tab'
 import { ExportTab } from '@/components/studio/export-tab'
 import { PresetsTab } from '@/components/studio/presets-tab'
 
-// Text-only triggers: five labels still fit the 360px panel, while icon+label
-// pairs would overflow the grid at this density (worst case "Filters" ≈ 59px
-// text-only vs ~73px with an icon).
+// Text-only triggers: six labels in a 3×2 grid — each cell gets ~110px, so
+// even the widest label ("Filters") fits comfortably; a single 6-column row
+// would squeeze every cell to ~55px.
 const TABS: { id: StudioTab; label: string }[] = [
   { id: 'style', label: 'Style' },
+  { id: 'color', label: 'Color' },
   { id: 'filters', label: 'Filters' },
   { id: 'lyrics', label: 'Lyrics' },
   { id: 'export', label: 'Export' },
@@ -38,7 +40,7 @@ export function ControlPanel() {
           onValueChange={(value) => setActiveTab(value as StudioTab)}
           className="flex min-h-0 flex-1 flex-col gap-3"
         >
-          <TabsList className="grid w-full shrink-0 grid-cols-5 bg-zinc-950/70 p-1">
+          <TabsList className="grid w-full shrink-0 grid-cols-3 gap-1 bg-zinc-950/70 p-1">
             {TABS.map((tab) => (
               <TabsTrigger
                 key={tab.id}
@@ -55,6 +57,9 @@ export function ControlPanel() {
           >
             <TabsContent value="style">
               <StyleTab />
+            </TabsContent>
+            <TabsContent value="color">
+              <ColorTab />
             </TabsContent>
             <TabsContent value="filters">
               <FiltersTab />

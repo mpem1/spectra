@@ -2,7 +2,7 @@
  * Neon Split — the real effect.app "Neon split" preset data, extracted from
  * the site's own published preset definition and effect shaders (the preset
  * JSON at /api/presets/shared/neon-split plus the decrypted gradient-map /
- * bloom / noise / curves / layer-mix GLSL sources). Every constant here is
+ * bloom / noise / curves GLSL sources). Every constant here is
  * the preset's own value, not an eyeballed one:
  *
  *   gradient stops   #000000 @0 → #002266 @0.406 → #D55FEC @0.857 → #FFD6FA @1
@@ -12,10 +12,9 @@
  *                    shadow/mid/highlight weights 0.25/0.4/0.53, speed 0 (static)
  *   split (invert)   Levels [1,0] = full inversion behind a vertical gradient
  *                    mask (center 0.074,-0.094, width 0.3, rotation 90, smooth)
- *   textures         black paper screened at 0.8 (fill, scale 1.22, rot -180,
- *                    curve 0.0759,0 → 0.433,0.75 → 1,1) and folded paper
- *                    hard-lit at 0.32 (tile 0.63, rot 90, blend mask
- *                    texRamp 0.1875,1→1,0 × underRamp 0→0, 0.9598,1)
+ *
+ * The preset's two paper-texture layers are NOT reproduced — they were
+ * removed from this port by design choice (they added little to the look).
  */
 
 /* --------------------------- the gradient ramps ---------------------------- */
@@ -128,30 +127,6 @@ export function buildCurveLut(points: [number, number][]): Float32Array {
   return lut
 }
 
-/** Piecewise-linear ramp LUT with end clamping (the ramp-curve editor). */
-export function buildRampLut(points: [number, number][]): Float32Array {
-  const lut = new Float32Array(256)
-  for (let k = 0; k < 256; k++) {
-    const t = k / 255
-    if (t <= points[0][0]) {
-      lut[k] = points[0][1]
-      continue
-    }
-    const last = points[points.length - 1]
-    if (t >= last[0]) {
-      lut[k] = last[1]
-      continue
-    }
-    let i = 0
-    while (i < points.length - 2 && t > points[i + 1][0]) i++
-    const [x0, y0] = points[i]
-    const [x1, y1] = points[i + 1]
-    const f = x1 > x0 ? (t - x0) / (x1 - x0) : 0
-    lut[k] = y0 + (y1 - y0) * f
-  }
-  return lut
-}
-
 /* ------------------------------ LUT textures ------------------------------- */
 
 /** Gradient LUT as RGBA pixels — the preset's stops, linear-interpolated
@@ -191,155 +166,17 @@ export function scalarLutPixels(lut: Float32Array): Uint8Array {
   return px
 }
 
-/* --------------------------- the paper textures ---------------------------- */
-
-/**
- * Procedural stand-ins for the preset's two stock paper textures — the same
- * role in the stack, synthesized deterministically (no third-party assets):
- *  - black paper: a dark charcoal sheet with fine fiber mottle and faint
- *    vertical grain, luminance mostly 0.08–0.2.
- *  - folded paper: a mid-gray sheet pre-folded into a 4x3 panel grid, each
- *    crease a bright ridge with a soft dark trough, plus crumple mottle —
- *    luminance mostly 0.4–0.58, tileable.
- */
-export function makeBlackPaperTexture(size = 512): HTMLCanvasElement {
-  const cv = document.createElement('canvas')
-  cv.width = size
-  cv.height = size
-  const ctx = cv.getContext('2d')!
-  const img = ctx.createImageData(size, size)
-  const d = img.data
-  const hash2 = (x: number, y: number): number => {
-    let h = (Math.imul(x | 0, 0x9e3779b1) ^ Math.imul(y | 0, 0x85ebca6b)) | 0
-    h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d)
-    h ^= h >>> 12
-    h = Math.imul(h, 0x297a2d39)
-    h ^= h >>> 15
-    return (h >>> 0) / 4294967296
-  }
-  const smooth = (e0: number, e1: number, x: number) => {
-    const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)))
-    return t * t * (3 - 2 * t)
-  }
-  const vnoise = (x: number, y: number, freq: number) => {
-    const gx = x * freq
-    const gy = y * freq
-    const ix = Math.floor(gx)
-    const iy = Math.floor(gy)
-    const fx = gx - ix
-    const fy = gy - iy
-    const n00 = hash2(ix, iy)
-    const n10 = hash2(ix + 1, iy)
-    const n01 = hash2(ix, iy + 1)
-    const n11 = hash2(ix + 1, iy + 1)
-    return (n00 * (1 - fx) * (1 - fy) + n10 * fx * (1 - fy) + n01 * (1 - fx) * fy + n11 * fx * fy)
-  }
-  const fbm = (x: number, y: number) =>
-    (vnoise(x, y, 8) * 0.5 + vnoise(x, y, 16) * 0.25 + vnoise(x, y, 32) * 0.125) / 0.875
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const u = x / size
-      const v = y / size
-      // charcoal base with broad mottle
-      let l = 0.115 + fbm(u, v) * 0.05
-      // fine fiber grain
-      l += (hash2(x * 31 + 7, y * 17 + 3) - 0.5) * 0.035
-      // faint vertical fibers (screen-door streaks)
-      l += smooth(0.4, 0.9, vnoise(u * 3.0, v * 0.2, 0)) * 0.02 * (vnoise(u * 40, v * 2, 0) - 0.5) * 2
-      l = Math.min(0.3, Math.max(0.04, l))
-      const b = Math.round(l * 255)
-      const o = (y * size + x) * 4
-      d[o] = b
-      d[o + 1] = b
-      d[o + 2] = b
-      d[o + 3] = 255
-    }
-  }
-  ctx.putImageData(img, 0, 0)
-  return cv
-}
-
-export function makeFoldedPaperTexture(size = 512): HTMLCanvasElement {
-  const cv = document.createElement('canvas')
-  cv.width = size
-  cv.height = size
-  const ctx = cv.getContext('2d')!
-  const img = ctx.createImageData(size, size)
-  const d = img.data
-  const hash2 = (x: number, y: number): number => {
-    let h = (Math.imul(x | 0, 0x9e3779b1) ^ Math.imul(y | 0, 0x85ebca6b)) | 0
-    h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d)
-    h ^= h >>> 12
-    h = Math.imul(h, 0x297a2d39)
-    h ^= h >>> 15
-    return (h >>> 0) / 4294967296
-  }
-  const vnoise = (x: number, y: number) => {
-    const ix = Math.floor(x)
-    const iy = Math.floor(y)
-    const fx = x - ix
-    const fy = y - iy
-    const n00 = hash2(ix, iy)
-    const n10 = hash2(ix + 1, iy)
-    const n01 = hash2(ix, iy + 1)
-    const n11 = hash2(ix + 1, iy + 1)
-    return (n00 * (1 - fx) * (1 - fy) + n10 * fx * (1 - fy) + n01 * (1 - fx) * fy + n11 * fx * fy)
-  }
-  const fbm = (x: number, y: number) =>
-    (vnoise(x * 6, y * 6) * 0.5 + vnoise(x * 12, y * 12) * 0.25 + vnoise(x * 24, y * 24) * 0.125) / 0.875
-  const COLS = 4
-  const ROWS = 3
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const u = x / size
-      const v = y / size
-      // wavy crease center lines (drift with a low-frequency wander so the
-      // folds read organic, not like a printed grid)
-      const wx = vnoise(v * 2.1, u * 1.3) - 0.5
-      const wy = vnoise(u * 2.7, v * 1.9) - 0.5
-      const driftU = vnoise(u * 5.3, v * 4.1) - 0.5
-      const driftV = vnoise(u * 4.7, v * 5.9) - 0.5
-      // distance to the nearest crease line, in panel units
-      const cu = (u + wx * 0.035 + driftU * 0.012) * COLS
-      const cvv = (v + wy * 0.035 + driftV * 0.012) * ROWS
-      const du = Math.abs(cu - Math.round(cu))
-      const dv = Math.abs(cvv - Math.round(cvv))
-      const dc = Math.min(du, dv)
-      // crease profile: a soft bright ridge at the fold with a gentle dark
-      // trough just off it — subtle, like the real sheet
-      const ridge = Math.max(0, 1 - dc / 0.035)
-      const trough = Math.max(0, 1 - dc / 0.09) * (1 - ridge)
-      let l = 0.47 + fbm(u, v) * 0.12
-      l += ridge * ridge * 0.13
-      l -= trough * trough * 0.045
-      // per-panel tonal shift (folded panels catch light differently)
-      const panel = hash2(Math.round(cu) * 7 + 1, Math.round(cvv) * 13 + 5)
-      l += (panel - 0.5) * 0.05
-      // crumple mottle
-      l += (hash2(x * 13 + 9, y * 29 + 1) - 0.5) * 0.025
-      l = Math.min(0.8, Math.max(0.25, l))
-      const b = Math.round(l * 255)
-      const o = (y * size + x) * 4
-      d[o] = b
-      d[o + 1] = b
-      d[o + 2] = b
-      d[o + 3] = 255
-    }
-  }
-  ctx.putImageData(img, 0, 0)
-  return cv
-}
-
 /* ------------------------------ grain field -------------------------------- */
 
 /**
  * The preset's static film-grain field (grainSpeed 0 — the published preset
  * keeps the grain still), ported 1:1 from the decrypted noise shader: 3-octave
  * value noise on the 1103515245 integer hash, cell = grainSize px, mono↔chroma
- * mixed at 0.69 with the shader's fixed chroma offsets. Deterministic — the
- * same field every run, in preview and export.
+ * mixed at the given chroma (the published 0.69) with the shader's fixed
+ * chroma offsets. Deterministic — the same field every run, in preview and
+ * export.
  */
-export function makeGrainField(w: number, h: number, cell: number): Float32Array {
+export function makeGrainField(w: number, h: number, cell: number, chroma = 0.69): Float32Array {
   const field = new Float32Array(w * h * 3)
   const f32 = new Float32Array(1)
   const u32 = new Uint32Array(f32.buffer)
@@ -385,7 +222,7 @@ export function makeGrainField(w: number, h: number, cell: number): Float32Array
     }
     return sum / norm
   }
-  const CHROMA = 0.69
+  const CHROMA = Math.min(1, Math.max(0, chroma))
   for (let y = 0; y < h; y++) {
     const py = y + 0.5
     for (let x = 0; x < w; x++) {

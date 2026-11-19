@@ -997,11 +997,14 @@ export interface AnaglyphFilterConfig {
  * frame (the real "split" — full invert from the top edge, fade centered
  * ~45% down, gone by ~55%: the engine's own mask frame, measured off its
  * render of a luminance-ramp test image), the preset's bloom (6-level mip pyramid, screen blend in
- * linear light), its film-grain noise (colored speckle in linear light, still
- * like the published preset or rolled like film via the speed dial), its 4-stop gradient map (#000000 → #002266 →
- * #D55FEC → #FFD6FA) that carries all of the color, the master curve, and the
- * two paper-texture layers (screen + hard light) that leave the crease marks.
- * There is no overlay veil anywhere — the color IS the gradient map.
+ * linear light — threshold / knee / intensity / mix all dialable), its
+ * film-grain noise (colored speckle in linear light — strength, speed, size,
+ * chroma and shadow/highlight weighting all dialable), its 4-stop gradient
+ * map (#000000 → #002266 → #D55FEC → #FFD6FA) that carries all of the color
+ * (with an amount dial), and the master curve. There is no overlay veil
+ * anywhere — the color IS the gradient map. The preset's two paper-texture
+ * layers are deliberately NOT here (removed by design choice — they added
+ * nothing to the look).
  *
  * Deterministic like every full-frame filter (hash-based grain, fixed
  * pipeline). Skipped on transparent backgrounds (alpha must stay clean).
@@ -1027,14 +1030,40 @@ export interface NeonSplitFilterConfig {
    *  old saves → 0.5. Deterministic: derived from song time, so exports
    *  match the preview frame for frame. */
   grainSpeed?: number
-  /** Neon bloom 0..1 — the preset's bloom intensity (0.5 = the published 3.0;
-   *  threshold 0.1 / knee 0.29 / factor 0.65 stay the preset's own). */
+  /** Neon bloom 0..1 — the preset's bloom intensity (0.5 = the published 3.0). */
   glow: number
-  /** Paper texture 0..1 — the two paper-texture layers' strength (0.5 = the
-   *  published opacities 0.8/0.32: the charcoal sheet screened over the frame
-   *  and the folded-paper sheet hard-lit, whose creases mark the highlights).
+  /** Bloom threshold dial 0..1 — how bright a pixel must be before it blooms
+   *  (0.5 = the published 0.1; lower blooms more of the picture, higher keeps
+   *  the glow to the brightest highlights, range 0..0.8). Absent in old
+   *  saves → 0.5. */
+  bloomThreshold?: number
+  /** Bloom softness dial 0..1 — the soft-knee width of the bright pass (0.5 =
+   *  the published 0.29; lower = a harder cutoff, higher = a wider, softer
+   *  ramp). Absent in old saves → 0.5. */
+  bloomSoftness?: number
+  /** Bloom mix dial 0..1 — how much of the glow pyramid screens back over the
+   *  picture (0.5 = the published factor 0.65, range 0..1.3). Absent in old
+   *  saves → 0.5. */
+  bloomMix?: number
+  /** Gradient map amount 0..1 — how fully every pixel's color is replaced by
+   *  its ramp position (1 = the published full map, the color IS the ramp;
+   *  lower blends the original colors back through it). Absent in old saves
+   *  → 1. */
+  mapAmount?: number
+  /** Film grain size dial 0..1 — the noise cell size in px (0.5 = the
+   *  published 0.5px fine speckle; higher = chunkier grain, range 0.5..4).
    *  Absent in old saves → 0.5. */
-  wash?: number
+  grainSize?: number
+  /** Grain color (chroma) 0..1 — mono ↔ colored speckle (0.69 = the published
+   *  chroma; 0 = pure monochrome grain, 1 = fully per-channel). Absent in old
+   *  saves → 0.69. */
+  grainChroma?: number
+  /** Shadow grain dial 0..1 — how much grain sits in the dark tones (0.5 =
+   *  the published shadow weight 0.25). Absent in old saves → 0.5. */
+  grainShadow?: number
+  /** Highlight grain dial 0..1 — how much grain sits in the bright tones
+   *  (0.5 = the published highlight weight 0.53). Absent in old saves → 0.5. */
+  grainHighlight?: number
   /** The split 0..1 — how much of the frame, measured from the BOTTOM, fades
    *  back to the untouched picture. 0 = the whole frame goes neon (the
    *  published preset); 0.4 = the bottom 40% keeps its own colors, the rest is
@@ -1048,6 +1077,31 @@ export interface NeonSplitFilterConfig {
   beatReactive: boolean
   /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
   beatStrength: number
+}
+
+/**
+ * Color grade filter — the classic tone grades over the whole finished
+ * picture: Black & white (luminance mono with a contrast dial) and Sepia
+ * (the warm brown archive print, contrast + warmth dials). Runs as the
+ * color stage of the filter chain, directly after Neon Split — it tones
+ * whatever is beneath it, so the two can stack.
+ *
+ * Deterministic per-pixel math like every full-frame filter. Skipped on
+ * transparent backgrounds (alpha must stay clean).
+ */
+export interface ColorGradeFilterConfig {
+  enabled: boolean
+  /** Which grade: 'bw' = black & white, 'sepia' = the warm archive tone. */
+  look: 'bw' | 'sepia'
+  /** Strength 0..1 — the grade blended back over the original colors. */
+  strength: number
+  /** Contrast dial 0..1 — tone curve depth around mid-gray (0.5 = neutral,
+   *  lower washes toward flat, higher = punchier). */
+  contrast: number
+  /** Sepia warmth 0..1 — how deeply the brown tint sits in (0.5 = the
+   *  classic sepia matrix; lower heads back toward plain mono, higher
+   *  deepens the amber). Absent in old saves → 0.5. Sepia only. */
+  warmth?: number
 }
 
 /* -------------------------------- Custom fonts ------------------------------- */
@@ -1089,9 +1143,11 @@ export interface StudioConfig {
   glitchFilter: GlitchFilterConfig
   /** Full-frame anaglyph post-pass (red/cyan 3D-glasses re-projection) */
   anaglyphFilter: AnaglyphFilterConfig
-  /** Full-frame neon post-pass (gradient map + color-gradient veil + bloom
-   *  + film grain — the effect.app "neon split" preset look) */
+  /** Full-frame neon post-pass (gradient map + bloom + film grain — the
+   *  effect.app "neon split" preset look) */
   neonSplitFilter: NeonSplitFilterConfig
+  /** Full-frame color grade (black & white / sepia tone shaping) */
+  colorGradeFilter: ColorGradeFilterConfig
   /** Full-frame retro-dither post-pass (Bayer dot patterns + glow bloom) */
   ditherFilter: DitherFilterConfig
   /** Full-frame phosphor-monitor post-pass (vertical dash columns + bloom) */
@@ -1617,11 +1673,25 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     grain: 0.5,
     grainSpeed: 0.5,
     glow: 0.6,
-    wash: 1,
+    bloomThreshold: 0.5,
+    bloomSoftness: 0.5,
+    bloomMix: 0.5,
+    mapAmount: 1,
+    grainSize: 0.5,
+    grainChroma: 0.69,
+    grainShadow: 0.5,
+    grainHighlight: 0.5,
     split: 0,
     strength: 1,
     beatReactive: false,
     beatStrength: 0.5,
+  },
+  colorGradeFilter: {
+    enabled: false,
+    look: 'bw',
+    strength: 1,
+    contrast: 0.5,
+    warmth: 0.5,
   },
   ditherFilter: {
     enabled: false,

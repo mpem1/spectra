@@ -24,12 +24,13 @@
  *                 can be offset per frame (uGrainOffset) so the grain can
  *                 churn like film — 0 offset = the published preset's still
  *                 grain.
- *   gradient map  luminance (Rec.709) → the preset's own 4-stop gradient.
+ *   gradient map  luminance (Rec.709) → the preset's own 4-stop gradient,
+ *                 blended back toward the original colors by the amount dial.
  *   curves        the preset's master curve, apply-mode L (setLuma), node
  *                 opacity 0.54.
- *   layer mixes   black paper screened at 0.8 (fill 1.22, rot -180, texture
- *                 curve) and folded paper hard-lit at 0.32 (tile 0.63, rot
- *                 90, blend mask from the two ramp LUTs).
+ *
+ * The preset's two paper-texture layer mixes are deliberately NOT here —
+ * removed by design choice (they added little to the look).
  *
  * Deterministic: fixed-point pipeline, no extensions, generateMipmap's box
  * filter, and the in-shader dither is hash-based — same frame in, same pixels
@@ -39,10 +40,7 @@
 import {
   CURVE_POINTS,
   buildCurveLut,
-  buildRampLut,
   gradientLutPixels,
-  makeBlackPaperTexture,
-  makeFoldedPaperTexture,
   scalarLutPixels,
 } from './neon-split-data'
 
@@ -203,18 +201,21 @@ void main() {
   outColor = vec4(linearToSrgb(outCol), 1.0);
 }`
 
-/* --- P5: gradient map (Rec.709 luminance → the preset's gradient LUT) --- */
+/* --- P5: gradient map (Rec.709 luminance → ramp LUT, amount-blended) --- */
 const FRAG_GRADIENT = COMMON + `
 uniform sampler2D iChannel0;
 uniform sampler2D iLut;
+uniform float uMix;
 void main() {
   vec4 base = texture(iChannel0, vUV);
   float luminance = dot(base.rgb, vec3(0.2126, 0.7152, 0.0722));
   float t = luminance;
-  outColor = texture(iLut, vec2(t, 0.5));
+  vec3 mapped = texture(iLut, vec2(t, 0.5)).rgb;
+  outColor = vec4(mix(base.rgb, mapped, uMix), base.a);
 }`
 
-/* --- P6: curves (apply mode L: setLuma(base, curvedLuma)) + node opacity --- */
+/* --- P6: curves (apply mode L: setLuma(base, curvedLuma)) + node opacity —
+ *         the final pass, drawn straight to the canvas --- */
 const FRAG_CURVES = COMMON + `
 uniform sampler2D iChannel0;
 uniform sampler2D iLut;
@@ -237,109 +238,8 @@ void main() {
   outColor = vec4(mix(base.rgb, color, uOpacity), base.a);
 }`
 
-/* --- P7/P8: layer-mix-curve (the decrypted layer-mix shader, verbatim) --- */
-const FRAG_LAYER_MIX = COMMON + `
-uniform sampler2D iChannel0;   // base (underlying)
-uniform sampler2D iChannel2;   // texture
-uniform sampler2D iTexCurve;   // texture curve LUT (alpha)
-uniform sampler2D iRampCurrent;  // "this layer" ramp LUT (alpha)
-uniform sampler2D iRampUnder;    // "underlying layer" ramp LUT (alpha)
-uniform vec2 iResolution;
-uniform float uAspect;
-uniform float uFit;            // 0 fill, 2 tile
-uniform float uBlendMode;      // 2 screen, 5 hard light
-uniform float uOpacity;
-uniform float uTexScale;
-uniform float uTexRotation;
-uniform float uTexCurveOn;     // 0 = apply the texture curve, 1 = pass through
-float getChannelValue(vec4 color) { return dot(color.rgb, vec3(0.299, 0.587, 0.114)); }
-float sampleRampLut(sampler2D lut, float v) {
-  float w = float(textureSize(lut, 0).x);
-  float u = (clamp(v, 0.0, 1.0) * (w - 1.0) + 0.5) / w;
-  return texture(lut, vec2(u, 0.5)).a;
-}
-float sampleTextureCurve(float v) { return texture(iTexCurve, vec2(clamp(v, 0.0, 1.0), 0.5)).a; }
-vec3 applyTextureCurve(vec3 c) {
-  if (uTexCurveOn > 0.5) return c;
-  return vec3(sampleTextureCurve(c.r), sampleTextureCurve(c.g), sampleTextureCurve(c.b));
-}
-vec2 transformCanvasUV(vec2 uv) {
-  float a = radians(uTexRotation);
-  vec2 p = (uv - 0.5) * vec2(uAspect, 1.0);
-  p = mat2(cos(a), sin(a), -sin(a), cos(a)) * p;
-  return p / vec2(uAspect, 1.0) + 0.5;
-}
-vec2 calculateTextureUV(vec2 uv) {
-  if (uFit < 0.5) {
-    float canvasAspect = uAspect;
-    vec2 texSize = vec2(textureSize(iChannel2, 0));
-    float textureAspect = texSize.x / texSize.y;
-    vec2 adjustedUV = uv;
-    if (canvasAspect > textureAspect) {
-      float heightScale = canvasAspect / textureAspect;
-      adjustedUV.y = (uv.y - 0.5) / heightScale + 0.5;
-    } else {
-      float widthScale = textureAspect / canvasAspect;
-      adjustedUV.x = (uv.x - 0.5) / widthScale + 0.5;
-    }
-    return (adjustedUV - 0.5) / uTexScale + 0.5;
-  } else {
-    float canvasAspect = uAspect;
-    vec2 texSize = vec2(textureSize(iChannel2, 0));
-    float textureAspect = texSize.x / texSize.y;
-    vec2 adjustedUV = uv;
-    if (canvasAspect > textureAspect) {
-      adjustedUV.x = uv.x * (canvasAspect / textureAspect);
-    } else {
-      adjustedUV.y = uv.y * (textureAspect / canvasAspect);
-    }
-    return adjustedUV * uTexScale;
-  }
-}
-vec2 wrapTexelCoord(vec2 coord, vec2 size) { return mod(coord, size); }
-vec4 sampleTiledTexture(sampler2D tex, vec2 uv) {
-  vec2 texSize = vec2(textureSize(tex, 0));
-  vec2 texelPos = fract(uv) * texSize - 0.5;
-  vec2 base = floor(texelPos);
-  vec2 f = fract(texelPos);
-  vec2 p00 = wrapTexelCoord(base, texSize);
-  vec2 p10 = wrapTexelCoord(base + vec2(1.0, 0.0), texSize);
-  vec2 p01 = wrapTexelCoord(base + vec2(0.0, 1.0), texSize);
-  vec2 p11 = wrapTexelCoord(base + vec2(1.0, 1.0), texSize);
-  vec4 c00 = texelFetch(tex, ivec2(p00), 0);
-  vec4 c10 = texelFetch(tex, ivec2(p10), 0);
-  vec4 c01 = texelFetch(tex, ivec2(p01), 0);
-  vec4 c11 = texelFetch(tex, ivec2(p11), 0);
-  vec4 cx0 = mix(c00, c10, f.x);
-  vec4 cx1 = mix(c01, c11, f.x);
-  return mix(cx0, cx1, f.y);
-}
-vec3 blendScreen(vec3 base, vec3 src) { return 1.0 - (1.0 - base) * (1.0 - src); }
-vec3 blendHardLight(vec3 base, vec3 src) {
-  return vec3(
-    src.r < 0.5 ? 2.0 * base.r * src.r : 1.0 - 2.0 * (1.0 - base.r) * (1.0 - src.r),
-    src.g < 0.5 ? 2.0 * base.g * src.g : 1.0 - 2.0 * (1.0 - base.g) * (1.0 - src.g),
-    src.b < 0.5 ? 2.0 * base.b * src.b : 1.0 - 2.0 * (1.0 - base.b) * (1.0 - src.b)
-  );
-}
-vec3 applyBlendMode(vec3 base, vec3 blend) {
-  if (uBlendMode < 2.5) return blendScreen(base, blend);
-  return blendHardLight(base, blend);
-}
-void main() {
-  vec4 baseColor = texture(iChannel0, vUV);
-  vec2 textureUV = calculateTextureUV(transformCanvasUV(vUV));
-  vec4 layerColor = (uFit < 0.5)
-    ? texture(iChannel2, clamp(textureUV, 0.0, 1.0))
-    : sampleTiledTexture(iChannel2, textureUV);
-  vec3 texRgb = applyTextureCurve(layerColor.rgb);
-  float blendMask = sampleRampLut(iRampCurrent, getChannelValue(vec4(texRgb, layerColor.a)))
-                  * sampleRampLut(iRampUnder, getChannelValue(baseColor));
-  float srcA = uOpacity * layerColor.a * blendMask;
-  vec3 blended = applyBlendMode(baseColor.rgb, texRgb);
-  vec3 srcColor = mix(texRgb, blended, baseColor.a);
-  outColor = vec4(mix(baseColor.rgb, srcColor, srcA), 1.0);
-}`
+/* --- P7 was layer mix #1/#2 (the paper textures) — removed by design.
+ *         Curves is now the final pass. --- */
 
 /* ------------------------------ GL plumbing -------------------------------- */
 
@@ -366,8 +266,6 @@ export class NeonSplitGL {
   private pyramidH = 0
   private srcTex: WebGLTexture | null = null
   private lutTexs = new Map<string, WebGLTexture>()
-  private paperTex1: WebGLTexture | null = null
-  private paperTex2: WebGLTexture | null = null
   private lastCurveKey = -1
   private lost = false
 
@@ -389,7 +287,6 @@ export class NeonSplitGL {
     })
     this.initGeometry()
     this.initLuts()
-    this.initPapers()
     // From here on, canvas-backed uploads (the source frame) go in with Y
     // flipped: WebGL textures put the first pixel row at v=0, and without the
     // flip every pass samples the picture upside down — the whole output came
@@ -401,8 +298,7 @@ export class NeonSplitGL {
     // centered ~45%, gone by ~55%) — so the levels shader negates vUV.y to
     // enter that frame, which is what puts the inversion band over the TOP of
     // the picture exactly where effect.app puts it. LUT uploads are typed
-    // arrays (unaffected by the flip) and the paper textures were already
-    // uploaded above, orientation-neutral.
+    // arrays (unaffected by the flip).
     this.gl.pixelStorei(this.gl.UNPACK_FLIP_Y_WEBGL, true)
     this.compileAll()
   }
@@ -424,8 +320,6 @@ export class NeonSplitGL {
     this.pyramid = null
     this.srcTex = null
     this.lutTexs.clear()
-    this.paperTex1 = null
-    this.paperTex2 = null
   }
 
   private initGeometry() {
@@ -457,43 +351,11 @@ export class NeonSplitGL {
     // curve LUT — the preset's master curve, contrast-neutral (identity is
     // blended in JS per config and re-uploaded when the dial moves)
     this.lutTexs.set('curve', this.makeLutTex(scalarLutPixels(buildCurveLut(CURVE_POINTS))))
-    // layer-mix #1's texture curve (black paper)
-    this.lutTexs.set(
-      'texCurve',
-      this.makeLutTex(scalarLutPixels(buildRampLut([[0.0759, 0], [0.433, 0.75], [1, 1]]))),
-    )
-    // layer-mix #1's blend ramps: both all-ones (the published preset)
-    this.lutTexs.set('rampOnes', this.makeLutTex(scalarLutPixels(buildRampLut([[0, 1], [1, 1]]))))
-    // layer-mix #2's blend ramps (the published preset)
-    this.lutTexs.set(
-      'rampCurrent',
-      this.makeLutTex(scalarLutPixels(buildRampLut([[0.1875, 1], [1, 0]]))),
-    )
-    this.lutTexs.set(
-      'rampUnder',
-      this.makeLutTex(scalarLutPixels(buildRampLut([[0, 0], [0.9598, 1]]))),
-    )
     // gradient LUTs per ramp
     for (const ramp of ['violet', 'uv', 'acid', 'ember', 'ice']) {
       this.lutTexs.set('grad:' + ramp, this.makeLutTex(gradientLutPixels(ramp)))
     }
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)
-  }
-
-  private initPapers() {
-    const gl = this.gl
-    const up = (cv: HTMLCanvasElement): WebGLTexture => {
-      const tex = gl.createTexture()!
-      gl.bindTexture(gl.TEXTURE_2D, tex)
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
-      return tex
-    }
-    this.paperTex1 = up(makeBlackPaperTexture(512))
-    this.paperTex2 = up(makeFoldedPaperTexture(512))
   }
 
   private compile(fragSrc: string): WebGLProgram {
@@ -540,18 +402,8 @@ export class NeonSplitGL {
       FRAG_NOISE,
       ['iChannel0', 'iResolution', 'uGrainOffset', 'strength', 'grainSize', 'minGrain', 'chroma', 'shadowWeight', 'midWeight', 'highlightWeight'],
     )
-    this.makePass('gradient', FRAG_GRADIENT, ['iChannel0', 'iLut'])
+    this.makePass('gradient', FRAG_GRADIENT, ['iChannel0', 'iLut', 'uMix'])
     this.makePass('curves', FRAG_CURVES, ['iChannel0', 'iLut', 'uOpacity'])
-    this.makePass(
-      'mix1',
-      FRAG_LAYER_MIX,
-      ['iChannel0', 'iChannel2', 'iTexCurve', 'iRampCurrent', 'iRampUnder', 'iResolution', 'uAspect', 'uFit', 'uBlendMode', 'uOpacity', 'uTexScale', 'uTexRotation', 'uTexCurveOn'],
-    )
-    this.makePass(
-      'mix2',
-      FRAG_LAYER_MIX,
-      ['iChannel0', 'iChannel2', 'iTexCurve', 'iRampCurrent', 'iRampUnder', 'iResolution', 'uAspect', 'uFit', 'uBlendMode', 'uOpacity', 'uTexScale', 'uTexRotation', 'uTexCurveOn'],
-    )
   }
 
   private ensureSize(w: number, h: number) {
@@ -636,17 +488,24 @@ export class NeonSplitGL {
   }
 
   /** Run the whole preset chain over the given 2D source; returns the GL
-   *  canvas holding the finished frame (draw it onto the 2D context).
-   *  bloomIntensity / noiseStrength / paperAmount / curveMix arrive already
-   *  mapped from the config dials (0.5 = the published preset's own value).
-   *  grainOffsetX/Y shift the noise lattice per frame (animated grain — 0/0
-   *  is the published preset's still grain). scale < 1 renders the chain at
-   *  a lower internal resolution (perf escape hatch for the live preview). */
+   *  canvas holding the finished frame (draw it onto the 2D context). Every
+   *  effect parameter arrives already mapped from the config dials (0.5 = the
+   *  published preset's own value where noted). grainOffsetX/Y shift the
+   *  noise lattice per frame (animated grain — 0/0 is the published preset's
+   *  still grain). scale < 1 renders the chain at a lower internal resolution
+   *  (perf escape hatch for the live preview). */
   render(p: {
     source: HTMLCanvasElement
     bloomIntensity: number
+    bloomThreshold: number
+    bloomKnee: number
+    bloomMix: number
     noiseStrength: number
-    paperAmount: number
+    grainSize: number
+    chroma: number
+    shadowWeight: number
+    highlightWeight: number
+    mapMix: number
     curveMix: number
     curveLut: Float32Array
     ramp: string
@@ -698,8 +557,8 @@ export class NeonSplitGL {
     // 2) bloom-1 bright pass  A → B
     this.renderPass(P('bright'), B.fb, () => {
       this.use(0, A.tex, P('bright').uniforms.iChannel0)
-      gl.uniform1f(P('bright').uniforms.uThreshold, 0.1)
-      gl.uniform1f(P('bright').uniforms.uKnee, 0.29)
+      gl.uniform1f(P('bright').uniforms.uThreshold, p.bloomThreshold)
+      gl.uniform1f(P('bright').uniforms.uKnee, p.bloomKnee)
       gl.uniform1f(P('bright').uniforms.uIntensity, p.bloomIntensity)
     })
     // copy the bright pass into the mip pyramid (the engine uploads the
@@ -709,11 +568,11 @@ export class NeonSplitGL {
     gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, this.w, this.h)
     gl.generateMipmap(gl.TEXTURE_2D)
 
-    // 3) bloom-3: 6-LOD average ×0.65 screened over the levels output  → B
+    // 3) bloom-3: 6-LOD average × the mix dial, screened over the levels output  → B
     this.renderPass(P('bloom'), B.fb, () => {
       this.use(0, this.pyramid, P('bloom').uniforms.iPyramid)
       this.use(1, A.tex, P('bloom').uniforms.iBase)
-      gl.uniform1f(P('bloom').uniforms.uBloomFactor, 0.65)
+      gl.uniform1f(P('bloom').uniforms.uBloomFactor, p.bloomMix)
     })
 
     // 4) film grain (linear-light, verbatim noise shader)  B → A
@@ -722,61 +581,27 @@ export class NeonSplitGL {
       gl.uniform2f(P('noise').uniforms.iResolution, this.w, this.h)
       gl.uniform2f(P('noise').uniforms.uGrainOffset, p.grainOffsetX, p.grainOffsetY)
       gl.uniform1f(P('noise').uniforms.strength, p.noiseStrength)
-      gl.uniform1f(P('noise').uniforms.grainSize, 0.5)
+      gl.uniform1f(P('noise').uniforms.grainSize, p.grainSize)
       gl.uniform1f(P('noise').uniforms.minGrain, 0.14)
-      gl.uniform1f(P('noise').uniforms.chroma, 0.69)
-      gl.uniform1f(P('noise').uniforms.shadowWeight, 0.25)
+      gl.uniform1f(P('noise').uniforms.chroma, p.chroma)
+      gl.uniform1f(P('noise').uniforms.shadowWeight, p.shadowWeight)
       gl.uniform1f(P('noise').uniforms.midWeight, 0.4)
-      gl.uniform1f(P('noise').uniforms.highlightWeight, 0.53)
+      gl.uniform1f(P('noise').uniforms.highlightWeight, p.highlightWeight)
     })
 
-    // 5) gradient map — the preset's own gradient  A → B
+    // 5) gradient map — the preset's own gradient, amount-blended  A → B
     this.renderPass(P('gradient'), B.fb, () => {
       this.use(0, A.tex, P('gradient').uniforms.iChannel0)
       this.use(1, this.lutTexs.get('grad:' + p.ramp) ?? this.lutTexs.get('grad:violet')!, P('gradient').uniforms.iLut)
+      gl.uniform1f(P('gradient').uniforms.uMix, p.mapMix)
     })
 
-    // 6) curves — apply mode L + node opacity 0.54  B → A
-    this.renderPass(P('curves'), A.fb, () => {
+    // 6) curves — apply mode L + node opacity 0.54  B → canvas (final pass;
+    //    the preset's two paper layer mixes were removed by design)
+    this.renderPass(P('curves'), null, () => {
       this.use(0, B.tex, P('curves').uniforms.iChannel0)
       this.use(1, this.lutTexs.get('curve')!, P('curves').uniforms.iLut)
       gl.uniform1f(P('curves').uniforms.uOpacity, 0.54)
-    })
-
-    // 7) layer mix #1 — black paper, screen 0.8, fill 1.22, rot -180  A → B
-    this.renderPass(P('mix1'), B.fb, () => {
-      const U = P('mix1').uniforms
-      this.use(0, A.tex, U.iChannel0)
-      this.use(1, this.paperTex1, U.iChannel2)
-      this.use(2, this.lutTexs.get('texCurve')!, U.iTexCurve)
-      this.use(3, this.lutTexs.get('rampOnes')!, U.iRampCurrent)
-      this.use(4, this.lutTexs.get('rampOnes')!, U.iRampUnder)
-      gl.uniform2f(U.iResolution, this.w, this.h)
-      gl.uniform1f(U.uAspect, aspect)
-      gl.uniform1f(U.uFit, 0)
-      gl.uniform1f(U.uBlendMode, 2)
-      gl.uniform1f(U.uOpacity, 0.8 * p.paperAmount)
-      gl.uniform1f(U.uTexScale, 1.22)
-      gl.uniform1f(U.uTexRotation, -180)
-      gl.uniform1f(U.uTexCurveOn, 0)
-    })
-
-    // 8) layer mix #2 — folded paper, hard light 0.32, tile 0.63, rot 90  → canvas
-    this.renderPass(P('mix2'), null, () => {
-      const U = P('mix2').uniforms
-      this.use(0, B.tex, U.iChannel0)
-      this.use(1, this.paperTex2, U.iChannel2)
-      this.use(2, this.lutTexs.get('curve')!, U.iTexCurve) // unused (uTexCurveOn 1)
-      this.use(3, this.lutTexs.get('rampCurrent')!, U.iRampCurrent)
-      this.use(4, this.lutTexs.get('rampUnder')!, U.iRampUnder)
-      gl.uniform2f(U.iResolution, this.w, this.h)
-      gl.uniform1f(U.uAspect, aspect)
-      gl.uniform1f(U.uFit, 2)
-      gl.uniform1f(U.uBlendMode, 5)
-      gl.uniform1f(U.uOpacity, 0.32 * p.paperAmount)
-      gl.uniform1f(U.uTexScale, 0.63)
-      gl.uniform1f(U.uTexRotation, 90)
-      gl.uniform1f(U.uTexCurveOn, 1)
     })
 
     return this.canvas

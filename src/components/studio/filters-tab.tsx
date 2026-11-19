@@ -6,7 +6,6 @@ import { FilmFilterSection } from '@/components/studio/film-filter-section'
 import { HalftoneFilterSection } from '@/components/studio/halftone-filter-section'
 import { GlitchFilterSection } from '@/components/studio/glitch-filter-section'
 import { AnaglyphFilterSection } from '@/components/studio/anaglyph-filter-section'
-import { NeonSplitFilterSection } from '@/components/studio/neon-split-filter-section'
 import { PhosphorFilterSection } from '@/components/studio/phosphor-section'
 import { ContourFilterSection } from '@/components/studio/contour-filter-section'
 import { DitherFilterSection } from '@/components/studio/dither-filter-section'
@@ -17,7 +16,8 @@ import { LayersSection } from '@/components/studio/layers-section'
  * (visualizer, disc, lyrics, watermark included). One card per filter,
  * each with its own enable switch and sliders; new filters slot in as
  * additional cards below. Every filter is deterministic, so previews and
- * exports bake the identical look.
+ * exports bake the identical look. The color tools (Neon Split, black &
+ * white / sepia grade) live in their own Color tab.
  */
 export function FiltersTab() {
   return (
@@ -45,10 +45,6 @@ export function FiltersTab() {
 
       {/* 3D glasses — red/cyan anaglyph re-projection with beat pop */}
       <AnaglyphFilterSection />
-
-      {/* Neon split — luminance gradient map + sparkle grain + bloom, with an
-          optional beat-riding split line */}
-      <NeonSplitFilterSection />
 
       {/* Phosphor monitor — the lo-fi sci-fi video tube: columns of glowing
           dashes on a dark tube, shade ladder recolorable */}

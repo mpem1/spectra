@@ -27,6 +27,7 @@ import {
   type GlitchFilterConfig,
   type AnaglyphFilterConfig,
   type NeonSplitFilterConfig,
+  type ColorGradeFilterConfig,
   type DitherFilterConfig,
   type PhosphorFilterConfig,
   type ContourFilterConfig,
@@ -43,7 +44,7 @@ import { getEngine, getPreviewControls } from '@/components/studio/engine-regist
 import { getPreviewCanvas } from '@/components/studio/canvas-registry'
 import { toast } from 'sonner'
 
-export type StudioTab = 'style' | 'filters' | 'lyrics' | 'export' | 'presets'
+export type StudioTab = 'style' | 'color' | 'filters' | 'lyrics' | 'export' | 'presets'
 
 export interface AudioMeta {
   name: string
@@ -116,6 +117,8 @@ type StudioState = {
   patchAnaglyphFilter: (partial: Partial<AnaglyphFilterConfig>) => void
   /** Patches config.neonSplitFilter */
   patchNeonSplitFilter: (partial: Partial<NeonSplitFilterConfig>) => void
+  /** Patches config.colorGradeFilter */
+  patchColorGradeFilter: (partial: Partial<ColorGradeFilterConfig>) => void
   patchDitherFilter: (partial: Partial<DitherFilterConfig>) => void
   /** Patches config.phosphorFilter */
   patchPhosphorFilter: (partial: Partial<PhosphorFilterConfig>) => void
@@ -264,6 +267,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, neonSplitFilter: { ...s.config.neonSplitFilter, ...partial } },
     })),
 
+  patchColorGradeFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, colorGradeFilter: { ...s.config.colorGradeFilter, ...partial } },
+    })),
+
   patchDitherFilter: (partial) =>
     set((s) => ({
       config: { ...s.config, ditherFilter: { ...s.config.ditherFilter, ...partial } },
@@ -372,6 +380,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         glitchFilter: { ...DEFAULT_STUDIO_CONFIG.glitchFilter, ...config.glitchFilter },
         anaglyphFilter: { ...DEFAULT_STUDIO_CONFIG.anaglyphFilter, ...config.anaglyphFilter },
         neonSplitFilter: { ...DEFAULT_STUDIO_CONFIG.neonSplitFilter, ...config.neonSplitFilter },
+        colorGradeFilter: { ...DEFAULT_STUDIO_CONFIG.colorGradeFilter, ...config.colorGradeFilter },
         ditherFilter: { ...DEFAULT_STUDIO_CONFIG.ditherFilter, ...config.ditherFilter },
         phosphorFilter: { ...DEFAULT_STUDIO_CONFIG.phosphorFilter, ...config.phosphorFilter },
         contourFilter: { ...DEFAULT_STUDIO_CONFIG.contourFilter, ...config.contourFilter },

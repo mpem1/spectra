@@ -32,6 +32,7 @@ import { drawHalftoneFilter, flipGate } from './halftone-filter'
 import { drawGlitchFilter } from './glitch-filter'
 import { drawAnaglyphFilter } from './anaglyph-filter'
 import { drawNeonSplitFilter } from './neon-split'
+import { drawColorGradeFilter } from './color-grade'
 import { drawDitherFilter } from './dither-filter'
 import { drawPhosphorFilter } from './phosphor-filter'
 import { drawContourFilter } from './contour-filter'
@@ -201,9 +202,13 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   drawGlitchFilter(rc, config.glitchFilter, frame, transparent)
   drawAnaglyphFilter(rc, config.anaglyphFilter, frame, transparent)
   // Neon split — recolors the whole finished picture through the neon ramp
-  // (gradient map + sparkle grain + bloom). Before the phosphor / contour /
-  // dither stages, which stay the outermost re-materialized layers.
+  // (gradient map + film grain + bloom). Before the color grade, which tones
+  // whatever sits beneath it, so the two stack.
   drawNeonSplitFilter(rc, config.neonSplitFilter, frame, transparent)
+  // Color grade — the black & white / sepia tone stage. Directly after Neon
+  // Split (it grades the neon look when both are on), before the phosphor /
+  // contour / dither stages, which stay the outermost re-materialized layers.
+  drawColorGradeFilter(rc, config.colorGradeFilter, frame, transparent)
   // Lo-fi phosphor monitor — repoints the finished picture into columns of
   // glowing dashes on a dark tube. Before the dither, which stays the
   // outermost poster layer.
