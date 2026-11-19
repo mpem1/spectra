@@ -1,6 +1,5 @@
 'use client'
 
-import { useRef } from 'react'
 import { Plus, Sparkles, X } from 'lucide-react'
 import type { NeonMapStop, NeonSplitFilterConfig } from '@/lib/visualizer/types'
 import { RAMPS, rampCss } from '@/lib/visualizer/neon-split-data'
@@ -53,12 +52,6 @@ function sortedStops(stops: NeonMapStop[]): NeonMapStop[] {
   return [...stops].sort((a, b) => a.t - b.t)
 }
 
-function stopsCss(stops: NeonMapStop[]): string {
-  return `linear-gradient(90deg,${sortedStops(stops)
-    .map((s) => `${s.c} ${Math.round(Math.min(1, Math.max(0, s.t)) * 100)}%`)
-    .join(',')})`
-}
-
 /** The gradient's color at position t — linear between the neighbor stops. */
 function sampleStops(stops: NeonMapStop[], t: number): string {
   const s = sortedStops(stops)
@@ -81,114 +74,6 @@ function sameStops(a: NeonMapStop[], b: NeonMapStop[]): boolean {
   const sa = sortedStops(a)
   const sb = sortedStops(b)
   return sa.every((s, i) => Math.abs(s.t - sb[i].t) < 0.005 && s.c === sb[i].c)
-}
-
-/**
- * The editable gradient map bar — effect.app's own stop editor: drag a
- * handle to move its stop, click empty bar space to add a stop there
- * (dragging it straight away), double-click a handle to remove it, arrow
- * keys fine-tune the focused stop. Position precision lives in the per-stop
- * rows underneath.
- */
-function GradientMapBar({
-  stops,
-  disabled,
-  onChange,
-}: {
-  stops: NeonMapStop[]
-  disabled: boolean
-  onChange: (stops: NeonMapStop[]) => void
-}) {
-  const barRef = useRef<HTMLDivElement>(null)
-  const dragRef = useRef<number | null>(null)
-
-  const posFrom = (clientX: number): number => {
-    const rect = barRef.current?.getBoundingClientRect()
-    if (!rect || rect.width === 0) return 0
-    return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
-  }
-
-  const patchStop = (index: number, t: number) => {
-    onChange(stops.map((s, i) => (i === index ? { ...s, t } : s)))
-  }
-
-  return (
-    <div
-      ref={barRef}
-      className="relative h-10 w-full touch-none select-none"
-      style={disabled ? { pointerEvents: 'none' } : undefined}
-      aria-disabled={disabled}
-      onPointerDown={(e) => {
-        if (disabled || (e.target as HTMLElement).dataset.handle) return
-        // empty-bar press: add a stop under the finger and drag it right away
-        e.currentTarget.setPointerCapture(e.pointerId)
-        const t = posFrom(e.clientX)
-        if (stops.length < MAX_MAP_STOPS) {
-          onChange([...stops, { t, c: sampleStops(stops, t) }])
-          dragRef.current = stops.length
-        }
-      }}
-      onPointerMove={(e) => {
-        if (dragRef.current == null || disabled) return
-        patchStop(dragRef.current, posFrom(e.clientX))
-      }}
-      onPointerUp={() => {
-        dragRef.current = null
-      }}
-      onPointerCancel={() => {
-        dragRef.current = null
-      }}
-    >
-      <div
-        className="h-7 w-full rounded-md border border-zinc-700 shadow-inner"
-        style={{ background: stopsCss(stops) }}
-        aria-hidden
-      />
-      {stops.map((stop, index) => (
-        <button
-          key={index}
-          type="button"
-          data-handle="1"
-          disabled={disabled}
-          aria-label={`Gradient map stop ${index + 1} position — drag, use arrow keys, or the slider below`}
-          className="absolute top-0 flex h-10 w-7 -translate-x-1/2 cursor-ew-resize items-center justify-center"
-          style={{ left: `${Math.min(1, Math.max(0, stop.t)) * 100}%` }}
-          onPointerDown={(e) => {
-            if (disabled) return
-            e.stopPropagation()
-            e.currentTarget.setPointerCapture(e.pointerId)
-            dragRef.current = index
-          }}
-          onPointerMove={(e) => {
-            if (dragRef.current !== index || disabled) return
-            patchStop(index, posFrom(e.clientX))
-          }}
-          onPointerUp={() => {
-            if (dragRef.current === index) dragRef.current = null
-          }}
-          onDoubleClick={() => {
-            if (!disabled && stops.length > 2) onChange(stops.filter((_, i) => i !== index))
-          }}
-          onKeyDown={(e) => {
-            if (disabled) return
-            const step = e.shiftKey ? 0.05 : 0.01
-            if (e.key === 'ArrowLeft') {
-              e.preventDefault()
-              patchStop(index, Math.max(0, stop.t - step))
-            } else if (e.key === 'ArrowRight') {
-              e.preventDefault()
-              patchStop(index, Math.min(1, stop.t + step))
-            }
-          }}
-        >
-          <span
-            className="size-3.5 rounded-[4px] border border-zinc-950/80 bg-zinc-100 shadow-md"
-            aria-hidden
-          />
-        </button>
-      ))}
-    </div>
-  )
 }
 
 /** Group divider inside the card — a small uppercase header with a rule. */
@@ -246,8 +131,9 @@ export function NeonSplitFilterSection() {
       <p className="text-[11px] leading-snug text-zinc-600">
         The effect.app neon-split preset, rebuilt from its own published
         shader code — with the full Gradient map node on dials below: an
-        editable gradient (drag the stops, recolor them, add or remove them),
-        its Opacity, Blend mode, Gradient shift and Gradient repeat — plus
+        editable gradient (every stop is a row — pick its color, slide its
+        position), its Opacity, Blend mode, Gradient shift and Gradient
+        repeat — plus
         Noise (the colored film grain) and Bloom (the highlight glow). The
         upper part of the frame inverts behind a soft band — the real
         &ldquo;split&rdquo;. Flip the switch on to bake the look into the
@@ -262,8 +148,9 @@ export function NeonSplitFilterSection() {
         aria-disabled={!filter.enabled}
       >
           {/* effect.app's GRADIENT MAP node — the real feature set: Blend,
-              Opacity, the editable gradient itself, shift and repeat, with
-              the five ramp presets as one-click starting points. */}
+              Opacity, the editable gradient (one slider row per color stop),
+              shift and repeat, with the five ramp presets as one-click
+              starting points. */}
           <Group>Gradient map</Group>
           <div className="space-y-1.5">
             <MicroLabel>Blend</MicroLabel>
@@ -297,15 +184,11 @@ export function NeonSplitFilterSection() {
             format={(v) => `${Math.round(v * 100)}`}
           />
           <div className="space-y-1.5">
-            <MicroLabel>Gradient map</MicroLabel>
-            <GradientMapBar
-              stops={stops}
-              disabled={!filter.enabled}
-              onChange={(mapStops) => patchStops(mapStops)}
-            />
+            <MicroLabel>Color stops</MicroLabel>
             <p className="text-[10px] leading-snug text-zinc-600">
-              Drag the handles to move stops, click empty bar space to add one,
-              double-click a handle to remove it — or fine-tune each stop below.
+              Each stop is one row: pick its color, slide its position from
+              shadows (0) to highlights (100), delete it with the X — add more
+              with the button below.
             </p>
             <div className="space-y-1.5" role="group" aria-label="Gradient map color stops">
               {stops.map((stop, index) => (
@@ -581,8 +464,8 @@ export function NeonSplitFilterSection() {
           />
           <p className="text-[10px] leading-snug text-zinc-600">
             Every dial sits at the real preset&apos;s value in the middle.
-            Gradient map: your own editable gradient (the bar — drag, recolor,
-            add or remove stops) carries ALL the color; Opacity blends the
+            Gradient map: your own editable gradient (one row per stop — a
+            color and a position slider) carries ALL the color; Opacity blends the
             original colors back through it (100 = the published full map),
             Shift slides the ramp window with wrap-around (shadows can pick up
             the bright end — the look in the reference&apos;s -0.55), Repeat
