@@ -680,12 +680,16 @@ export function drawBars(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
   const anchor = H * clamp01(cfg.mirrorOffset ?? 0.5)
   // Mirror mode's copy travel: the mirrored band hangs from ONE line (the
   // true rigid flip of the whole column) and the offset dial slides that
-  // line from the ceiling (0 at the default 0.5 axis — the classic flip)
-  // toward the lowest fully in-frame position (1 at the dial's ends). The
-  // travel is exactly one maxH of headroom, so the band — and every copied
-  // bar in it — stays fully on-canvas at EVERY dial position and bar
-  // height, and the line never depends on the music.
-  const mirrorK = Math.abs(2 * clamp01(cfg.mirrorOffset ?? 0.5) - 1)
+  // line in ONE direction — 0 hangs it from the ceiling (the classic
+  // full-height flip), 1 sets it at the lowest fully in-frame position.
+  // The travel is exactly one maxH of headroom, so the band — and every
+  // copied bar in it — stays fully on-canvas at EVERY dial position and
+  // bar height, and the line never depends on the music. The old folded
+  // map (|2·offset − 1|) reversed the copy's direction past the midpoint —
+  // the dial read like it moved back on itself — so it's monotonic now,
+  // matching the wave's copy travel (slider up = copy down). Mirror first
+  // enables at 0.5, a short step below the ceiling.
+  const mirrorK = clamp01(cfg.mirrorOffset ?? 0.5)
   // One canvas-space gradient for all bars → the Angle slider rotates the
   // coloring across the whole visualizer (fill is continuous in canvas space).
   const fill = visualizerFill(rc, frame, cfg)
@@ -717,16 +721,13 @@ export function drawBars(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
       fillRoundRect(ctx, x, H - h, barW, h, radius)
       if (cfg.mirror === 'mirror') {
         // Flipped copy of the bars — the whole mirrored band hangs from ONE
-        // line that the offset dial slides between the ceiling (50% — the
-        // classic symmetric flip, the factory look) and the lowest fully
-        // in-frame position (the dial's ends). Travel mirrorK·(H − maxH)
-        // reserves one max-height bar of headroom, so every copied bar is
-        // fully on-canvas at EVERY dial position and bar height, and the
-        // line never moves with the music: the old pivot around the axis
-        // (refY = 2·anchor − H) threw the copy off the frame at off-center
-        // axes and pushed each bar's copy through its own visibility guard
-        // as Sensitivity moved the heights — the vanishing, flickering
-        // mirrored side.
+        // line that the offset dial slides in one direction: the ceiling at
+        // 0 (the classic symmetric flip), the lowest fully in-frame position
+        // at 1. Travel mirrorK·(H − maxH) reserves one max-height bar of
+        // headroom, so every copied bar is fully on-canvas at EVERY dial
+        // position and bar height, and the line never moves with the music
+        // (the old pivot around the axis threw the copy off the frame at
+        // off-center axes — the vanishing mirrored side).
         fillRoundRect(ctx, x, mirrorK * (H - maxH), barW, h, radius)
       }
     }
@@ -1380,13 +1381,16 @@ export function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
   const axisRow = (rows - 1) * clamp01(cfg.mirrorOffset ?? 0.5)
   // Mirror mode's copy travel: the whole top-down reflection hangs from ONE
   // row (the true rigid flip of the grid) and the offset dial slides that
-  // row from the ceiling (0 at the default 0.5 axis — the classic copy)
-  // toward the bars (1 at the dial's ends), sized like the bars' travel so
-  // every dial position keeps the copied dots in view. Tall columns whose
-  // copies would run past the grid's bottom edge just clip there — the
-  // same way the terrain's lake runs past the frame. The row never depends
-  // on the music, so no copy can wobble or pop out of view.
-  const mirrorD = Math.abs(2 * clamp01(cfg.mirrorOffset ?? 0.5) - 1) * rows * 0.28
+  // row in ONE direction — 0 hangs it from the ceiling (the classic copy),
+  // 1 sets it 28% of the grid down toward the bars (sized like the bars'
+  // travel so every dial position keeps the copied dots in view). The old
+  // folded map reversed the copy past the midpoint — the dial read like it
+  // moved back on itself — so it's monotonic now, matching the wave and the
+  // bars. Tall columns whose copies would run past the grid's bottom edge
+  // just clip there — the same way the terrain's lake runs past the frame.
+  // The row never depends on the music, so no copy can wobble or pop out
+  // of view.
+  const mirrorD = clamp01(cfg.mirrorOffset ?? 0.5) * rows * 0.28
   const fill = visualizerFill(rc, frame, cfg)
   // The Transparency dial's layer alpha — scales the frontier-dot fade
   // below, which otherwise pins its own absolute globalAlpha.
@@ -1439,12 +1443,12 @@ export function drawGrid(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
       } else if (cfg.mirror === 'mirror') {
         // Bottom-up growth plus its top-down reflection. The offset dial
         // slides the whole copied silhouette (all columns hang from the one
-        // mirrorD row) between the ceiling (50% — the classic top-down
-        // copy, the factory look) and the bars (the dial's ends). The row
-        // never depends on the music, so the mirrored half can never slide
-        // off the grid or pop when Sensitivity moves the levels: the old
-        // pivot across the axis row threw the copy off the grid at
-        // off-center axes — the vanishing mirrored half.
+        // mirrorD row) in ONE direction: the ceiling at 0 (the classic
+        // top-down copy), 28% of the grid down at 1. The row never depends
+        // on the music, so the mirrored half can never slide off the grid
+        // or pop when Sensitivity moves the levels: the old pivot across
+        // the axis row threw the copy off the grid at off-center axes —
+        // the vanishing mirrored half.
         coverage = Math.max(level - (rows - 1 - r), r >= mirrorD ? level - (r - mirrorD) : 0)
       } else {
         coverage = level - (rows - 1 - r)

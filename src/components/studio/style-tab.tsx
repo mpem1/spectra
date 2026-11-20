@@ -912,9 +912,9 @@ export function StyleTab() {
             {visualizer.mirror === 'mirror' &&
             (visualizer.style === 'bars' || visualizer.style === 'grid') ? (
               <p className="text-xs leading-relaxed text-zinc-500">
-                50% is the classic flip — the reflection hangs from the far
-                edge. Toward either end the reflection slides down toward
-                the bars and always stays fully in view.
+                0% is the classic flip — the reflection hangs from the far
+                edge. Toward 100% it slides down toward the bars in one
+                direction, and always stays fully in view.
               </p>
             ) : null}
             {visualizer.mirror === 'mirror' && visualizer.style === 'wave' ? (
