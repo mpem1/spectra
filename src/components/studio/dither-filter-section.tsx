@@ -446,9 +446,10 @@ export function DitherFilterSection() {
                 screens; Smooth flattens noise into even tones, Sharpen
                 crispens (negative denoises) at Radius reach; Edges read the
                 picture's contours; Grain jitters flat areas. React to beat
-                climbs the Threshold on the song's low end, slamming heavier
-                ink on kicks. Skipped on transparent backgrounds so alpha
-                recordings stay clean.
+                dips the Threshold on each detected kick — the ink recedes
+                and the print flashes brighter — then rests back at your
+                dial between kicks. Skipped on transparent backgrounds so
+                alpha recordings stay clean.
               </p>
             </>
           ) : (

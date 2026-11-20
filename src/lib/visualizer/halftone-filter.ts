@@ -271,6 +271,7 @@ interface FlipGateState {
   env: number // the swap's drive level 0..1
   holdLeft: number // seconds of fully-swapped time left
   lastT: number // last song time seen (seek / loop detection)
+  lastRawDt: number // smoothed RAW frame gap (uncapped) — the rise window
   // --- onset detector ---
   hist: Float32Array // recent sub-band samples (rise-window ring)
   histT: Float32Array // their song times
@@ -300,9 +301,18 @@ const FLIP_RELEASE = 0.25
  * Rise window: the detector compares the bass to its LOWEST sample this many
  * seconds back. Long enough to catch a kick's whole attack, short enough that
  * a sustained note's flat top slides back to "no rise" — which is exactly
- * what a level gate could never tell apart.
+ * what a level gate could never tell apart. FLOOR at heavy render loads:
+ * slow CPU fallbacks can drop the live loop to single-digit fps, where a
+ * fixed 90 ms window holds less than one frame gap — every sample would be
+ * its own window minimum and NO rise would ever be detectable (every flip
+ * feature dead). The window therefore stretches to span ~2 live frames
+ * (winSec below); at normal 30-60 fps the raw gap is far below 90 ms and
+ * this floor never engages — the window stays exactly 0.09 s.
  */
 const RISE_WINDOW = 0.09
+/** The adaptive window never stretches past this — the "flat top stops being
+ *  flat" failure mode must not creep back in at pathological frame gaps. */
+const RISE_WINDOW_MAX = 2.5
 /** Rise-history capacity: 90 ms at 240 fps ≈ 22 samples; 32 is comfortably safe. */
 const RISE_CAP = 32
 /**
@@ -320,7 +330,8 @@ const RISE_CAP = 32
 const RISE_PCTL = 0.25
 /** Percentile-ring capacity: 1.0 s at 240 fps = 240 samples; 256 is safe. */
 const RISE_PCTL_CAP = 256
-/** How much recent history the percentile looks at. */
+/** How much recent history the percentile looks at (song seconds — the
+ *  window stretches at sparse frame rates, see the winSec note below). */
 const PCTL_WINDOW = 1.0
 /** One kick fires once: same-kick re-rises inside this window are ignored. */
 const REFRACTORY = 0.13
@@ -353,8 +364,8 @@ const PERSIST_FRAC = 0.85
  * (song-time aware, allocation-free: values are gathered into a reusable
  * scratch buffer and insertion-sorted — ≤ 256 elements, trivial per frame).
  */
-function risePctl(st: FlipGateState, time: number): number {
-  const cutoff = time - PCTL_WINDOW
+function risePctl(st: FlipGateState, time: number, winSec: number): number {
+  const cutoff = time - winSec
   let n = 0
   for (let i = 1; i <= st.riseLen; i++) {
     const idx = (st.riseHead - i + RISE_PCTL_CAP) % RISE_PCTL_CAP
@@ -411,6 +422,7 @@ export function flipGate(
       env: 0,
       holdLeft: 0,
       lastT: time,
+      lastRawDt: 0,
       hist: new Float32Array(RISE_CAP),
       histT: new Float32Array(RISE_CAP),
       histLen: 0,
@@ -439,8 +451,11 @@ export function flipGate(
     st.peakSinceFire = bass
     st.quietT = -Infinity
     st.prevRise = 0
+    st.lastRawDt = 0
   }
-  const dt = Math.min(0.1, Math.max(0, time - st.lastT))
+  const rawDt = Math.min(3, Math.max(0, time - st.lastT))
+  st.lastRawDt = st.lastRawDt > 0 ? st.lastRawDt * 0.6 + rawDt * 0.4 : rawDt
+  const dt = Math.min(0.1, rawDt)
   st.lastT = time
 
   // --- Onset detector -------------------------------------------------------
@@ -452,8 +467,11 @@ export function flipGate(
   // The rise over the lookback window: current bass minus the lowest sample
   // still inside the window. A kick lifts this for a few frames as the
   // window slides over the attack; a sustained note's flat top slides back
-  // to ~0 — no rise, no fire, no pinning.
-  const cutoff = time - RISE_WINDOW
+  // to ~0 — no rise, no fire, no pinning. The window spans ~2 live frame
+  // gaps when the render loop runs slow (see RISE_WINDOW's floor note), so
+  // sparse frames still see an attack; at 30-60 fps it is exactly 0.09 s.
+  const winSec = Math.max(RISE_WINDOW, Math.min(RISE_WINDOW_MAX, st.lastRawDt * 2))
+  const cutoff = time - winSec
   let min = bass
   for (let i = 1; i <= st.histLen; i++) {
     const idx = (st.histHead - i + RISE_CAP) % RISE_CAP
@@ -468,7 +486,12 @@ export function flipGate(
   // absolute term that eases down in quiet passages. Lower sensitivity = a
   // higher bar (only true slams), higher sensitivity = a lower one (every
   // hit).
-  const p25 = risePctl(st, time)
+  // The baseline window stretches with the frame cadence too: at ~1 fps a
+  // fixed 1 s window holds a single rise, and if that rise is the kick's
+  // own, the bar chases its tail and blocks every later kick. Three frame
+  // gaps of history (4 s cap) keeps the 25th-percentile baseline honest at
+  // any cadence; at 30-60 fps it is exactly the 1.0 s published window.
+  const p25 = risePctl(st, time, Math.max(PCTL_WINDOW, Math.min(4, st.lastRawDt * 3)))
   const relMult = 2.6 - 1.8 * sens
   const base = (0.075 - 0.05 * sens) * (0.3 + 0.7 * Math.min(1, Math.max(0, p25 / 0.05)))
   const thr = Math.min(THR_CAP, Math.max(NOISE_FLOOR, p25 * relMult + base))
@@ -487,10 +510,16 @@ export function flipGate(
   if (rise < thr * QUIET_FRAC) st.quietT = time
   if (!st.armed && time - st.quietT >= REARM_QUIET) st.armed = true
   let fired = false
+  // Persistence (the previous frame's rise must already be up too) assumes
+  // frames are dense enough that a kick's attack spans 2+ frames. When the
+  // live frame gap is SPARSER than the rise window itself, a kick IS a
+  // single-frame spike by construction — require the rise alone instead of
+  // structurally never firing (dense frames keep the exact old rule).
+  const sparse = st.lastRawDt > RISE_WINDOW
   if (
     st.armed &&
     rise > thr &&
-    st.prevRise > thr * PERSIST_FRAC &&
+    (sparse || st.prevRise > thr * PERSIST_FRAC) &&
     time - st.lastKickT >= REFRACTORY
   ) {
     fired = true

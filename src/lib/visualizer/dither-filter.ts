@@ -35,7 +35,9 @@
  * Glow: two blurred, contrast-crushed copies of the dithered grid (a tight
  * one and a wide one) are drawn back additively, so only the bright dots
  * bloom — soft halos around the light pattern, the paper stays dark.
- * "React to beat" flares the bloom on the song's low end.
+ * "React to beat" flares the bloom on the song's low end, and on the
+ * MacPaint engine dips the Threshold on each detected kick (the ink
+ * recedes, the print lifts brighter) via the shared kick-onset gate.
  *
  * How it stays fast & deterministic (pure canvas ops, one tiny getImageData):
  *   1. One GPU downscale of the frame onto a cols×rows canvas (the contrast
@@ -48,7 +50,8 @@
  * backgrounds skip the pass.
  */
 import type { AudioFrame, DitherFilterConfig, RenderContext } from './types'
-import { beatAmount, beatBoost, clamp01, getWork, resetWork } from './filter-utils'
+import { beatBoost, clamp01, getWork, resetWork } from './filter-utils'
+import { flipGate } from './halftone-filter'
 import { MacpaintGL, type MacpaintParams } from './dither-macpaint-gl'
 import {
   ANCHOR_INK_RGB,
@@ -133,10 +136,23 @@ const MP_PATTERN: readonly [number, number][] = [
 const MP_SLOTS = 38
 export { MP_SLOTS as MACPAINT_SLOT_COUNT }
 
-/** React to beat — how far the Threshold dial climbs on a FULL low-end hit
- *  at 100% Beat shift (the print slams heavier ink, then relaxes back to the
- *  dialed-in look between hits). */
+/** React to beat — how far the Threshold dial DIPS on a fired kick at 100%
+ *  Beat shift: the ink recedes, the print lifts toward clean paper (the
+ *  flash analog of the glowing engines' bloom), then eases back to rest
+ *  exactly at the dialed Threshold between kicks. */
 const MAC_BEAT_SHIFT = 0.35
+
+/** The kick gate's trigger sensitivity and hold (fixed — the Beat shift dial
+ *  scales how far the Threshold dips, not when the punch fires). The same
+ *  clean onset detector as every Flip-on-kick feature drives the dip: it
+ *  rests at EXACTLY 0 between kicks (the Threshold holds perfectly still —
+ *  no borderline cell flips, no flicker), stamps in on a detected kick and
+ *  eases back over ~0.4s. Riding the raw bass level instead made the
+ *  Threshold wiggle every frame — the low end of any track breathes — and
+ *  every cell near a screen-density boundary flipped back and forth,
+ *  reading as scattered single-pixel flicker. */
+const MAC_BEAT_SENS = 0.4
+const MAC_BEAT_HOLD = 0.12
 
 /** Ink coverage per pattern — the density matcher picks the enabled slot
  *  closest to each cell's target coverage (published table, verbatim). */
@@ -372,24 +388,39 @@ function drawMacpaintGlFrame(
  * (smooth: picks the flattest diagonal quadrant of the raw grid, keeps the
  * sharpen detail on top) → optional Sobel edges (Ink stamps them, Shade
  * pushes them to paper) → the threshold/contrast curve → density-matched
- * bitmap pattern → ink/paper. Spectra extension: React to beat climbs the
- * Threshold on the song's low end so the print slams heavier ink on kicks
- * (the ink is this effect's energy — the flare analog of the glowing
- * engines' bloom), resting exactly at the dialed value between hits.
+ * bitmap pattern → ink/paper. Spectra extension: React to beat DIPS the
+ * Threshold on each detected kick — the ink recedes and the print lifts
+ * toward clean paper (the flash analog of the glowing engines' bloom),
+ * holding still at the dialed value between kicks. The dip is driven by
+ * the shared kick-onset gate, NOT the raw bass level, so it lands on kicks
+ * (never as between-hit jitter) and rests at exactly 0 between them.
  */
 function drawMacpaintGrid(
   rc: RenderContext,
   cfg: DitherFilterConfig,
   strength: number,
-  bass: number,
+  frame: Pick<AudioFrame, 'bass' | 'sub' | 'time'>,
 ): void {
   const { width: W, height: H } = rc
   const bitmapDial = Math.min(4096, Math.max(32, Math.round(cfg.macBitmapWidth ?? 342)))
-  // The beat-reactive Threshold, computed ONCE so GL and CPU kick on the
-  // same frames (deterministic — driven by frame.bass only).
+  // The beat-reactive Threshold, computed ONCE so GL and CPU punch on the
+  // same frames (deterministic — the gate is a pure time-state machine,
+  // seek-safe, per-canvas state like every other flip). OFF returns exactly
+  // 0 — pixel-identical to before.
+  const kick = cfg.beatReactive
+    ? flipGate(
+        rc.ctx,
+        clamp01(frame.sub ?? frame.bass ?? 0),
+        frame.time,
+        MAC_BEAT_SENS,
+        MAC_BEAT_HOLD,
+        'dither-mac',
+      )
+    : 0
   const threshold = Math.min(
     1,
-    Math.max(0, cfg.macThreshold ?? 0.354) + beatAmount(cfg, bass) * MAC_BEAT_SHIFT,
+    Math.max(0, cfg.macThreshold ?? 0.354) -
+      kick * clamp01(cfg.beatStrength ?? 0.5) * MAC_BEAT_SHIFT,
   )
 
   // GPU first — the site's own shader prints the dial verbatim (blend = the
@@ -684,7 +715,7 @@ function quantize3(c: number, b: number): number {
 export function drawDitherFilter(
   rc: RenderContext,
   cfg: DitherFilterConfig | undefined,
-  frame: Pick<AudioFrame, 'bass'>,
+  frame: Pick<AudioFrame, 'bass' | 'sub' | 'time'>,
   transparent: boolean,
 ): void {
   if (!cfg?.enabled || transparent) return
@@ -698,9 +729,9 @@ export function drawDitherFilter(
   // MacPaint mode — effect.app's pattern-matched bitmap engine, a completely
   // different pipeline from the Bayer modes below (own grid sizing, own
   // threshold/contrast curve, no bloom): hand the whole frame over. The
-  // beat-reactive Threshold rides in with the frame's bass.
+  // beat-reactive Threshold dips ride in with the frame's kick gate.
   if (mode === 'macpaint') {
-    drawMacpaintGrid(rc, cfg, strength, clamp01(frame.bass ?? 0))
+    drawMacpaintGrid(rc, cfg, strength, frame)
     return
   }
 
