@@ -793,24 +793,16 @@ export function drawWave(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
     tracePath(-1, copyCenter)
     ctx.stroke()
   } else if (cfg.mirror === 'center') {
-    // Center: the wave grows BOTH ways from the axis — the band between
-    // the up-trace and the down-trace fills solid, one symmetric body
-    // around the offset line (the bars' double-sided center look, for the
-    // wave). Mirror keeps the two-line look, so the two modes read
-    // completely differently.
-    ctx.beginPath()
-    for (let i = 0; i < count; i++) {
-      const x = (i / (count - 1)) * W
-      const y = centerY + wave[i] * amp
-      if (i === 0) ctx.moveTo(x, y)
-      else ctx.lineTo(x, y)
-    }
-    for (let i = count - 1; i >= 0; i--) {
-      ctx.lineTo((i / (count - 1)) * W, centerY - wave[i] * amp)
-    }
-    ctx.closePath()
-    ctx.fillStyle = stroke
-    ctx.fill()
+    // Center: the wave FOLDS around the dial's axis — the trace plus its
+    // exact mirror across centerY, two STROKED lines kissing at the axis
+    // (the pre-'Mirror vs Center' look; the filled-envelope experiment read
+    // as a broken solid blob, so it's back to lines). What still makes
+    // center read differently from mirror: there the original is PINNED and
+    // the dial slides the copy open (a real offset); here the whole
+    // symmetric figure travels WITH the axis — center is a position dial,
+    // mirror is a separation dial.
+    tracePath(-1, centerY)
+    ctx.stroke()
   }
   ctx.shadowBlur = 0
 }
