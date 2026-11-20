@@ -741,19 +741,32 @@ export function drawWave(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
   const wave = frame.wave
   const count = wave.length
   if (count < 2) return
-  // Mirror/center anchor: the waveform folds around H * mirrorOffset
-  // (plain 'none' waves stay canvas-centered).
+  // Mirror/center anchor. Center: the figure grows BOTH ways from the dial's
+  // axis (H * mirrorOffset), so the axis moves the figure — the intended
+  // center semantics. Mirror/none: the original wave stays PINNED at the
+  // canvas center, its factory position (exactly like the bars' floor) —
+  // the dial never moves the original.
   const centerY =
-    cfg.mirror !== 'none' ? H * clamp01(cfg.mirrorOffset ?? 0.5) : H / 2
+    cfg.mirror === 'center' ? H * clamp01(cfg.mirrorOffset ?? 0.5) : H / 2
+  // Mirror mode's copy travel: the mirrored line hangs from ONE center the
+  // dial slides — 50% reproduces the classic symmetric fold byte-for-byte
+  // (copy center = H/2, the exact mirror of the original), and away from
+  // 0.5 the copy slides up/down CREATING A REAL OFFSET between the two
+  // lines (up to ±0.28H). The travel is engineered like the bars': at the
+  // default amplitude (amp ≤ 0.22H) the copy stays fully on-canvas at
+  // EVERY dial position (0.22H headroom each way — 0.22 + 0.56·offset
+  // spans 0.22H..0.78H), and at extreme Sensitivity the peaks clip the
+  // frame edge gracefully — a wave line clips, it never vanishes.
+  const copyCenter = H * (0.22 + 0.56 * clamp01(cfg.mirrorOffset ?? 0.5))
   const amp = Math.min(H * 0.22 * clamp(cfg.sensitivity, 0, 3), H * 0.42)
   const g = cfg.gradient
   const stroke = visualizerFill(rc, frame, cfg)
 
-  const tracePath = (sign: number): void => {
+  const tracePath = (sign: number, center: number): void => {
     ctx.beginPath()
     for (let i = 0; i < count; i++) {
       const x = (i / (count - 1)) * W
-      const y = centerY + wave[i] * amp * sign
+      const y = center + wave[i] * amp * sign
       if (i === 0) ctx.moveTo(x, y)
       else ctx.lineTo(x, y)
     }
@@ -770,12 +783,14 @@ export function drawWave(rc: RenderContext, frame: AudioFrame, cfg: VisualizerCo
     ctx.shadowBlur = 0
   }
 
-  tracePath(1)
+  tracePath(1, centerY)
   ctx.stroke()
   if (cfg.mirror === 'mirror') {
     // Mirror: the trace plus its vertical reflection — two mirrored lines
-    // sharing the offset axis (a symmetric envelope of strokes).
-    tracePath(-1)
+    // that the offset dial SEPARATES. The original rides its pinned center;
+    // the copy hangs from the dialed copyCenter, so sliding the dial opens
+    // a real gap between the lines (50% = the factory symmetric fold).
+    tracePath(-1, copyCenter)
     ctx.stroke()
   } else if (cfg.mirror === 'center') {
     // Center: the wave grows BOTH ways from the axis — the band between

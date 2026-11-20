@@ -917,6 +917,13 @@ export function StyleTab() {
                 the bars and always stays fully in view.
               </p>
             ) : null}
+            {visualizer.mirror === 'mirror' && visualizer.style === 'wave' ? (
+              <p className="text-xs leading-relaxed text-zinc-500">
+                50% is the classic fold — the mirror traces the wave exactly.
+                Toward either end the mirrored line slides up or down away
+                from the original, opening a real offset between the two.
+              </p>
+            ) : null}
           </div>
         ) : null}
 

@@ -49,12 +49,16 @@ export interface VisualizerConfig {
   /** Gap between bars, 0..1 (fraction of slot width) */
   gap: number
   mirror: MirrorMode
-  /** Vertical anchor of the mirror/center axis. Center/wave: the figure's
+  /** Vertical anchor of the mirror/center axis. Center: the figure's
    *  fold line moves with the dial (0 = top edge · 0.5 = middle (default) ·
    *  1 = bottom edge). Mirror on bars/grid: 0.5 hangs the reflected copy
    *  from the ceiling (the factory look); away from 0.5 the copy slides
    *  down toward the bars, engineered to stay fully in frame at every dial
-   *  position and level — it can never leave the canvas. */
+   *  position and level — it can never leave the canvas. Mirror on wave:
+   *  0.5 reproduces the classic symmetric fold; away from 0.5 the mirrored
+   *  line slides up/down away from the pinned original, opening a real
+   *  offset between the two (±0.28H of travel, fully in frame at the
+   *  default amplitude). */
   mirrorOffset: number
   /** Draw gradient behind bars as filled background glow */
   glow: boolean
