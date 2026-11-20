@@ -125,14 +125,19 @@ export interface VisualizerConfig {
    *  pure glowing wireframe. */
   terrainFill: number
   /** Terrain style — mirror dial, signed -1..1 (0 = the factory look in
-   *  every mode). Mirror mode: drops the per-row fold line lower — 0 folds
-   *  the reflection exactly on each row's ground line (the classic look,
-   *  the mirrored wireframe running off the bottom edge with the land),
-   *  positive detaches it up to half a canvas lower (a raised water line),
-   *  negative shallows the reflection against the hills. The land itself
-   *  never moves with the dial, and the reflection always sits below its
-   *  own ground line. Center mode: Spread — how deep the range's own
-   *  underside grows (negative shallower, positive deeper). */
+   *  every mode). Mirror mode: slides ONLY the lake's water line — the
+   *  range stays planted at its full perspective height (the near rows run
+   *  past the bottom edge, deeper Horizon settings stretch it longer) and
+   *  the reflection is the exact 1:1 flip of the land above the line. 0
+   *  puts the line 72% down the canvas (the factory lake); positive sinks
+   *  it toward the bottom edge (the lake shrinks toward a sliver; the
+   *  flipped peaks may run past the frame like a real lake bigger than
+   *  it), negative raises it into the range — high water: the submerged
+   *  foothills dim under the surface and the lake reflects the peaks still
+   *  above the line, the travel spanning the dry land's full height so
+   *  something dry always remains to reflect. Center mode: Spread — how
+   *  deep the range's own underside grows (negative shallower, positive
+   *  deeper). */
   terrainMirrorDrop: number
   /** Sphere style — spin speed 0..1. How fast the dot-matrix planet turns
    *  around its tilted axis (0 = a slow drift, 1 = a fast whirl). */

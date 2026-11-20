@@ -1593,14 +1593,19 @@ console.log('S14 terrain — the 3D wireframe landscape')
     `fills=${fills(main)} alphas=${[...fillAlphaSet()].join(',')}`,
   )
 
-  // 14) The Mirror family: 'mirror' folds the wireframe reflection down
-  //     from every row's ground line at FULL strength — the classic
-  //     stroke-only lake (the 2-pt ridge segments double; the curtains
-  //     stay single, the fold adds no curtain copies), 'center' grows the
-  //     symmetric range (the curtains double there).
+  // 14) The Mirror family: 'mirror' lays a TRUE lake under the full-height
+  //     range (the 2-pt ridge segments gain a flipped twin for every
+  //     above-water segment — fully submerged rows reflect nothing, so the
+  //     count lands between 1× and 2×; the (ROWS+1)-pt curtains double into
+  //     the water), 'center' grows the symmetric range (the curtains double
+  //     there as well).
   renderOne(structuredClone(cfgT), 0.5)
   const segs2 = (): OpRec[] => strokesOf().filter((r) => (r.pts?.length ?? 0) === 2)
-  const curtainStrokes = (): OpRec[] => strokesOf().filter((r) => (r.pts?.length ?? 0) === ROWS + 1)
+  // Curtains are the only strokes at alpha 0.15 — the mirror's reflected
+  // curtains TRUNCATE at the water line (fewer than ROWS+1 points), so the
+  // count — not the point length — is the invariant.
+  const curtainStrokes = (): OpRec[] =>
+    strokesOf().filter((r) => (r.pts?.length ?? 0) >= 2 && Math.abs(r.alpha - 0.15) < 1e-6)
   const baseSegs = segs2().length
   const baseCurtains = curtainStrokes().length
   renderOne({ ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const } }, 0.5)
@@ -1610,8 +1615,8 @@ console.log('S14 terrain — the 3D wireframe landscape')
   const centerSegs = segs2().length
   const centerCurtains = curtainStrokes().length
   check(
-    'mirror folds a full-strength stroke-only reflection (segments double, curtains single)',
-    mirrorSegs >= baseSegs * 2 && mirrorCurtains === baseCurtains,
+    'mirror lays the lake (every above-water segment mirrors, curtains double)',
+    mirrorSegs > baseSegs && mirrorSegs <= baseSegs * 2 && mirrorCurtains === baseCurtains * 2,
     `segs ${baseSegs}→${mirrorSegs} curtains ${baseCurtains}→${mirrorCurtains}`,
   )
   check(
@@ -1620,22 +1625,24 @@ console.log('S14 terrain — the 3D wireframe landscape')
     `segs ${baseSegs}→${centerSegs} curtains ${baseCurtains}→${centerCurtains}`,
   )
 
-  // 15) Mirror mode folds the reflection at EACH ROW'S OWN ground line —
-  //     the restored classic look: the range keeps its FULL height (the
-  //     land runs past the bottom edge exactly like None mode, and deeper
-  //     Horizon settings stretch it longer across the frame), the land
-  //     NEVER moves with the dial (segment-for-segment identical at −1, 0
-  //     and +1), every reflected point sits BELOW its own land point (the
-  //     copy never interleaves above its ridge), the dial slides the fold
-  //     lower in ONE direction (mean depth −1 < 0 < +1) and the mirrored
-  //     world is allowed to run off the bottom edge with the land — the
-  //     "gets longer" property the old shore design squashed away.
+  // 15) Mirror mode lays a TRUE lake under the full-height range: ONE water
+  //     line and the reflection the exact 1:1 flip of the land above it —
+  //     the stacked-ghost-ridge fold is gone. The range keeps its FULL
+  //     height (the land runs past the bottom edge exactly like None mode —
+  //     the "gets longer with depth perspective" property the old
+  //     compressed shore squashed away), the land NEVER moves with the dial
+  //     (segment-for-segment identical at −1, 0 and +1), the factory line
+  //     sits 72% down the canvas, the line travels MONOTONICALLY across the
+  //     dial (waterY −1 < 0 < +1), at −1 the line cuts INTO the range (high
+  //     water, stopping just short of the highest ridge so something dry
+  //     always reflects) and segments fully below the line reflect NOTHING
+  //     (their copies would pile into a solid stripe ON the line) — so
+  //     land/reflection pairing runs by the strokes' shared x endpoints
+  //     (the flip never moves x), and only above-water segments own a twin.
   renderOne(
     { ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const } },
     0.5,
   )
-  const orig0 = segs2().filter((_, i) => i % 2 === 0)
-  const refl0 = segs2().filter((_, i) => i % 2 === 1)
   const ysOf = (rs: OpRec[]): number[] => rs.flatMap((r) => (r.pts ?? []).map((p) => p.y))
   const samePts = (a: OpRec[], b: OpRec[]): boolean =>
     a.length === b.length &&
@@ -1650,6 +1657,35 @@ console.log('S14 terrain — the 3D wireframe landscape')
         )
       )
     })
+  /** Split the mirror pass's 2-pt strokes into land and reflection (the
+   *  reflection reuses the land's x endpoints verbatim) and pair them. */
+  const pairLake = (all: OpRec[]): { land: OpRec[]; refl: OpRec[]; pairs: Array<[OpRec, OpRec]> } => {
+    const key = (r: OpRec[]): string =>
+      `${r.pts![0].x.toFixed(3)},${r.pts![1].x.toFixed(3)}`
+    const land: OpRec[] = []
+    const refl: OpRec[] = []
+    const seen = new Map<string, number>()
+    for (const r of all) {
+      const k = key(r)
+      const n = seen.get(k) ?? 0
+      seen.set(k, n + 1)
+      if (n === 0) land.push(r)
+      else refl.push(r)
+    }
+    const byKey = new Map<string, OpRec[]>()
+    for (const r of refl) {
+      const arr = byKey.get(key(r)) ?? []
+      arr.push(r)
+      byKey.set(key(r), arr)
+    }
+    const pairs: Array<[OpRec, OpRec]> = []
+    for (const l of land) {
+      const arr = byKey.get(key(l))
+      if (arr && arr.length > 0) pairs.push([l, arr.shift()!])
+    }
+    return { land, refl, pairs }
+  }
+  const lake0 = pairLake(segs2())
   renderOne(
     {
       ...structuredClone(cfgT),
@@ -1657,8 +1693,7 @@ console.log('S14 terrain — the 3D wireframe landscape')
     },
     0.5,
   )
-  const orig1 = segs2().filter((_, i) => i % 2 === 0)
-  const refl1 = segs2().filter((_, i) => i % 2 === 1)
+  const lake1 = pairLake(segs2())
   renderOne(
     {
       ...structuredClone(cfgT),
@@ -1666,36 +1701,41 @@ console.log('S14 terrain — the 3D wireframe landscape')
     },
     0.5,
   )
-  const origFlood = segs2().filter((_, i) => i % 2 === 0)
-  const reflFlood = segs2().filter((_, i) => i % 2 === 1)
-  const landFixed = samePts(orig0, orig1) && samePts(orig0, origFlood)
-  const landMaxY = Math.max(...ysOf(orig0))
-  const meanDepthOf = (refl: OpRec[]): number => {
-    if (refl.length === 0) return -1
-    let s = 0
-    for (let i = 0; i < refl.length; i++) s += refl[i].pts![0].y - orig0[i].pts![0].y
-    return s / refl.length
+  const lakeF = pairLake(segs2())
+  const landFixed = samePts(lake0.land, lake1.land) && samePts(lake0.land, lakeF.land)
+  const landMaxY = Math.max(...ysOf(lake0.land))
+  const landMinY = Math.min(...ysOf(lake0.land))
+  // The 1:1 flip: land.y + refl.y is ONE constant (= 2·waterY) across every
+  // pair whose reflection sits strictly below the line (unclamped
+  // endpoints — clamped ones end ON the line). The water line itself is
+  // recovered from that constant.
+  const waterLineOf = (lk: { pairs: Array<[OpRec, OpRec]> }): number => {
+    if (lk.pairs.length === 0) return NaN
+    const minReflY = Math.min(...lk.pairs.flatMap(([, rf]) => (rf.pts ?? []).map((p) => p.y)))
+    const sums = lk.pairs
+      .filter(([, rf]) => (rf.pts ?? []).every((p) => p.y > minReflY + 0.5))
+      .map(([l, rf]) => l.pts![0].y + rf.pts![0].y)
+    if (sums.length === 0) return minReflY
+    return sums.every((s) => Math.abs(s - sums[0]) < 1) ? sums[0] / 2 : NaN
   }
-  const minDepth =
-    Math.min(
-      ...refl0.map((r, i) => r.pts![0].y - orig0[i].pts![0].y),
-      ...refl1.map((r, i) => r.pts![0].y - orig1[i].pts![0].y),
-      ...reflFlood.map((r, i) => r.pts![0].y - origFlood[i].pts![0].y),
-    )
-  const dN = meanDepthOf(reflFlood)
-  const d0 = meanDepthOf(refl0)
-  const d1 = meanDepthOf(refl1)
+  const w0 = waterLineOf(lake0)
+  const w1 = waterLineOf(lake1)
+  const wF = waterLineOf(lakeF)
   check(
-    'mirror fold: land fixed across the dial, copies below their points, depth monotonic, land past the bottom edge',
-    orig0.length > 200 &&
-      orig0.length === orig1.length &&
+    'mirror lake: land fixed, full height, 1:1 flip, factory line at 72%, monotonic travel, high water at -1',
+    lake0.land.length > 200 &&
+      lake0.pairs.length > 100 &&
+      lake0.pairs.length < lake0.land.length &&
       landFixed &&
-      minDepth >= -0.5 &&
-      dN < d0 &&
-      d0 < d1 &&
       landMaxY > H &&
-      JSON.stringify(refl0) !== JSON.stringify(refl1),
-    `n=${orig0.length} fixed=${landFixed} minDepth=${minDepth.toFixed(1)} depths ${dN.toFixed(0)}/${d0.toFixed(0)}/${d1.toFixed(0)} landMax=${landMaxY.toFixed(0)} H=${H}`,
+      Number.isFinite(w0) &&
+      Math.abs(w0 - H * 0.72) < H * 0.02 &&
+      w1 > w0 + H * 0.1 &&
+      wF < w0 - H * 0.1 &&
+      wF > landMinY - H * 0.05 &&
+      wF < landMinY + H * 0.05 &&
+      JSON.stringify(lake0.refl) !== JSON.stringify(lake1.refl),
+    `land=${lake0.land.length} pairs=${lake0.pairs.length} lines ${wF.toFixed(0)}/${w0.toFixed(0)}/${w1.toFixed(0)} land=[${landMinY.toFixed(0)}..${landMaxY.toFixed(0)}] H=${H}`,
   )
 
   // 16) Center mode's dial (Spread) scales the depth of the range's OWN

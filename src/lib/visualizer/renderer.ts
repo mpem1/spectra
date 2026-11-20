@@ -1759,10 +1759,10 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
   const fill = clamp01(cfg.terrainFill ?? 0.4)
   // Mirror family: 'mirror' keeps the range at its FULL height (the near
   // rows run past the bottom edge exactly like None mode — deeper Horizon
-  // settings stretch the landscape longer across the frame) and folds its
-  // wireframe reflection down from every row's own ground line, so the
-  // mirrored world extends downward and runs off the bottom edge the same
-  // way the land does; 'center' grows the range symmetrically around each
+  // settings stretch the landscape longer across the frame) and lays a
+  // true lake under it: the whole above-water landscape flipped across ONE
+  // water line, so the copy reads as a mirror — never as strokes stacked
+  // between the hills; 'center' grows the range symmetrically around each
   // row's ground line with its OWN hills below (a phase-shifted noise
   // field), so the two modes read completely differently.
   const mirrorMode = cfg.mirror ?? 'none'
@@ -1858,35 +1858,66 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
     }
   }
 
-  /* ---- Mirror mode: the classic folded landscape ----
-   * The reflection folds at EACH ROW'S OWN ground line — the pre-'true
-   * lake' look: the mirrored wireframe extends downward from every ridge
-   * and the tall near peaks reflect deep, running past the bottom edge
-   * exactly like the land itself. Ghost ridges interleaving with the
-   * hills is the look's character, drawn at full wireframe strength —
-   * not a defect to squash away. The dial moves the reflection DOWN in
-   * ONE direction across its whole signed range: 0 folds exactly on the
-   * ground lines (the classic look, bit-identical to the factory);
-   * positive drops the fold line up to half a canvas lower (the
-   * reflection detaches from the hills like a raised water line);
-   * negative keeps the fold on the ground lines and squashes the
-   * reflection toward them (a shallower lake hugging the shore). Every
-   * position keeps the copy below its own ground line, so nothing ever
-   * pops or flips past the fold. Center mode pins its fold to the ground
-   * line; its dial (Spread) scales how deep the range's own underside
-   * grows. Pure math → deterministic. */
+  /* ---- Mirror mode: a true lake on its own axis ----
+   * Folding each row across its OWN ground line interleaves ghost ridges
+   * with the hills — the far rows bunch at the horizon and their copies
+   * stack between them, so the reflection reads as layered strokes, not a
+   * mirror. A lake needs ONE water line: the reflection is the whole
+   * above-water landscape flipped across a single line the dial controls,
+   * so land and lake match point for point and the copy reads as water.
+   * The range keeps its FULL height (the near rows run past the bottom
+   * edge exactly like None mode, and deeper Horizon settings stretch the
+   * landscape longer — the lengthening the old compressed shore squashed
+   * away), so the water line cuts THROUGH the range and the hills
+   * standing in it sink: rows whose ground line sits below the line dim
+   * under the surface while their peaks stay dry above it. The factory
+   * line sits 72% down the canvas (the same on-canvas anchor the old
+   * compressed shore ended at); the dial slides ONLY the line. Positive
+   * sinks it toward the bottom edge — the lake shrinks toward a sliver
+   * (the flipped peaks may honestly run past the bottom edge, like a real
+   * lake bigger than the frame). Negative raises it INTO the range — high
+   * water: the submerged foothills dim and the lake reflects the peaks
+   * still above the line, the travel spanning the dry land's full height
+   * (stopping just short of the highest ridge so something dry always
+   * remains to reflect). Center mode keeps the full-height range and pins
+   * its fold to the ground line; its dial (Spread) scales how deep the
+   * range's own underside grows. Pure math → deterministic. */
   const dropV = clamp(cfg.terrainMirrorDrop ?? 0, -1, 1)
   const spread = centerSym ? 1 + dropV : 1
-  const drop = Math.max(0, dropV) * H * 0.5
-  const squash = 1 + Math.min(0, dropV) * 0.9
-  const foldY = (r: number): number => gy[r] + drop
-  /** A screen Y folded across row r's fold line (squashed on the negative
-   *  half of the dial — the shallower lake). */
-  const reflY = (r: number, y: number): number => foldY(r) + (foldY(r) - y) * squash
+  let rpy: Float64Array | null = null
+  let waterY = 0
+  let flood = false
+  if (reflect) {
+    // The factory water line: 72% down the canvas at the default horizon —
+    // the anchor the old compressed shore ended at. Raising the Horizon
+    // (the lengthening direction) keeps the line there so the whole gain
+    // goes to dry land; lowering it rides the span instead (35.5% of the
+    // range stays dry) so the distant landscape never drowns completely.
+    const base = Math.max(H * 0.72, hy + (gy[ROWS] - hy) * 0.355)
+    // The dry land's top — the negative travel must always leave something
+    // above the line to reflect.
+    let topY = Infinity
+    for (let i = 0; i < py.length; i++) topY = Math.min(topY, py[i])
+    const dry = Math.max(1e-6, base - topY)
+    waterY =
+      dropV >= 0
+        ? base + dropV * (H - base) * 0.85
+        : Math.max(base + dropV * Math.max(H * 0.02, dry - H * 0.02), topY + H * 0.01)
+    flood = waterY < gy[ROWS]
+    // The exact 1:1 flip across the water line; points below the line
+    // (submerged) fold flat onto it — the fills rely on that clamp so the
+    // lake never paints above its own surface.
+    rpy = new Float64Array(py.length)
+    for (let i = 0; i < py.length; i++) rpy[i] = 2 * waterY - Math.min(py[i], waterY)
+  }
 
-  /** The Center mode's lower half at (row, col): the range's own hills
-   *  below the ground line at the Spread dial's depth. */
-  const lowY = (r: number, c: number): number => gy[r] + worldHLow(r, c) * uAt(r) * spread
+  /** The lower half's screen Y at (row, col): the lake reflection in Mirror
+   *  mode (the whole range flipped across the single water line), the
+   *  organic underside in Center mode at the Spread dial's depth. */
+  const lowY = (r: number, c: number): number => {
+    if (centerSym) return gy[r] + worldHLow(r, c) * uAt(r) * spread
+    return rpy ? rpy[r * COLS + c] : py[r * COLS + c]
+  }
 
   const rowPath = (r: number): void => {
     ctx.beginPath()
@@ -1915,9 +1946,31 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
         ctx.lineTo(px[r * COLS], gy[r])
       }
       ctx.closePath()
-      ctx.globalAlpha = la * fill * fade
+      // Hills standing in the lake: a row whose ground line sits below the
+      // water line is under the surface — dim the whole band so the
+      // submerged foothills sink into the lake.
+      ctx.globalAlpha = la * fill * fade * (flood && gy[r] > waterY ? 0.22 : 1)
       ctx.fillStyle = withAlpha(colColor(COLS >> 1), 0.24)
       ctx.fill()
+      if (reflect) {
+        // The lake: the same band flipped across the water line, faded so
+        // it reads as water. Far rows sit highest above the line, so
+        // their inverted bands land deepest — an upside-down range.
+        ctx.beginPath()
+        for (let c = 0; c < COLS; c++) {
+          const idx = r * COLS + c
+          if (c === 0) ctx.moveTo(px[idx], lowY(r, c))
+          else ctx.lineTo(px[idx], lowY(r, c))
+        }
+        // The row's ground edge flips too — clamped at the line for
+        // submerged rows, so the lake never paints above its own surface.
+        const flipGy = 2 * waterY - Math.min(gy[r], waterY)
+        ctx.lineTo(px[r * COLS + COLS - 1], flipGy)
+        ctx.lineTo(px[r * COLS], flipGy)
+        ctx.closePath()
+        ctx.globalAlpha = la * fill * fade * 0.55
+        ctx.fill()
+      }
     }
   }
 
@@ -1935,13 +1988,21 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
     }
     ctx.strokeStyle = colColor(c)
     ctx.stroke()
-    if (centerSym) {
-      // The lower half of the symmetric range.
+    if (centerSym || reflect) {
+      // The lower copy: Center's own hills below the ground line, or the
+      // lake's inverted range below the water line. The reflected curtain
+      // STOPS at the first submerged point — everything deeper would clamp
+      // onto the water line, and every curtain's clamped tail would pile
+      // into one solid stripe across the lake.
       ctx.beginPath()
+      let open = false
       for (let r = 0; r <= ROWS; r++) {
         const idx = r * COLS + c
-        if (r === 0) ctx.moveTo(px[idx], lowY(r, c))
-        else ctx.lineTo(px[idx], lowY(r, c))
+        if (reflect && py[idx] >= waterY) break
+        if (!open) {
+          ctx.moveTo(px[idx], lowY(r, c))
+          open = true
+        } else ctx.lineTo(px[idx], lowY(r, c))
       }
       ctx.stroke()
     }
@@ -1964,10 +2025,8 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
   }
 
   // Pass 4 — the crisp ridge lines: per-segment palette colors, fog-dimmed
-  // with depth, thinner as they recede. Center adds its underside's own
-  // segments; mirror folds every segment across the row's fold line at
-  // full strength — the reflected wireframe that runs off the bottom edge
-  // with the land.
+  // with depth, thinner as they recede. Center/mirror modes add the lower
+  // copy: the symmetric range's underside, or the lake reflection.
   for (let r = 0; r <= ROWS; r++) {
     const dN = 1 - r / ROWS
     const fade = 1 - 0.62 * dN
@@ -1979,19 +2038,26 @@ function drawTerrain(rc: RenderContext, frame: AudioFrame, cfg: VisualizerConfig
       ctx.moveTo(px[i0], py[i0])
       ctx.lineTo(px[i0 + 1], py[i0 + 1])
       ctx.strokeStyle = colColor(c)
+      // Under the surface: a segment fully below the water line is
+      // submerged — dim it so the foothills sink into the lake.
+      if (flood && py[i0] > waterY && py[i0 + 1] > waterY) ctx.globalAlpha = la * fade * 0.22
       ctx.stroke()
-      if (centerSym) {
-        // The underside's own segment at full strength.
-        ctx.beginPath()
-        ctx.moveTo(px[i0], lowY(r, c))
-        ctx.lineTo(px[i0 + 1], lowY(r, c + 1))
-        ctx.stroke()
-      } else if (reflect) {
-        // The folded copy — the classic full-strength reflection.
-        ctx.beginPath()
-        ctx.moveTo(px[i0], reflY(r, py[i0]))
-        ctx.lineTo(px[i0 + 1], reflY(r, py[i0 + 1]))
-        ctx.stroke()
+      if (centerSym || reflect) {
+        // Center: the underside's own segment at full strength. Mirror:
+        // the lake reflection, faded to half strength so it reads as
+        // water — but a segment fully below the line reflects NOTHING
+        // (its copy would fold flat onto the water line, and hundreds of
+        // those flat strokes would pile into a solid artifact stripe), so
+        // submerged segments are skipped: only land above the water
+        // mirrors.
+        if (!reflect || py[i0] <= waterY || py[i0 + 1] <= waterY) {
+          ctx.globalAlpha = la * fade * (reflect ? 0.55 : 1)
+          ctx.beginPath()
+          ctx.moveTo(px[i0], lowY(r, c))
+          ctx.lineTo(px[i0 + 1], lowY(r, c + 1))
+          ctx.stroke()
+        }
+        ctx.globalAlpha = la * fade
       }
     }
   }
