@@ -706,14 +706,14 @@ export function StyleTab() {
               rows bunch at the horizon, bass lifts the near hills, and the
               surface streams forward with Flow speed. The palette sweeps
               across the columns; Fill 0 is the pure glowing wireframe;
-              Mirror pulls the range onto a shore with a faded lake below —
-              Mirror offset slides the lake on its own axis while the range
-              stays put: positive sinks the water line below the shore,
-              negative raises it into the range (high water — the foothills
-              submerge and dim). The reflection is always the range&apos;s
-              exact 1:1 flip. Center grows the range both ways with its own
-              hills below (Spread dials their depth). Zero is always the
-              factory look.
+              Mirror keeps the full landscape and folds its wireframe
+              reflection down from every ground line, so the mirrored world
+              runs off the bottom edge with the land — and a deeper Horizon
+              stretches it all longer. Mirror offset slides that fold lower
+              (positive detaches the reflection like a raised water line,
+              negative shallows it against the hills). Center grows the
+              range both ways with its own hills below (Spread dials their
+              depth). Zero is always the factory look.
             </p>
           </>
         ) : null}
@@ -928,13 +928,12 @@ export function StyleTab() {
         ) : null}
 
         {/* Terrain's dial answers both mirror modes, signed both ways from
-            the factory look at 0: Mirror offset slides ONLY the lake on its
-            own axis — the range stays planted on its shore. Positive sinks
-            the water line toward the bottom edge, negative raises it into
-            the range (high water). The reflection is always the exact 1:1
-            flip of the land above the line. Spread scales how deep the
-            Center underside grows. Perspective's road reflection keeps its
-            own one-way water line under the road. */}
+            the factory look at 0: Mirror offset drops the per-row fold
+            lower (the reflection detaches and sinks like a raised water
+            line) or shallows it against the hills; the land never moves.
+            Spread scales how deep the Center underside grows. Perspective's
+            road reflection keeps its own one-way water line under the
+            road. */}
         {visualizer.style === 'terrain' && visualizer.mirror !== 'none' ? (
           <SliderRow
             label={visualizer.mirror === 'mirror' ? 'Mirror offset' : 'Spread'}

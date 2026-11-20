@@ -1593,10 +1593,11 @@ console.log('S14 terrain — the 3D wireframe landscape')
     `fills=${fills(main)} alphas=${[...fillAlphaSet()].join(',')}`,
   )
 
-  // 14) The Mirror family: 'mirror' pulls the range onto a shore and adds
-  //     its lake (the 2-pt ridge segments double, the ROWS+1-pt curtain
-  //     polylines double into the water too), 'center' grows the symmetric
-  //     range (the curtains double there as well).
+  // 14) The Mirror family: 'mirror' folds the wireframe reflection down
+  //     from every row's ground line at FULL strength — the classic
+  //     stroke-only lake (the 2-pt ridge segments double; the curtains
+  //     stay single, the fold adds no curtain copies), 'center' grows the
+  //     symmetric range (the curtains double there).
   renderOne(structuredClone(cfgT), 0.5)
   const segs2 = (): OpRec[] => strokesOf().filter((r) => (r.pts?.length ?? 0) === 2)
   const curtainStrokes = (): OpRec[] => strokesOf().filter((r) => (r.pts?.length ?? 0) === ROWS + 1)
@@ -1609,8 +1610,8 @@ console.log('S14 terrain — the 3D wireframe landscape')
   const centerSegs = segs2().length
   const centerCurtains = curtainStrokes().length
   check(
-    'mirror lays the lake (ridge segments and curtains both double)',
-    mirrorSegs >= baseSegs * 2 && mirrorCurtains === baseCurtains * 2,
+    'mirror folds a full-strength stroke-only reflection (segments double, curtains single)',
+    mirrorSegs >= baseSegs * 2 && mirrorCurtains === baseCurtains,
     `segs ${baseSegs}→${mirrorSegs} curtains ${baseCurtains}→${mirrorCurtains}`,
   )
   check(
@@ -1619,22 +1620,16 @@ console.log('S14 terrain — the 3D wireframe landscape')
     `segs ${baseSegs}→${centerSegs} curtains ${baseCurtains}→${centerCurtains}`,
   )
 
-  // 15) Mirror mode is a true lake on its OWN axis: the range is pulled up
-  //     onto a shore (a vertical compression about the horizon that ends
-  //     the near edge ~72% down the canvas — above the bottom edge, unlike
-  //     None mode where the near rows overflow past it) and PINNED there —
-  //     the dial slides ONLY the water line. Four invariants are pinned
-  //     here: (a) the land NEVER moves with the dial (segment-for-segment
-  //     identical at −1, 0 and +1 — the mirror moves on its own axis, the
-  //     old rigid world-slide is gone), (b) the reflection is the EXACT
-  //     1:1 flip of the land above the line (refl.y + orig.y is one
-  //     constant per dial at 0 and +1 — no squash) and the line travels
-  //     decisively DOWN at +1, (c) at −1 the line cuts INTO the range —
-  //     high water that stops within 5% of the canvas of the highest
-  //     ridge, so something dry always remains to reflect — and (d) at 0
-  //     the whole flipped lake stays on the canvas (the positive dial may
-  //     honestly run the flipped peaks past the bottom edge — a lake
-  //     bigger than the frame, like a real shore shot).
+  // 15) Mirror mode folds the reflection at EACH ROW'S OWN ground line —
+  //     the restored classic look: the range keeps its FULL height (the
+  //     land runs past the bottom edge exactly like None mode, and deeper
+  //     Horizon settings stretch it longer across the frame), the land
+  //     NEVER moves with the dial (segment-for-segment identical at −1, 0
+  //     and +1), every reflected point sits BELOW its own land point (the
+  //     copy never interleaves above its ridge), the dial slides the fold
+  //     lower in ONE direction (mean depth −1 < 0 < +1) and the mirrored
+  //     world is allowed to run off the bottom edge with the land — the
+  //     "gets longer" property the old shore design squashed away.
   renderOne(
     { ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const } },
     0.5,
@@ -1655,11 +1650,6 @@ console.log('S14 terrain — the 3D wireframe landscape')
         )
       )
     })
-  const sumConst = (orig: OpRec[], refl: OpRec[]): number | null => {
-    if (orig.length !== refl.length || orig.length === 0) return null
-    const sums = orig.map((r, i) => r.pts![0].y + refl[i].pts![0].y)
-    return sums.every((s) => Math.abs(s - sums[0]) < 0.5) ? sums[0] : null
-  }
   renderOne(
     {
       ...structuredClone(cfgT),
@@ -1679,31 +1669,33 @@ console.log('S14 terrain — the 3D wireframe landscape')
   const origFlood = segs2().filter((_, i) => i % 2 === 0)
   const reflFlood = segs2().filter((_, i) => i % 2 === 1)
   const landFixed = samePts(orig0, orig1) && samePts(orig0, origFlood)
-  const c0 = sumConst(orig0, refl0)
-  const c1 = sumConst(orig1, refl1)
-  const landMinY = Math.min(...ysOf(orig0))
   const landMaxY = Math.max(...ysOf(orig0))
-  // At −1 the submerged ridges fold flat ON the water line, so the
-  // reflection's minimum y IS the raised line.
-  const floodMinY = Math.min(...ysOf(reflFlood))
-  const refl0MaxY = Math.max(...ysOf(refl0))
-  const reflAllMinY = Math.min(...ysOf(refl0), ...ysOf(refl1), ...ysOf(reflFlood))
+  const meanDepthOf = (refl: OpRec[]): number => {
+    if (refl.length === 0) return -1
+    let s = 0
+    for (let i = 0; i < refl.length; i++) s += refl[i].pts![0].y - orig0[i].pts![0].y
+    return s / refl.length
+  }
+  const minDepth =
+    Math.min(
+      ...refl0.map((r, i) => r.pts![0].y - orig0[i].pts![0].y),
+      ...refl1.map((r, i) => r.pts![0].y - orig1[i].pts![0].y),
+      ...reflFlood.map((r, i) => r.pts![0].y - origFlood[i].pts![0].y),
+    )
+  const dN = meanDepthOf(reflFlood)
+  const d0 = meanDepthOf(refl0)
+  const d1 = meanDepthOf(refl1)
   check(
-    'mirror lake on its own axis: land fixed, exact 1:1 flip, line slides both ways, high water at -1',
+    'mirror fold: land fixed across the dial, copies below their points, depth monotonic, land past the bottom edge',
     orig0.length > 200 &&
       orig0.length === orig1.length &&
       landFixed &&
-      c0 !== null &&
-      c1 !== null &&
-      Math.abs(c0 / 2 - H * 0.72) < H * 0.01 &&
-      c1 > c0 + H * 0.1 &&
-      floodMinY > landMinY + 1 &&
-      floodMinY < landMaxY &&
-      floodMinY - landMinY < H * 0.05 &&
-      reflAllMinY > 0 &&
-      refl0MaxY <= H + 1 &&
+      minDepth >= -0.5 &&
+      dN < d0 &&
+      d0 < d1 &&
+      landMaxY > H &&
       JSON.stringify(refl0) !== JSON.stringify(refl1),
-    `n=${orig0.length} fixed=${landFixed} c0=${c0?.toFixed(1)} c1=${c1?.toFixed(1)} land=[${landMinY.toFixed(1)}..${landMaxY.toFixed(1)}] floodMin=${floodMinY.toFixed(1)} refl0Max=${refl0MaxY.toFixed(1)} H=${H}`,
+    `n=${orig0.length} fixed=${landFixed} minDepth=${minDepth.toFixed(1)} depths ${dN.toFixed(0)}/${d0.toFixed(0)}/${d1.toFixed(0)} landMax=${landMaxY.toFixed(0)} H=${H}`,
   )
 
   // 16) Center mode's dial (Spread) scales the depth of the range's OWN
@@ -2433,13 +2425,28 @@ console.log('S16 the Mirror family — every style answers Mirror and Center dif
   }
   for (const style of ['bars', 'wave', 'radial', 'particles', 'blob', 'grid', 'ribbon', 'terrain', 'perspective']) {
     const noneOps = opsJSON(loud, styleWithMirror(style, 'none'))
-    const mirrorOps = opsJSON(loud, styleWithMirror(style, 'mirror'))
     const centerOps = opsJSON(loud, styleWithMirror(style, 'center'))
+    // Wave's mirror at the default 50% offset is BY DESIGN the same classic
+    // fold as center (the copy's travel anchor sits exactly on the axis at
+    // 50%) — so wave is compared at 80%, where the mirrored copy has slid
+    // off the axis, and its classic-fold-on-axis property is pinned
+    // explicitly below.
+    const waveOff = styleWithMirror(style, 'mirror')
+    waveOff.visualizer.mirrorOffset = 0.8
+    const mirrorOps = opsJSON(loud, style === 'wave' ? waveOff : styleWithMirror(style, 'mirror'))
     check(
       `${style}: Mirror and Center paint different frames (both differ from None)`,
       mirrorOps !== centerOps && mirrorOps !== noneOps && centerOps !== noneOps,
       `mirror≠center=${mirrorOps !== centerOps} mirror≠none=${mirrorOps !== noneOps} center≠none=${centerOps !== noneOps}`,
     )
+    if (style === 'wave') {
+      const classicFoldOps = opsJSON(loud, styleWithMirror(style, 'mirror'))
+      check(
+        'wave: mirror at the default 50% offset paints the classic fold (byte-identical to center)',
+        classicFoldOps === centerOps,
+        `mirror@50%==center=${classicFoldOps === centerOps}`,
+      )
+    }
   }
 }
 
