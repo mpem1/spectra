@@ -899,15 +899,25 @@ export function StyleTab() {
         (visualizer.style === 'bars' ||
           visualizer.style === 'wave' ||
           visualizer.style === 'grid') ? (
-          <SliderRow
-            label="Mirror offset"
-            value={visualizer.mirrorOffset}
-            min={0}
-            max={1}
-            step={0.01}
-            onChange={(mirrorOffset) => patchVisualizer({ mirrorOffset })}
-            format={(v) => `${Math.round(v * 100)}%`}
-          />
+          <div className="space-y-1.5">
+            <SliderRow
+              label="Mirror offset"
+              value={visualizer.mirrorOffset}
+              min={0}
+              max={1}
+              step={0.01}
+              onChange={(mirrorOffset) => patchVisualizer({ mirrorOffset })}
+              format={(v) => `${Math.round(v * 100)}%`}
+            />
+            {visualizer.mirror === 'mirror' &&
+            (visualizer.style === 'bars' || visualizer.style === 'grid') ? (
+              <p className="text-xs leading-relaxed text-zinc-500">
+                50% is the classic flip — the reflection hangs from the far
+                edge. Toward either end the reflection slides down toward
+                the bars and always stays fully in view.
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
         {/* Terrain's dial answers both mirror modes, signed both ways from
