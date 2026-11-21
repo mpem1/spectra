@@ -1594,10 +1594,11 @@ console.log('S14 terrain — the 3D wireframe landscape')
   )
 
   // 14) The Mirror family: 'mirror' lays a TRUE lake under the full-height
-  //     range (the 2-pt ridge segments gain a flipped twin for every
-  //     above-water segment — fully submerged rows reflect nothing, so the
-  //     count lands between 1× and 2×; the (ROWS+1)-pt curtains double into
-  //     the water), 'center' grows the symmetric range (the curtains double
+  //     range — the land CLIPS at the water line (fully submerged segments
+  //     draw nothing), so the mirror stream's 2-pt strokes are the dry land
+  //     plus exactly one flipped twin each (pinned in 15); the (ROWS+1)-pt
+  //     curtains still double (both copies keep ≥2 points at the factory
+  //     line), 'center' grows the symmetric range (the curtains double
   //     there as well).
   renderOne(structuredClone(cfgT), 0.5)
   const segs2 = (): OpRec[] => strokesOf().filter((r) => (r.pts?.length ?? 0) === 2)
@@ -1615,8 +1616,8 @@ console.log('S14 terrain — the 3D wireframe landscape')
   const centerSegs = segs2().length
   const centerCurtains = curtainStrokes().length
   check(
-    'mirror lays the lake (every above-water segment mirrors, curtains double)',
-    mirrorSegs > baseSegs && mirrorSegs <= baseSegs * 2 && mirrorCurtains === baseCurtains * 2,
+    'mirror lays the lake (clipped land, curtains double)',
+    mirrorSegs >= 2 && mirrorCurtains === baseCurtains * 2,
     `segs ${baseSegs}→${mirrorSegs} curtains ${baseCurtains}→${mirrorCurtains}`,
   )
   check(
@@ -1626,24 +1627,28 @@ console.log('S14 terrain — the 3D wireframe landscape')
   )
 
   // 15) Mirror mode lays a TRUE lake under the full-height range: ONE water
-  //     line and the reflection the exact 1:1 flip of the land above it —
-  //     the stacked-ghost-ridge fold is gone. The range keeps its FULL
-  //     height (the land runs past the bottom edge exactly like None mode —
-  //     the "gets longer with depth perspective" property the old
-  //     compressed shore squashed away), the land NEVER moves with the dial
-  //     (segment-for-segment identical at −1, 0 and +1), the factory line
-  //     sits 72% down the canvas, the line travels MONOTONICALLY across the
-  //     dial (waterY −1 < 0 < +1), at −1 the line cuts INTO the range (high
-  //     water, stopping just short of the highest ridge so something dry
-  //     always reflects) and segments fully below the line reflect NOTHING
-  //     (their copies would pile into a solid stripe ON the line) — so
-  //     land/reflection pairing runs by the strokes' shared x endpoints
-  //     (the flip never moves x), and only above-water segments own a twin.
-  renderOne(
-    { ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const } },
-    0.5,
-  )
+  //     line, the land CLIPPED at it — a fully submerged segment draws
+  //     NOTHING (the old dimmed strokes tangled with the mirrored hills
+  //     below the shore: "overlap in a weird way"), a crossing one
+  //     truncates at the exact shore point — and the reflection is the
+  //     exact 1:1 flip of everything dry, a crossing twin's wet end
+  //     snapping onto the line at the SAME shore point. So every drawn
+  //     land segment owns exactly one reflection twin (perfect pairing),
+  //     no polyline crosses the line (each sits entirely dry or entirely
+  //     in the water — ridges, glow and curtains alike), the always-dry
+  //     segments are point-identical across the dial (the line slides, the
+  //     land never moves or rescales), the factory line sits 72% down the
+  //     canvas, the line travels MONOTONICALLY (waterY −1 < 0 < +1), at −1
+  //     it cuts INTO the range (high water, stopping just short of the
+  //     highest ridge so something dry always reflects) while sinking it
+  //     (+1) resurrects the drowned foreground (strictly more land shows),
+  //     and the FULL height / depth perspective is pinned on None mode —
+  //     the land runs past the bottom edge there; mirror clips it at the
+  //     shore by design.
+  renderOne(structuredClone(cfgT), 0.5)
   const ysOf = (rs: OpRec[]): number[] => rs.flatMap((r) => (r.pts ?? []).map((p) => p.y))
+  const noneMaxY = Math.max(...ysOf(segs2()))
+  renderOne({ ...structuredClone(cfgT), visualizer: { ...cfgT.visualizer, mirror: 'mirror' as const } }, 0.5)
   const samePts = (a: OpRec[], b: OpRec[]): boolean =>
     a.length === b.length &&
     a.every((r, i) => {
@@ -1686,6 +1691,10 @@ console.log('S14 terrain — the 3D wireframe landscape')
     return { land, refl, pairs }
   }
   const lake0 = pairLake(segs2())
+  // The straddle scan reads the FACTORY render's full stroke set (ridges,
+  // glow and curtains alike) — snapshot it before the dial renders replace
+  // the log.
+  const factoryStrokes = strokesOf()
   renderOne(
     {
       ...structuredClone(cfgT),
@@ -1702,9 +1711,7 @@ console.log('S14 terrain — the 3D wireframe landscape')
     0.5,
   )
   const lakeF = pairLake(segs2())
-  const landFixed = samePts(lake0.land, lake1.land) && samePts(lake0.land, lakeF.land)
-  const landMaxY = Math.max(...ysOf(lake0.land))
-  const landMinY = Math.min(...ysOf(lake0.land))
+  const landMinY = Math.min(...ysOf(lakeF.land))
   // The 1:1 flip: land.y + refl.y is ONE constant (= 2·waterY) across every
   // pair whose reflection sits strictly below the line (unclamped
   // endpoints — clamped ones end ON the line). The water line itself is
@@ -1721,21 +1728,49 @@ console.log('S14 terrain — the 3D wireframe landscape')
   const w0 = waterLineOf(lake0)
   const w1 = waterLineOf(lake1)
   const wF = waterLineOf(lakeF)
+  // Perfect pairing: every drawn land segment owns exactly one reflection
+  // twin — dimmed-submerged strays (the old "overlap in a weird way") would
+  // show up as a MASS of unpaired land strokes (the old fold left ~480 of
+  // them; the keyed pairing tolerates ±1 collision on 3-decimal x keys).
+  const perfectPairing =
+    lake0.land.length - lake0.pairs.length <= 1 &&
+    lake0.refl.length - lake0.pairs.length <= 1 &&
+    lake0.pairs.length > 300
+  // No stroke crosses the water line: every polyline (2-pt ridges, multi-pt
+  // glow rows and 0.15-alpha curtains alike) sits entirely dry or entirely
+  // in the water.
+  const straddleFree = factoryStrokes
+    .filter((s) => (s.pts?.length ?? 0) >= 2)
+    .every((s) => {
+      const ys = (s.pts ?? []).map((p) => p.y)
+      return Math.max(...ys) <= w0 + 0.5 || Math.min(...ys) >= w0 - 0.5
+    })
+  // The always-dry zone: segments fully above the highest water line are
+  // dry at every dial value — identical strokes (the line slides, the land
+  // never moves).
+  const dryZone = (lk: { land: OpRec[] }, line: number): OpRec[] =>
+    lk.land.filter((r) => (r.pts ?? []).every((p) => p.y < line - 2))
+  const dz0 = dryZone(lake0, wF)
+  const landFixed =
+    dz0.length > 30 && samePts(dz0, dryZone(lake1, wF)) && samePts(dz0, dryZone(lakeF, wF))
   check(
-    'mirror lake: land fixed, full height, 1:1 flip, factory line at 72%, monotonic travel, high water at -1',
+    'mirror lake: clipped land, perfect pairing, no straddling stroke, 1:1 flip, factory line at 72%, monotonic travel, land fixed, full height on None',
     lake0.land.length > 200 &&
-      lake0.pairs.length > 100 &&
-      lake0.pairs.length < lake0.land.length &&
-      landFixed &&
-      landMaxY > H &&
+      perfectPairing &&
+      straddleFree &&
+      noneMaxY > H &&
       Number.isFinite(w0) &&
       Math.abs(w0 - H * 0.72) < H * 0.02 &&
       w1 > w0 + H * 0.1 &&
       wF < w0 - H * 0.1 &&
       wF > landMinY - H * 0.05 &&
       wF < landMinY + H * 0.05 &&
+      lakeF.land.length < lake0.land.length &&
+      lake0.land.length < lake1.land.length &&
+      lakeF.land.length > 0 &&
+      landFixed &&
       JSON.stringify(lake0.refl) !== JSON.stringify(lake1.refl),
-    `land=${lake0.land.length} pairs=${lake0.pairs.length} lines ${wF.toFixed(0)}/${w0.toFixed(0)}/${w1.toFixed(0)} land=[${landMinY.toFixed(0)}..${landMaxY.toFixed(0)}] H=${H}`,
+    `land=${lake0.land.length} pairs=${lake0.pairs.length} refl=${lake0.refl.length} dry=${dz0.length} straddle=${straddleFree} noneMaxY=${noneMaxY.toFixed(0)} lines ${wF.toFixed(0)}/${w0.toFixed(0)}/${w1.toFixed(0)} landMinY=${landMinY.toFixed(0)} H=${H} land@+1=${lake1.land.length} land@-1=${lakeF.land.length}`,
   )
 
   // 16) Center mode's dial (Spread) scales the depth of the range's OWN

@@ -707,14 +707,15 @@ export function StyleTab() {
               surface streams forward with Flow speed. The palette sweeps
               across the columns; Fill 0 is the pure glowing wireframe;
               Mirror lays a true lake under the full landscape — the hills
-              above the water line and their exact reflection below it, and
-              a deeper Horizon stretches the land longer. Mirror offset
-              slides the water line: positive sinks it toward the bottom
-              edge (the lake shrinks), negative raises it into the range
-              (high water — the foothills sink and the lake reflects the
-              peaks still above the line). Center grows the range both ways
-              with its own hills below (Spread dials their depth). Zero is
-              always the factory look.
+              end at the water line and their exact reflection fills the
+              water below (nothing draws under the surface), and a deeper
+              Horizon stretches the land longer. Mirror offset slides the
+              water line: positive sinks it toward the bottom edge (the
+              lake shrinks and the drowned foreground resurfaces), negative
+              raises it into the range (high water — the flooded foothills
+              vanish and the lake reflects the peaks still above the line).
+              Center grows the range both ways with its own hills below
+              (Spread dials their depth). Zero is always the factory look.
             </p>
           </>
         ) : null}
