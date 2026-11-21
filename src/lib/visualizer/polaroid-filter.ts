@@ -22,8 +22,9 @@
  * backdrop), and grid split slides its sections over the image the same way.
  * The whole layer breathes with the low end while React to beat is on, and
  * the Image size / Position / Rotation dials punch it in, slide it across
- * the frame and spin it — with the scale auto-grown just enough that the
- * frame always stays covered (no flat filler ever peeks through).
+ * the frame at its true size and spin it — the scale only grows as far as
+ * the spin itself demands (tilted frame corners must stay covered), never
+ * because the picture moved.
  *
  * BACKGROUND SCENE: while the wall covers the page it acts as the page's
  * backdrop — the renderer re-draws the moving layers (the Style tab's
@@ -68,11 +69,13 @@ const SPLIT_N = 3
  *  spawn ~350 cards; 140 keeps phones smooth while reading as a full wall. */
 const MAX_PRINTS = 140
 
-/** Minimum pan room per axis, as a fraction of the frame. The wall image can
- *  always slide this far even when its cover fit leaves no overflow (a square
- *  or portrait image on a wide page binds the width axis at Image size 100%,
- *  which used to leave Position X dead). Sliding past the dial's own overflow
- *  quietly grows the layer scale just enough to stay covered. */
+/** Minimum pan travel per axis, as a fraction of the frame. The wall image
+ *  always slides at its true size — even when its cover fit leaves no
+ *  overflow (a square or portrait image on a wide page binds the width axis
+ *  at Image size 100%, which used to leave Position X dead). Past the
+ *  image's own edge the bare table tone simply shows; more Image size means
+ *  more sliding room. The scale never reacts to the pan — a pan-driven
+ *  auto-zoom used to read as the dials zooming in and out. */
 const PAN_SLACK = 0.25
 
 interface PolaroidPrint {
@@ -311,14 +314,14 @@ let layerCanvas: HTMLCanvasElement | null = null
  * the backdrop and the windows stay glued together while breathing.
  *
  * Position + Rotation dials (all canvas-space, around the frame center):
- * the image slides by (panX, panY) and spins by rotDeg. The scale solves for
- * coverage — the dial's own overflow is spent first (±100% still lands
- * edge-to-edge exactly like before), then the PAN_SLACK room kicks in, and
- * the scale grows only as far as the requested pan/rotation demands, so the
- * frame is filled at every combination and no flat filler ever shows. When
- * the image deliberately doesn't cover (Image size below 100%) the constraints
- * step aside — the filler around it is already the look. Cached per (image,
- * size, zoom, pan, rotation, room) — rebuilt only when something changes.
+ * the image slides by (panX, panY) and spins by rotDeg. Sliding happens at
+ * the picture's true size — the scale never reacts to the pan, so past the
+ * image's own edge the table tone simply shows. Rotation is the one dial
+ * that still grows the scale, and only as far as the spin demands: tilted
+ * frame corners must stay covered. When the image deliberately doesn't
+ * cover (Image size below 100%) the solve steps aside — the filler around
+ * it is already the look. Cached per (image, size, zoom, pan, rotation) —
+ * rebuilt only when something changes.
  */
 function getImageLayer(
   img: HTMLImageElement,
@@ -349,15 +352,20 @@ function getImageLayer(
   const overY0 = Math.max(0, (s0 * ih - H) / 2)
   const dx = panX * Math.max(overX0, PAN_SLACK * W)
   const dy = panY * Math.max(overY0, PAN_SLACK * H)
-  // Coverage solve: the shifted frame corners must stay inside the rotated
-  // image rect — |(x_rel·cos + y_rel·sin)| ≤ dw/2 etc. for all four corners,
-  // which peaks at (W/2 + |dx|)·c + (H/2 + |dy|)·s' per axis. Closed form:
+  // Coverage solve — ROTATION ONLY: the tilted frame corners must stay
+  // inside the image rect — |(x_rel·cos + y_rel·sin)| ≤ dw/2 etc. for all
+  // four corners, which peaks at W/2·c + H/2·s per axis. Closed form. The
+  // pan is deliberately left out — Position slides at true size (at rot 0
+  // this reduces exactly to s0, so a straight pan can never zoom). A
+  // rotated+panned frame may uncover an edge past the image — that reads
+  // as the picture sliding off the table, the same honest behavior as a
+  // straight pan past the edge.
   const ca = Math.abs(Math.cos(rot))
   const sa = Math.abs(Math.sin(rot))
   let s = s0
   if (covering) {
-    const sx = ((W + 2 * Math.abs(dx)) * ca + (H + 2 * Math.abs(dy)) * sa) / iw
-    const sy = ((W + 2 * Math.abs(dx)) * sa + (H + 2 * Math.abs(dy)) * ca) / ih
+    const sx = (W * ca + H * sa) / iw
+    const sy = (W * sa + H * ca) / ih
     s = Math.max(s0, sx, sy)
   }
   const dw = iw * s

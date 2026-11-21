@@ -376,12 +376,13 @@ export function PolaroidFilterSection() {
                         />
                         <p className="text-[10px] leading-snug text-zinc-600">
                           Image size punches the wall image in and out — the
-                          background AND the piece inside every print slide
+                          background AND the piece inside every print move
                           together, so the wall stays glued to its backdrop.
-                          Position slides it across the frame and Rotation
-                          spins it — the picture quietly zooms itself just
-                          enough to keep the frame filled while they move, so
-                          these always work at any size.
+                          Position slides the picture across the frame at its
+                          true size — slide past its edge and the bare table
+                          shows, so give it more Image size if you want more
+                          room to roam. Rotation spins it and quietly zooms
+                          just enough to keep the corners filled.
                         </p>
                       </div>
                     ) : null}
