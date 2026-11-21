@@ -1382,10 +1382,15 @@ export interface PolaroidFilterConfig {
   scatter: number
   /** Backdrop behind the wall: 'paper' = the studio-table light look
    *  (the reference image), 'charcoal' = a dark room so the white cards
-   *  pop, 'image' = the wall image (or the polaroid photo) cover-fit
-   *  behind the cards as the background layer. Old saves without this
-   *  field load as 'paper'. */
-  backdrop: 'paper' | 'charcoal' | 'image'
+   *  pop, 'color' = any color the user picks (backdropColor), 'image' =
+   *  the wall image (or the polaroid photo) cover-fit behind the cards
+   *  as the background layer. Old saves without this field load as
+   *  'paper'. */
+  backdrop: 'paper' | 'charcoal' | 'image' | 'color'
+  /** Custom table color as '#rrggbb' for the 'color' backdrop — the room
+   *  the prints sit in, and the tone that shows when the wall image
+   *  slides past its own edge. Old saves → '#2e2e35'. */
+  backdropColor?: string
   /** Grid split — the effect.app look: each photo window shows the
    *  picture split into sections that drift (and jump on kicks) inside
    *  the frame. Old saves without this field load as off. */
@@ -1425,11 +1430,11 @@ export interface PolaroidFilterConfig {
    *  and the piece every card reveals together, so the wall stays glued
    *  to its backdrop. Old saves → 1. */
   mosaicZoom?: number
-  /** Wall image pan X/Y −1..1 — slides the ONE image across the frame
-   *  (0 = centered, ±100% ≈ the image's edge pulls up to the frame's edge,
-   *  or a quarter of the frame when the cover fit leaves no overflow — the
-   *  scale quietly grows just enough to keep the frame filled, so the dials
-   *  always do something). Scales the background layer and the piece every
+  /** Wall image pan X/Y −1..1 — slides the ONE image across the frame at
+   *  its true size (0 = centered, ±100% = a quarter of the frame when the
+   *  cover fit leaves no overflow — the scale NEVER reacts to the pan, so
+   *  past the image's own edge the bare table tone shows; more Image size
+   *  = more sliding room). Moves the background layer and the piece every
    *  card reveals together, so the wall stays glued to its backdrop. Old
    *  saves → 0. */
   mosaicPanX?: number
@@ -2075,6 +2080,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     density: 0.5,
     scatter: 0.45,
     backdrop: 'paper',
+    backdropColor: '#2e2e35',
     gridSplit: false,
     splitAmount: 0.5,
     beatReactive: false,

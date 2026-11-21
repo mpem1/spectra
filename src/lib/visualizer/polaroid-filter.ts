@@ -3,17 +3,17 @@
  * page of scattered white polaroid cards with empty black photo squares —
  * except here every square is a live window).
  *
- * The frame is rebuilt as a studio table: a paper (or charcoal) backdrop, a
- * scattered field of classic 88×107 mm prints — each with its 79 mm square
- * photo window and chunky chin — tilted off an overlapping grid so they pile
- * exactly like the reference photo, and inside every card's square section
- * the FULL finished picture shows through, squeezed whole into the window
- * (a wall of live prints of the music video). GRID SPLIT (the effect.app
- * look) cuts each square into 3×3 sections that drift apart on their own
- * phase and jump to a fresh shuffle on detected kicks, always staying inside
- * their frame. An optional polaroid-specific photo upload prints the user's
- * own image on every card instead (still music-reactive: it breathes with
- * the low end, and grid split works on it the same).
+ * The frame is rebuilt as a studio table: a paper, charcoal or custom-color
+ * backdrop, a scattered field of classic 88×107 mm prints — each with its
+ * 79 mm square photo window and chunky chin — tilted off an overlapping grid
+ * so they pile exactly like the reference photo, and inside every card's
+ * square section the FULL finished picture shows through, squeezed whole
+ * into the window (a wall of live prints of the music video). GRID SPLIT
+ * (the effect.app look) cuts each square into 3×3 sections that drift apart
+ * on their own phase and jump to a fresh shuffle on detected kicks, always
+ * staying inside their frame. An optional polaroid-specific photo upload
+ * prints the user's own image on every card instead (still music-reactive:
+ * it breathes with the low end, and grid split works on it the same).
  *
  * ONE IMAGE ACROSS THE WALL (photoMode 'mosaic'): a second upload lays one
  * image over the whole page — every card's window becomes a live reveal of
@@ -34,7 +34,8 @@
  *
  * How it draws (per frame):
  *   1. snapshot the finished picture — the content every window shows;
- *   2. paint the backdrop (paper gradient + soft vignette, or charcoal);
+ *   2. paint the backdrop (paper/charcoal gradient + soft vignette, the
+ *      user's custom color, or the wall image is the table itself);
  *   3. for each print, in stack order: squeeze the content into the photo
  *      window (single draw, or 9 shifted cells under the grid split), then
  *      stamp the pre-rendered card sprite (baked soft shadow, window already
@@ -281,21 +282,49 @@ function getCardSprites(
 
 /* --------------------------------- backdrop --------------------------------- */
 
-function fillBackdrop(ctx: CanvasRenderingContext2D, W: number, H: number, charcoal: boolean): void {
+/** Normalize a '#rrggbb'-ish string to a safe canvas fill (fallback on
+ *  garbage — old saves, share-link mangles, anything). */
+function normHex6(v: string | undefined, fallback: string): string {
+  const s = (v ?? '').trim()
+  if (/^#[0-9a-fA-F]{6}$/.test(s)) return s
+  if (/^[0-9a-fA-F]{6}$/.test(s)) return `#${s}`
+  return fallback
+}
+
+/** '#rrggbb' → [r, g, b] (call with a normHex6 output — always valid). */
+function hexRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+function fillBackdrop(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  charcoal: boolean,
+  color: string | null,
+): void {
+  // The custom color keeps the studio-table depth: the same gentle vertical
+  // gradient (bottom shaded to 86%) and a middle-strength vignette, just
+  // relit in the user's hue instead of the paper/charcoal presets.
+  const top = color ?? (charcoal ? '#2b2b31' : '#f4f2ee')
+  const bot = color
+    ? (() => {
+        const [r, g, b] = hexRgb(color)
+        return `rgb(${Math.round(r * 0.86)},${Math.round(g * 0.86)},${Math.round(b * 0.86)})`
+      })()
+    : charcoal
+      ? '#151518'
+      : '#dedbd4'
   const g = ctx.createLinearGradient(0, 0, 0, H)
-  if (charcoal) {
-    g.addColorStop(0, '#2b2b31')
-    g.addColorStop(1, '#151518')
-  } else {
-    g.addColorStop(0, '#f4f2ee')
-    g.addColorStop(1, '#dedbd4')
-  }
+  g.addColorStop(0, top)
+  g.addColorStop(1, bot)
   ctx.fillStyle = g
   ctx.fillRect(0, 0, W, H)
   const diag = Math.hypot(W, H) * 0.6
   const v = ctx.createRadialGradient(W / 2, H / 2, diag * 0.45, W / 2, H / 2, diag * 1.05)
   v.addColorStop(0, 'rgba(0,0,0,0)')
-  v.addColorStop(1, charcoal ? 'rgba(0,0,0,0.42)' : 'rgba(35,28,22,0.14)')
+  v.addColorStop(1, color ? 'rgba(0,0,0,0.25)' : charcoal ? 'rgba(0,0,0,0.42)' : 'rgba(35,28,22,0.14)')
   ctx.fillStyle = v
   ctx.fillRect(0, 0, W, H)
 }
@@ -320,8 +349,8 @@ let layerCanvas: HTMLCanvasElement | null = null
  * that still grows the scale, and only as far as the spin demands: tilted
  * frame corners must stay covered. When the image deliberately doesn't
  * cover (Image size below 100%) the solve steps aside — the filler around
- * it is already the look. Cached per (image, size, zoom, pan, rotation) —
- * rebuilt only when something changes.
+ * it is already the look. Cached per (image, size, zoom, pan, rotation,
+ * filler tone) — rebuilt only when something changes.
  */
 function getImageLayer(
   img: HTMLImageElement,
@@ -331,15 +360,15 @@ function getImageLayer(
   panX: number,
   panY: number,
   rotDeg: number,
-  dark: boolean,
+  filler: string,
 ): HTMLCanvasElement {
   const rot = Math.min(180, Math.max(-180, rotDeg)) * (Math.PI / 180)
-  const sig = `${W}x${H}|${Math.round(zoom * 400)}|${Math.round(panX * 200)}|${Math.round(panY * 200)}|${Math.round(Math.min(180, Math.max(-180, rotDeg)))}|${dark ? 'd' : 'l'}`
+  const sig = `${W}x${H}|${Math.round(zoom * 400)}|${Math.round(panX * 200)}|${Math.round(panY * 200)}|${Math.round(Math.min(180, Math.max(-180, rotDeg)))}|${filler}`
   if (layerImg === img && layerSig === sig && layerCanvas) return layerCanvas
   const layer = getWork('polaroid:layer', W, H)
   const c = resetWork(layer.getContext('2d')!)
   c.clearRect(0, 0, W, H)
-  c.fillStyle = dark ? '#1d1d22' : '#c9c5bd'
+  c.fillStyle = filler
   c.fillRect(0, 0, W, H)
   const iw = img.naturalWidth
   const ih = img.naturalHeight
@@ -402,6 +431,17 @@ export function drawPolaroidFilter(
   const density = clamp01(cfg.density ?? 0.5)
   const scatter = clamp01(cfg.scatter ?? 0.45)
   const charcoal = cfg.backdrop === 'charcoal'
+  // The tone behind the wall image when it doesn't cover the frame (the pan
+  // exposure, the decode stand-in, the photo-as-table filler): the custom
+  // table color in 'color' mode, otherwise the paper/charcoal room tone —
+  // so any exposure blends into the room instead of flashing a foreign
+  // filler. normHex6 guards garbage from old saves / mangled links.
+  const tableFill =
+    cfg.backdrop === 'color'
+      ? normHex6(cfg.backdropColor, '#2e2e35')
+      : charcoal
+        ? '#1d1d22'
+        : '#c9c5bd'
   const splitAmount = clamp01(cfg.splitAmount ?? 0.5)
 
   // Snapshot the finished picture — the content every photo window shows.
@@ -420,7 +460,7 @@ export function drawPolaroidFilter(
     const pc = getWork('polaroid:photo', W, H)
     const p = resetWork(pc.getContext('2d')!)
     p.clearRect(0, 0, W, H)
-    p.fillStyle = charcoal ? '#1d1d22' : '#c9c5bd'
+    p.fillStyle = tableFill
     p.fillRect(0, 0, W, H)
     const zoom = Math.min(2.2, Math.max(0.6, cfg.photoZoom ?? 1))
     const pulse = cfg.beatReactive
@@ -454,7 +494,7 @@ export function drawPolaroidFilter(
   const panY = Math.min(1, Math.max(-1, cfg.mosaicPanY ?? 0))
   const mosaicRot = Math.min(180, Math.max(-180, cfg.mosaicRot ?? 0))
   const wallLayer = mosaicImg
-    ? getImageLayer(mosaicImg, W, H, layerZoom, panX, panY, mosaicRot, charcoal)
+    ? getImageLayer(mosaicImg, W, H, layerZoom, panX, panY, mosaicRot, tableFill)
     : null
   // The 'image' backdrop: the wall image when the mosaic mode is live, the
   // polaroid photo otherwise (at the Photo zoom dial, centered) — cover-fit
@@ -467,7 +507,7 @@ export function drawPolaroidFilter(
       tableLayer = wallLayer
     } else {
       const img = getBackgroundImage(cfg.photoSrc ?? '')
-      if (img) tableLayer = getImageLayer(img, W, H, layerZoom, 0, 0, 0, charcoal)
+      if (img) tableLayer = getImageLayer(img, W, H, layerZoom, 0, 0, 0, tableFill)
     }
   }
 
@@ -476,7 +516,7 @@ export function drawPolaroidFilter(
   if (tableLayer) {
     ctx.drawImage(tableLayer, 0, 0)
   } else {
-    fillBackdrop(ctx, W, H, charcoal)
+    fillBackdrop(ctx, W, H, charcoal, cfg.backdrop === 'color' ? tableFill : null)
   }
   const { prints, fw, fh } = getLayout(W, H, density, scatter)
   const { card, bevel, margin: m } = getCardSprites(fw, fh)

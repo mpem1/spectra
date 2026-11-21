@@ -8,22 +8,26 @@ import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { MicroLabel, BeatPunchRow, SliderRow, ToggleRow, sectionShell } from '@/components/studio/controls'
+import { ColorPickerButton } from '@/components/studio/color-picker'
 import { cn } from '@/lib/utils'
 
 /** One option in a compact chip chooser (backdrop, photo source) — the
- *  active chip picks up the section's teal. */
+ *  active chip picks up the section's teal. An optional swatch dot shows
+ *  the live color (the backdrop's custom color chip). */
 function Chip({
   label,
   sub,
   active,
   disabled,
   onClick,
+  swatch,
 }: {
   label: string
   sub: string
   active: boolean
   disabled?: boolean
   onClick: () => void
+  swatch?: string
 }) {
   return (
     <button
@@ -39,6 +43,13 @@ function Chip({
         disabled && 'pointer-events-none opacity-40',
       )}
     >
+      {swatch ? (
+        <span
+          aria-hidden
+          className="size-2.5 rounded-full border border-zinc-600"
+          style={{ backgroundColor: swatch }}
+        />
+      ) : null}
       <span className="text-xs font-medium">{label}</span>
       <span className="text-[9px] leading-none text-zinc-500">{sub}</span>
     </button>
@@ -156,26 +167,48 @@ export function PolaroidFilterSection() {
           />
           <div className="space-y-1.5">
             <MicroLabel>Backdrop</MicroLabel>
-            <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Backdrop">
+            <div className="grid grid-cols-4 gap-1.5" role="group" aria-label="Backdrop">
               <Chip
                 label="Paper"
-                sub="the studio table"
+                sub="studio table"
                 active={filter.backdrop === 'paper'}
                 onClick={() => patchPolaroidFilter({ backdrop: 'paper' })}
               />
               <Chip
                 label="Charcoal"
-                sub="dark room, cards pop"
+                sub="dark room"
                 active={filter.backdrop === 'charcoal'}
                 onClick={() => patchPolaroidFilter({ backdrop: 'charcoal' })}
               />
               <Chip
+                label="Color"
+                sub="pick a tone"
+                active={filter.backdrop === 'color'}
+                onClick={() => patchPolaroidFilter({ backdrop: 'color' })}
+                swatch={filter.backdropColor ?? '#2e2e35'}
+              />
+              <Chip
                 label="My image"
-                sub="your image as the table"
+                sub="your picture"
                 active={filter.backdrop === 'image'}
                 onClick={() => patchPolaroidFilter({ backdrop: 'image' })}
               />
             </div>
+            {filter.backdrop === 'color' ? (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-2.5 py-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-zinc-300">Table color</p>
+                  <p className="text-[9px] leading-none text-zinc-500">
+                    the room your prints sit in
+                  </p>
+                </div>
+                <ColorPickerButton
+                  value={filter.backdropColor ?? '#2e2e35'}
+                  onChange={(backdropColor) => patchPolaroidFilter({ backdropColor })}
+                  ariaLabel="Polaroid backdrop color"
+                />
+              </div>
+            ) : null}
           </div>
 
           <ToggleRow
@@ -423,10 +456,11 @@ export function PolaroidFilterSection() {
             Density packs the wall from a few big prints to a full page of
             small ones; Scatter tilts and scatters them off their slots (0% is
             a neat grid, 100% the messy overlapping pile). The backdrop sets
-            the room: light studio paper, charcoal so the white cards pop, or
-            your own image as the table. Mix blends the untouched picture back
-            over the wall. The wall is the page&apos;s background: your
-            visualizer and text always render in front of it. Everything stays
+            the room: light studio paper, charcoal so the white cards pop,
+            any color you pick, or your own image as the table. Mix blends
+            the untouched picture back over the wall. The wall is the
+            page&apos;s background: your visualizer and text always render in
+            front of it. Everything stays
             put between frames — the same look lands in every export. Skipped
             on transparent backgrounds so alpha recordings stay clean.
           </p>
