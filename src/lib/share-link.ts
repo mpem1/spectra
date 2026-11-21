@@ -56,8 +56,13 @@ export function makePortable(config: StudioConfig): {
   const discDrop = !!config.disc?.imageSrc || !!config.disc?.discImageSrc
   const wmDrop = !!config.watermark?.imageSrc
   const pulseDrop = !!config.pulseImage?.imageSrc
+  // The image-visualizer artwork and the polaroid wall's own photo are media
+  // pixels too — a data URL would blow the URL budget, so they travel in
+  // saved projects only (recipients fall back to the picture / placeholder).
+  const vizDrop = !!config.visualizer?.imgvizSrc
+  const polaroidDrop = !!config.polaroidFilter?.photoSrc
   const fontsDrop = (config.fonts?.length ?? 0) > 0
-  if (!bgDrop && !videoDrop && !discDrop && !wmDrop && !pulseDrop && !fontsDrop) {
+  if (!bgDrop && !videoDrop && !discDrop && !wmDrop && !pulseDrop && !vizDrop && !polaroidDrop && !fontsDrop) {
     return { config, imageDropped: false }
   }
   return {
@@ -85,6 +90,14 @@ export function makePortable(config: StudioConfig): {
         pulseDrop && config.pulseImage
           ? { ...config.pulseImage, imageSrc: '' }
           : config.pulseImage,
+      // The image-visualizer PNG and the polaroid photo: recipients get the
+      // picture / the placeholder instead of megabytes in a URL.
+      visualizer: vizDrop
+        ? { ...config.visualizer, imgvizSrc: '' }
+        : config.visualizer,
+      polaroidFilter: polaroidDrop
+        ? { ...config.polaroidFilter, photoSrc: '' }
+        : config.polaroidFilter,
       // Font files are megabytes of base64 — recipients fall back to the
       // built-in fonts (the same graceful loss as images).
       fonts: fontsDrop ? [] : config.fonts,

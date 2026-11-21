@@ -36,6 +36,7 @@ import { drawColorGradeFilter } from './color-grade'
 import { drawHalationFilter } from './halation-filter'
 import { drawExposureFilter } from './exposure-filter'
 import { drawDitherFilter } from './dither-filter'
+import { drawPolaroidFilter } from './polaroid-filter'
 import { drawPhosphorFilter } from './phosphor-filter'
 import { drawContourFilter } from './contour-filter'
 import { getWork, resetWork } from './filter-utils'
@@ -235,6 +236,12 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // included) into chunky Bayer dot patterns, so it always reads as the
   // outermost poster layer.
   drawDitherFilter(rc, config.ditherFilter, frame, transparent)
+  // Polaroid wall — the outermost re-materialization: the finished picture is
+  // printed onto a page of scattered instant prints, every photo window
+  // showing the whole picture through it (grid split drifts the sections
+  // inside each frame). After the dither so the wall always reads as the
+  // outermost scene — the white cards never get re-postered by anything.
+  drawPolaroidFilter(rc, config.polaroidFilter, frame, transparent)
   // Filter alpha: fade the unfiltered snapshot back over the finished chain
   // BEFORE the layer overlay returns, so the lifted layers/text (stayColored
   // / textClear) still land at full strength above the blend.

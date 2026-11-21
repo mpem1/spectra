@@ -106,6 +106,14 @@ export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResu
       // Fall through — the style paints its placeholder.
     }
   }
+  // Polaroid wall's own photo — frame 0 prints it on every card.
+  if (config.polaroidFilter?.enabled && config.polaroidFilter.photoMode === 'photo' && config.polaroidFilter.photoSrc) {
+    try {
+      await loadBackgroundImage(config.polaroidFilter.photoSrc)
+    } catch {
+      // Fall through — the frames show the picture instead.
+    }
+  }
   // Imported fonts (lyrics / title) — registered before frame 0 so every
   // frame uses the same faces (broken files silently fall back).
   await registerCustomFonts(config.fonts)

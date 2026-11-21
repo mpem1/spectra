@@ -9,6 +9,7 @@ import { AnaglyphFilterSection } from '@/components/studio/anaglyph-filter-secti
 import { PhosphorFilterSection } from '@/components/studio/phosphor-section'
 import { ContourFilterSection } from '@/components/studio/contour-filter-section'
 import { DitherFilterSection } from '@/components/studio/dither-filter-section'
+import { PolaroidFilterSection } from '@/components/studio/polaroid-filter-section'
 import { LayersSection } from '@/components/studio/layers-section'
 
 /**
@@ -57,6 +58,12 @@ export function FiltersTab() {
       {/* Retro dither — chunky Bayer dot patterns (glowing blue poster,
           1-bit B&W, retro color, or custom duotone) with a bright-dot bloom */}
       <DitherFilterSection />
+
+      {/* Polaroid prints — the page becomes a scattered wall of instant print
+          cards, the finished picture showing through every photo window
+          (grid split drifts the sections inside each frame; an optional
+          photo prints on every card) */}
+      <PolaroidFilterSection />
 
       {/* Layers — keep the moving layers colored above every filter */}
       <LayersSection />

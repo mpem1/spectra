@@ -1357,6 +1357,62 @@ export interface ExposureFilterConfig {
   light: number
 }
 
+/**
+ * Polaroid filter — the wall of instant prints: the whole page becomes a
+ * scattered field of white-frame polaroid cards (the classic 88×107 mm
+ * print with its 79 mm square photo window and chunky chin), and inside
+ * every card's square photo section the FULL finished picture shows
+ * through — a wall of live prints of the music video. Grid split (the
+ * effect.app look) cuts each square into sections that drift and shuffle
+ * INSIDE the frame on the beat. An optional polaroid-specific photo
+ * upload prints the user's own image on every card instead of the
+ * picture. Deterministic: the print layout comes from an integer-seeded
+ * PRNG (same config + canvas size → the exact same wall every frame, in
+ * the preview and in exports) and all motion runs off the AudioFrame
+ * clocks, so nothing flickers or reshuffles between frames. Skipped on
+ * transparent backgrounds like the other full-frame filters.
+ */
+export interface PolaroidFilterConfig {
+  enabled: boolean
+  /** Print density 0..1 — 0 = a few big prints, 1 = a packed wall of
+   *  small ones (capped so phones stay smooth). */
+  density: number
+  /** Scatter 0..1 — how far the prints tilt and wander off their grid
+   *  slots (0 = a neat aligned grid, 1 = the messy overlapping pile). */
+  scatter: number
+  /** Backdrop behind the wall: 'paper' = the studio-table light look
+   *  (the reference image), 'charcoal' = a dark room so the white cards
+   *  pop. Old saves without this field load as 'paper'. */
+  backdrop: 'paper' | 'charcoal'
+  /** Grid split — the effect.app look: each photo window shows the
+   *  picture split into sections that drift (and jump on kicks) inside
+   *  the frame. Old saves without this field load as off. */
+  gridSplit: boolean
+  /** Split drift 0..1 — how far the sections wander and how hard they
+   *  jump on a kick (only matters while gridSplit is on). Old saves → 0.5. */
+  splitAmount: number
+  /** React to beat — the prints pulse on the song's low end and the
+   *  split sections jump on detected kicks. Old saves → off. */
+  beatReactive: boolean
+  /** Beat punch 0..1 — how hard the pulse and the kick jumps land. */
+  beatStrength: number
+  /** What shows through every photo window: 'video' = the finished
+   *  picture (the default wall of live prints), 'photo' = the uploaded
+   *  polaroid photo. Old saves → 'video'. */
+  photoMode: 'video' | 'photo'
+  /** The polaroid-specific uploaded photo (data URL) printed on every
+   *  card while photoMode is 'photo'. Travels inside saved projects;
+   *  stripped from share links like every other image pixel. Old saves
+   *  → ''. */
+  photoSrc?: string
+  /** Photo zoom 0.6..2.2 — the cover-crop amount for the uploaded photo
+   *  (1 = framed by the photo's own edges, higher punches in). Old saves → 1. */
+  photoZoom?: number
+  /** Mix 0..1 — 1 = the whole frame becomes the wall of prints, lower
+   *  blends the untouched picture back over it. Old saves → 1. */
+  strength: number
+}
+
 /* -------------------------------- Custom fonts ------------------------------- */
 
 /**
@@ -1407,6 +1463,9 @@ export interface StudioConfig {
   /** Full-frame instant-film stock grade (the effect.app "Instant Film"
    *  effect — renamed Exposure in Spectra) */
   exposureFilter: ExposureFilterConfig
+  /** Full-frame polaroid-wall post-pass (the page becomes scattered instant
+   *  prints, the picture showing through every photo window) */
+  polaroidFilter: PolaroidFilterConfig
   /** Full-frame retro-dither post-pass (Bayer dot patterns + glow bloom) */
   ditherFilter: DitherFilterConfig
   /** Full-frame phosphor-monitor post-pass (vertical dash columns + bloom) */
@@ -1977,6 +2036,22 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     stock: 'polaroid-600',
     color: 1,
     light: 1,
+  },
+  polaroidFilter: {
+    enabled: false,
+    // Mid density + a good scatter = the reference pile: overlapping prints
+    // tilted off their slots, the picture living in every photo square
+    density: 0.5,
+    scatter: 0.45,
+    backdrop: 'paper',
+    gridSplit: false,
+    splitAmount: 0.5,
+    beatReactive: false,
+    beatStrength: 0.5,
+    photoMode: 'video',
+    photoSrc: '',
+    photoZoom: 1,
+    strength: 1,
   },
   ditherFilter: {
     enabled: false,
