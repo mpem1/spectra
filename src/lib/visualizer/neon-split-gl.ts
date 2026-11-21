@@ -69,7 +69,7 @@ uniform float uRotation;  // degrees
 uniform float uAspect;
 float smooth01(float t) { return t * t * (3.0 - 2.0 * t); }
 void main() {
-  vec3 rgb = texture(iChannel0, vUV).rgb;
+  vec3 rgb = texture(iChannel0, vec2(vUV.x, 1.0 - vUV.y)).rgb;   // flip at SAMPLE, not upload
   vec3 inv = vec3(1.0) - rgb;                       // input_levels [1,0] → invert
   vec2 relScale = uAspect > 1.0 ? vec2(uAspect, 1.0) : vec2(1.0, 1.0 / uAspect);
   // vUV is display-upright (v=1 = the image's top edge after the
@@ -135,20 +135,21 @@ void main() {
   outColor = vec4(linearTosRGB(col), 1.0);
 }`
 
-/* --- P4: noise (the decrypted noise shader, verbatim math) --- */
-const FRAG_NOISE = COMMON + `
-uniform sampler2D iChannel0;
+/* --- P4a: the grain FIELD — the noise shader's fractal part, rendered into
+ *         a cached texture. The field only depends on (resolution, grain
+ *         size, chroma, film-frame offset), NOT on the picture — recomputing
+ *         48 hash chains per pixel per FRAME was the chain's dominant cost,
+ *         while the field itself changes at most 24×/sec (the film-frame
+ *         clock) and never at grainSpeed 0 (the published still grain). The
+ *         pass writes the raw chroma-mixed grain ([-1,1] → [0,1] encoding);
+ *         the noise pass reads it back and keeps only the per-frame tone
+ *         modulation. Same hash, same octaves, same constants — the pixels
+ *         the field produces are identical to the old inline math. --- */
+const FRAG_GRAINFIELD = COMMON + `
 uniform vec2 iResolution;
-uniform vec2 uGrainOffset;   // animated grain position (px) — 0 = the still preset
-uniform float strength;
+uniform vec2 uGrainOffset;
 uniform float grainSize;
-uniform float minGrain;
 uniform float chroma;
-uniform float shadowWeight;
-uniform float midWeight;
-uniform float highlightWeight;
-vec3 srgbToLinear(vec3 c) { return pow(c, vec3(2.2)); }
-vec3 linearToSrgb(vec3 c) { return pow(c, vec3(1.0 / 2.2)); }
 float hash(vec2 p) {
   const uint k = 1103515245u;
   uvec2 x = uvec2(floatBitsToUint(p.x), floatBitsToUint(p.y));
@@ -180,14 +181,30 @@ float fractalNoise(vec2 p, float cell) {
 }
 void main() {
   vec2 fragCoord = vUV * iResolution + uGrainOffset;
-  vec3 texSrgb = texture(iChannel0, vUV).rgb;
-  vec3 base = srgbToLinear(texSrgb);
   float cell = max(grainSize, 0.5);
   float n  = fractalNoise(fragCoord, cell);
   float nR = fractalNoise(fragCoord + vec2(19.3, 37.7), cell);
   float nG = fractalNoise(fragCoord + vec2(73.1, 11.9), cell);
   float nB = fractalNoise(fragCoord + vec2(45.4, 62.3), cell);
-  vec3 grain = mix(vec3(n), vec3(nR, nG, nB), chroma);
+  vec3 grain = mix(vec3(n), vec3(nR, nG, nB), chroma);   // [-1,1] per channel
+  outColor = vec4(grain * 0.5 + 0.5, 1.0);               // encode for RGBA8
+}`
+
+/* --- P4b: noise (the verbatim tone modulation, grain from the cached field) --- */
+const FRAG_NOISE = COMMON + `
+uniform sampler2D iChannel0;
+uniform sampler2D iGrain;     // cached field texture (the FRAG_GRAINFIELD output)
+uniform float strength;
+uniform float minGrain;
+uniform float shadowWeight;
+uniform float midWeight;
+uniform float highlightWeight;
+vec3 srgbToLinear(vec3 c) { return pow(c, vec3(2.2)); }
+vec3 linearToSrgb(vec3 c) { return pow(c, vec3(1.0 / 2.2)); }
+void main() {
+  vec3 texSrgb = texture(iChannel0, vUV).rgb;
+  vec3 base = srgbToLinear(texSrgb);
+  vec3 grain = texture(iGrain, vUV).rgb * 2.0 - 1.0;     // decode [-1,1]
   float luma = dot(texSrgb, vec3(0.2126, 0.7152, 0.0722));
   float sh = smoothstep(0.40, 0.00, luma);
   float hl = smoothstep(0.60, 1.00, luma);
@@ -213,9 +230,18 @@ uniform int uBlend;
 vec3 mapBlend(int mode, vec3 base, vec3 mapped) {
   if (mode == 1) return base * mapped;                       // multiply
   if (mode == 2) return 1.0 - (1.0 - base) * (1.0 - mapped); // screen
-  if (mode == 3) return base <= vec3(0.5)                     // overlay
-    ? 2.0 * base * mapped
-    : 1.0 - 2.0 * (1.0 - base) * (1.0 - mapped);
+  if (mode == 3) {                                           // overlay
+    // GLSL ES relational operators are SCALAR-only — 'base <= vec3(0.5)'
+    // never compiled on strict drivers (ANGLE/Metal — i.e. every real
+    // browser), the constructor threw, and the whole filter silently fell
+    // back to the slow per-pixel CPU path FOREVER. lessThanEqual is the
+    // vector-legal form: identical math, both branches agree at 0.5.
+    return mix(
+      1.0 - 2.0 * (1.0 - base) * (1.0 - mapped),
+      2.0 * base * mapped,
+      vec3(lessThanEqual(base, vec3(0.5)))
+    );
+  }
   if (mode == 4) return min(base + mapped, 1.0);             // add
   return mapped;                                              // normal
 }
@@ -259,8 +285,43 @@ void main() {
   outColor = vec4(mix(base.rgb, color, uOpacity), base.a);
 }`
 
-/* --- P7 was layer mix #1/#2 (the paper textures) — removed by design.
- *         Curves is now the final pass. --- */
+/* --- P8: the split + strength mix, moved off the 2D context into the chain —
+ *         the curves output vs the UNTOUCHED source frame (srcTex already
+ *         holds it): below the split line the original fades back in through
+ *         the same piecewise-linear ramp the 2D mask built (0 above p0, 0.5
+ *         at the edge, 1 below p1), and the strength dial blends the whole
+ *         look back toward the original at (1 − strength). One cheap pass
+ *         replaces the per-frame full-canvas snapshot + mask copy + gradient
+ *         fill + two composite draws the 2D path paid. --- */
+const FRAG_SPLITMIX = COMMON + `
+uniform sampler2D iFiltered;
+uniform sampler2D iOriginal;
+uniform float uSplitOn;
+uniform float uEdge;      // 1 − split (the split line, measured from the TOP)
+uniform float uSoft;      // 0.06 — the same fade width the 2D mask used
+uniform float uStrength;
+void main() {
+  vec3 f = texture(iFiltered, vUV).rgb;
+  // iOriginal (srcTex) is uploaded UNFLIPPED — the flip lives in the levels
+  // sampler, so this pass applies the same sample-space flip to stay aligned
+  // with the filtered orientation (see the constructor note).
+  vec3 o = texture(iOriginal, vec2(vUV.x, 1.0 - vUV.y)).rgb;
+  // the 2D mask's ramp — canvas gradients interpolate linearly between stops
+  // measured from the top edge; vUV is display-upright (v=1 = the top), so
+  // the gradient position is 1 − vUV.y. uSplitOn=0 → g=0 (no split part).
+  float gradPos = 1.0 - vUV.y;
+  float p0 = max(0.0, uEdge - uSoft);
+  float p1 = min(1.0, uEdge + uSoft);
+  float gs;
+  if (gradPos <= p0) gs = 0.0;
+  else if (gradPos <= uEdge) gs = 0.5 * (gradPos - p0) / max(uEdge - p0, 1e-6);
+  else if (gradPos <= p1) gs = 0.5 + 0.5 * (gradPos - uEdge) / max(p1 - uEdge, 1e-6);
+  else gs = 1.0;
+  float g = gs * uSplitOn;
+  vec3 x = mix(f, o, g);
+  vec3 outCol = mix(x, o, 1.0 - uStrength);
+  outColor = vec4(outCol, 1.0);
+}`
 
 /* ------------------------------ GL plumbing -------------------------------- */
 
@@ -270,6 +331,15 @@ type GlPass = {
 }
 
 const QUAD = new Float32Array([-1, -1, 3, -1, -1, 3])
+
+/** Adaptive internal-resolution ladder for the live preview: the EMA of the
+ *  chain's measured cost steps DOWN one rung when a frame averages past the
+ *  step threshold and climbs back one rung after ~2 s of cheap frames.
+ *  Exports bypass the ladder (full scale, faithful frames). */
+export const SCALE_LADDER = [1, 0.75, 0.5, 0.33]
+export const STEP_DOWN_MS = 30
+export const STEP_UP_MS = 12
+export const STEP_UP_FRAMES = 120
 
 export class NeonSplitGL {
   private gl: WebGL2RenderingContext
@@ -286,6 +356,9 @@ export class NeonSplitGL {
   private pyramidW = 0
   private pyramidH = 0
   private srcTex: WebGLTexture | null = null
+  private grainTex: WebGLTexture | null = null
+  private grainFb: WebGLFramebuffer | null = null
+  private grainKey = ''
   private lutTexs = new Map<string, WebGLTexture>()
   private lastCurveKey = -1
   private lastGradKey = ''
@@ -299,8 +372,15 @@ export class NeonSplitGL {
       depth: false,
       stencil: false,
       premultipliedAlpha: false,
-      preserveDrawingBuffer: true,
-      powerPreference: 'low-power',
+      // The GL canvas is consumed by a same-task drawImage right after the
+      // chain renders (before the browser composites), so the drawing buffer
+      // never needs to survive past the frame — preserving it cost a full
+      // buffer copy per frame for nothing.
+      preserveDrawingBuffer: false,
+      // The filter is the heaviest thing on the page; on dual-GPU machines
+      // 'low-power' pinned it to the integrated chip. Ask for the fast one —
+      // the browser still honors battery savers over this hint.
+      powerPreference: 'high-performance',
     }) as WebGL2RenderingContext
     if (!this.gl) throw new Error('no webgl2')
     this.canvas.addEventListener('webglcontextlost', (e) => {
@@ -309,19 +389,24 @@ export class NeonSplitGL {
     })
     this.initGeometry()
     this.initLuts()
-    // From here on, canvas-backed uploads (the source frame) go in with Y
-    // flipped: WebGL textures put the first pixel row at v=0, and without the
-    // flip every pass samples the picture upside down — the whole output came
-    // out inverted vertically (bars hung from the top). Flipping at upload
-    // keeps the picture upright end to end. The preset's gradient mask does
-    // NOT live in this display space: the engine defines its mask frame
-    // Y-down (mask y=-1 = the image's TOP edge) — measured off the site's own
-    // render of a calibrated luminance-ramp (full invert to ~38% height, fade
-    // centered ~45%, gone by ~55%) — so the levels shader negates vUV.y to
-    // enter that frame, which is what puts the inversion band over the TOP of
-    // the picture exactly where effect.app puts it. LUT uploads are typed
-    // arrays (unaffected by the flip).
-    this.gl.pixelStorei(this.gl.UNPACK_FLIP_Y_WEBGL, true)
+    // From here on, canvas-backed uploads (the source frame) go in UNFLIPPED.
+    // The old UNPACK_FLIP_Y_WEBGL=true forced every canvas upload down the
+    // slow CPU path (read back the canvas, flip it in JS/ Skia, re-upload) —
+    // measured at ~16 ms per frame in the worst case, and it defeats the
+    // GPU-to-GPU fast path on real hardware too. The flip now happens in the
+    // SAMPLERS instead: WebGL textures put the first pixel row at v=0, so
+    // without a flip the upload reads the picture upside down (v=0 = top).
+    // The levels pass and the splitmix pass (the only two that touch the
+    // source texture) negate vUV.y at sample time, which puts the picture
+    // upright end to end — same pixels, none of the CPU cost. LUT uploads
+    // are typed arrays (unaffected by sample-space flips).
+    // The preset's gradient mask does NOT live in this display space: the
+    // engine defines its mask frame Y-down (mask y=-1 = the image's TOP
+    // edge) — measured off the site's own render of a calibrated
+    // luminance-ramp (full invert to ~38% height, fade centered ~45%, gone
+    // by ~55%) — so the levels shader negates vUV.y a SECOND time to enter
+    // that frame, which is what puts the inversion band over the TOP of the
+    // picture exactly where effect.app puts it.
     this.compileAll()
   }
 
@@ -341,6 +426,9 @@ export class NeonSplitGL {
     this.fbos = []
     this.pyramid = null
     this.srcTex = null
+    this.grainTex = null
+    this.grainFb = null
+    this.grainKey = ''
     this.lutTexs.clear()
   }
 
@@ -423,12 +511,22 @@ export class NeonSplitGL {
     this.makePass('bright', FRAG_BRIGHT, ['iChannel0', 'uThreshold', 'uKnee', 'uIntensity'])
     this.makePass('bloom', FRAG_BLOOM, ['iPyramid', 'iBase', 'uBloomFactor'])
     this.makePass(
+      'grainfield',
+      FRAG_GRAINFIELD,
+      ['iResolution', 'uGrainOffset', 'grainSize', 'chroma'],
+    )
+    this.makePass(
       'noise',
       FRAG_NOISE,
-      ['iChannel0', 'iResolution', 'uGrainOffset', 'strength', 'grainSize', 'minGrain', 'chroma', 'shadowWeight', 'midWeight', 'highlightWeight'],
+      ['iChannel0', 'iGrain', 'strength', 'minGrain', 'shadowWeight', 'midWeight', 'highlightWeight'],
     )
     this.makePass('gradient', FRAG_GRADIENT, ['iChannel0', 'iLut', 'uMix', 'uShift', 'uRepeat', 'uBlend'])
     this.makePass('curves', FRAG_CURVES, ['iChannel0', 'iLut', 'uOpacity'])
+    this.makePass(
+      'splitmix',
+      FRAG_SPLITMIX,
+      ['iFiltered', 'iOriginal', 'uSplitOn', 'uEdge', 'uSoft', 'uStrength'],
+    )
   }
 
   private ensureSize(w: number, h: number) {
@@ -441,7 +539,10 @@ export class NeonSplitGL {
     this.fbos = []
     this.canvas.width = w
     this.canvas.height = h
-    for (let i = 0; i < 2; i++) {
+    // three ping-pong buffers: A/B alternate the chain, C holds the curves
+    // output when the split/strength mix pass runs after it (it samples that
+    // result while drawing to the canvas — same-surface reads are illegal)
+    for (let i = 0; i < 3; i++) {
       const tex = gl.createTexture()!
       gl.bindTexture(gl.TEXTURE_2D, tex)
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
@@ -454,6 +555,21 @@ export class NeonSplitGL {
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0)
       this.fbos.push({ fb, tex })
     }
+    // the cached grain field — its own persistent texture + framebuffer so
+    // the ping-pong passes can't clobber it mid-chain
+    if (this.grainTex) gl.deleteTexture(this.grainTex)
+    if (this.grainFb) gl.deleteFramebuffer(this.grainFb)
+    this.grainTex = gl.createTexture()!
+    gl.bindTexture(gl.TEXTURE_2D, this.grainTex)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    this.grainFb = gl.createFramebuffer()!
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.grainFb)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.grainTex, 0)
+    this.grainKey = ''  // size changed → the field must re-render
     // bloom pyramid — mipmapped
     if (this.pyramid) gl.deleteTexture(this.pyramid)
     this.pyramid = gl.createTexture()!
@@ -510,15 +626,20 @@ export class NeonSplitGL {
     gl.bindVertexArray(this.quadVao)
     gl.drawArrays(gl.TRIANGLES, 0, 3)
     gl.bindVertexArray(null)
+    // NOTE: no gl.finish() here — the GL command stream already guarantees
+    // a later pass reading this framebuffer's texture sees the finished
+    // draw; finish() would only stall the CPU and serialize the pipeline.
   }
 
   /** Run the whole preset chain over the given 2D source; returns the GL
    *  canvas holding the finished frame (draw it onto the 2D context). Every
    *  effect parameter arrives already mapped from the config dials (0.5 = the
    *  published preset's own value where noted). grainOffsetX/Y shift the
-   *  noise lattice per frame (animated grain — 0/0 is the published preset's
-   *  still grain). scale < 1 renders the chain at a lower internal resolution
-   *  (perf escape hatch for the live preview). */
+   *  noise lattice per film-frame (animated grain — 0/0 is the published
+   *  preset's still grain). scale < 1 renders the chain at a lower internal
+   *  resolution (perf escape hatch for the live preview). split/strength are
+   *  the two fade-back dials — applied INSIDE the chain (the splitmix pass
+   *  reads the untouched srcTex), so the caller never copies the frame. */
   render(p: {
     source: HTMLCanvasElement
     bloomIntensity: number
@@ -544,6 +665,10 @@ export class NeonSplitGL {
     mapBlend: number
     grainOffsetX: number
     grainOffsetY: number
+    /** The split line (0..1, 0 = no split) and the look's strength (0..1,
+     *  1 = full). Both handled by the final splitmix pass. */
+    split: number
+    strength: number
     scale: number
   }): HTMLCanvasElement {
     const gl = this.gl
@@ -554,6 +679,29 @@ export class NeonSplitGL {
     const rw = Math.max(8, Math.round(w * p.scale))
     const rh = Math.max(8, Math.round(h * p.scale))
     this.ensureSize(rw, rh)
+    const P = (k: string) => this.passes.get(k)!
+
+    const grainOn = p.noiseStrength > 0.001
+    const bloomOn = p.bloomIntensity > 0.001 && p.bloomMix > 0.001
+    const splitOn = p.split > 0.001
+    const fadeOn = p.strength < 0.999
+    const splitMixNeeded = splitOn || fadeOn
+
+    // the grain field — re-render only when its inputs actually changed (the
+    // film-frame offset moves ≤24×/sec and never at grainSpeed 0; every other
+    // frame the noise pass just samples this texture)
+    if (grainOn) {
+      const key = `${this.w}x${this.h}|${p.grainSize.toFixed(3)}|${p.chroma.toFixed(3)}|${Math.round(p.grainOffsetX)}|${Math.round(p.grainOffsetY)}`
+      if (this.grainKey !== key) {
+        this.renderPass(P('grainfield'), this.grainFb, () => {
+          gl.uniform2f(P('grainfield').uniforms.iResolution, this.w, this.h)
+          gl.uniform2f(P('grainfield').uniforms.uGrainOffset, p.grainOffsetX, p.grainOffsetY)
+          gl.uniform1f(P('grainfield').uniforms.grainSize, p.grainSize)
+          gl.uniform1f(P('grainfield').uniforms.chroma, p.chroma)
+        })
+        this.grainKey = key
+      }
+    }
 
     // the curves LUT follows the contrast dial — re-upload when it moves
     const curveKey = Math.round(p.curveMix * 100)
@@ -583,7 +731,7 @@ export class NeonSplitGL {
     const aspect = w / h
     const A = this.fbos[0]
     const B = this.fbos[1]
-    const P = (k: string) => this.passes.get(k)!
+    const C = this.fbos[2]
 
     // 1) levels (invert) behind the vertical smooth gradient mask  src → A
     this.renderPass(P('levels'), A.fb, () => {
@@ -594,58 +742,87 @@ export class NeonSplitGL {
       gl.uniform1f(P('levels').uniforms.uAspect, aspect)
     })
 
-    // 2) bloom-1 bright pass  A → B
-    this.renderPass(P('bright'), B.fb, () => {
-      this.use(0, A.tex, P('bright').uniforms.iChannel0)
-      gl.uniform1f(P('bright').uniforms.uThreshold, p.bloomThreshold)
-      gl.uniform1f(P('bright').uniforms.uKnee, p.bloomKnee)
-      gl.uniform1f(P('bright').uniforms.uIntensity, p.bloomIntensity)
-    })
-    // copy the bright pass into the mip pyramid (the engine uploads the
-    // bright pass as a texture and runs generateMipmap)
-    gl.bindFramebuffer(gl.FRAMEBUFFER, B.fb)
-    gl.bindTexture(gl.TEXTURE_2D, this.pyramid)
-    gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, this.w, this.h)
-    gl.generateMipmap(gl.TEXTURE_2D)
+    let cur = A
+    const nxt = B
 
-    // 3) bloom-3: 6-LOD average × the mix dial, screened over the levels output  → B
-    this.renderPass(P('bloom'), B.fb, () => {
-      this.use(0, this.pyramid, P('bloom').uniforms.iPyramid)
-      this.use(1, A.tex, P('bloom').uniforms.iBase)
-      gl.uniform1f(P('bloom').uniforms.uBloomFactor, p.bloomMix)
-    })
+    if (bloomOn) {
+      // 2) bloom-1 bright pass  A → B
+      this.renderPass(P('bright'), nxt.fb, () => {
+        this.use(0, cur.tex, P('bright').uniforms.iChannel0)
+        gl.uniform1f(P('bright').uniforms.uThreshold, p.bloomThreshold)
+        gl.uniform1f(P('bright').uniforms.uKnee, p.bloomKnee)
+        gl.uniform1f(P('bright').uniforms.uIntensity, p.bloomIntensity)
+      })
+      // copy the bright pass into the mip pyramid (the engine uploads the
+      // bright pass as a texture and runs generateMipmap)
+      gl.bindFramebuffer(gl.FRAMEBUFFER, nxt.fb)
+      gl.bindTexture(gl.TEXTURE_2D, this.pyramid)
+      gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, this.w, this.h)
+      gl.generateMipmap(gl.TEXTURE_2D)
 
-    // 4) film grain (linear-light, verbatim noise shader)  B → A
-    this.renderPass(P('noise'), A.fb, () => {
-      this.use(0, B.tex, P('noise').uniforms.iChannel0)
-      gl.uniform2f(P('noise').uniforms.iResolution, this.w, this.h)
-      gl.uniform2f(P('noise').uniforms.uGrainOffset, p.grainOffsetX, p.grainOffsetY)
-      gl.uniform1f(P('noise').uniforms.strength, p.noiseStrength)
-      gl.uniform1f(P('noise').uniforms.grainSize, p.grainSize)
-      gl.uniform1f(P('noise').uniforms.minGrain, 0.14)
-      gl.uniform1f(P('noise').uniforms.chroma, p.chroma)
-      gl.uniform1f(P('noise').uniforms.shadowWeight, p.shadowWeight)
-      gl.uniform1f(P('noise').uniforms.midWeight, 0.4)
-      gl.uniform1f(P('noise').uniforms.highlightWeight, p.highlightWeight)
-    })
+      // 3) bloom-3: 6-LOD average × the mix dial, screened over the levels output  → B
+      this.renderPass(P('bloom'), nxt.fb, () => {
+        this.use(0, this.pyramid, P('bloom').uniforms.iPyramid)
+        this.use(1, cur.tex, P('bloom').uniforms.iBase)
+        gl.uniform1f(P('bloom').uniforms.uBloomFactor, p.bloomMix)
+      })
+      cur = nxt
+    }
 
-    // 5) gradient map — the editable gradient, shift/repeat/blend + opacity  A → B
-    this.renderPass(P('gradient'), B.fb, () => {
-      this.use(0, A.tex, P('gradient').uniforms.iChannel0)
-      this.use(1, this.lutTexs.get('grad:custom')!, P('gradient').uniforms.iLut)
-      gl.uniform1f(P('gradient').uniforms.uMix, p.mapMix)
-      gl.uniform1f(P('gradient').uniforms.uShift, p.mapShift)
-      gl.uniform1f(P('gradient').uniforms.uRepeat, p.mapRepeat)
-      gl.uniform1i(P('gradient').uniforms.uBlend, p.mapBlend)
-    })
+    if (grainOn) {
+      // 4) film grain — tone modulation over the cached field  cur → other
+      const dst = cur === A ? B : A
+      this.renderPass(P('noise'), dst.fb, () => {
+        this.use(0, cur.tex, P('noise').uniforms.iChannel0)
+        this.use(1, this.grainTex, P('noise').uniforms.iGrain)
+        gl.uniform1f(P('noise').uniforms.strength, p.noiseStrength)
+        gl.uniform1f(P('noise').uniforms.minGrain, 0.14)
+        gl.uniform1f(P('noise').uniforms.shadowWeight, p.shadowWeight)
+        gl.uniform1f(P('noise').uniforms.midWeight, 0.4)
+        gl.uniform1f(P('noise').uniforms.highlightWeight, p.highlightWeight)
+      })
+      cur = dst
+    }
 
-    // 6) curves — apply mode L + node opacity 0.54  B → canvas (final pass;
-    //    the preset's two paper layer mixes were removed by design)
-    this.renderPass(P('curves'), null, () => {
-      this.use(0, B.tex, P('curves').uniforms.iChannel0)
-      this.use(1, this.lutTexs.get('curve')!, P('curves').uniforms.iLut)
-      gl.uniform1f(P('curves').uniforms.uOpacity, 0.54)
-    })
+    // 5) gradient map — the editable gradient, shift/repeat/blend + opacity  cur → other
+    {
+      const dst = cur === A ? B : A
+      this.renderPass(P('gradient'), dst.fb, () => {
+        this.use(0, cur.tex, P('gradient').uniforms.iChannel0)
+        this.use(1, this.lutTexs.get('grad:custom')!, P('gradient').uniforms.iLut)
+        gl.uniform1f(P('gradient').uniforms.uMix, p.mapMix)
+        gl.uniform1f(P('gradient').uniforms.uShift, p.mapShift)
+        gl.uniform1f(P('gradient').uniforms.uRepeat, p.mapRepeat)
+        gl.uniform1i(P('gradient').uniforms.uBlend, p.mapBlend)
+      })
+      cur = dst
+    }
+
+    // 6) curves — apply mode L + node opacity 0.54  cur → (C | canvas)
+    //    (the preset's two paper layer mixes were removed by design)
+    if (splitMixNeeded) {
+      this.renderPass(P('curves'), C.fb, () => {
+        this.use(0, cur.tex, P('curves').uniforms.iChannel0)
+        this.use(1, this.lutTexs.get('curve')!, P('curves').uniforms.iLut)
+        gl.uniform1f(P('curves').uniforms.uOpacity, 0.54)
+      })
+
+      // 7) the split + strength mix against the UNTOUCHED source  C → canvas
+      this.renderPass(P('splitmix'), null, () => {
+        this.use(0, C.tex, P('splitmix').uniforms.iFiltered)
+        this.use(1, this.srcTex, P('splitmix').uniforms.iOriginal)
+        gl.uniform1f(P('splitmix').uniforms.uSplitOn, splitOn ? 1 : 0)
+        gl.uniform1f(P('splitmix').uniforms.uEdge, 1 - Math.min(1, Math.max(0, p.split)))
+        gl.uniform1f(P('splitmix').uniforms.uSoft, 0.06)
+        gl.uniform1f(P('splitmix').uniforms.uStrength, Math.min(1, Math.max(0, p.strength)))
+      })
+    } else {
+      this.renderPass(P('curves'), null, () => {
+        this.use(0, cur.tex, P('curves').uniforms.iChannel0)
+        this.use(1, this.lutTexs.get('curve')!, P('curves').uniforms.iLut)
+        gl.uniform1f(P('curves').uniforms.uOpacity, 0.54)
+      })
+    }
 
     return this.canvas
   }

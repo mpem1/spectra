@@ -2527,3 +2527,74 @@ between 3D glasses and Dither).
   errors, lint 0 errors, no debug code left.
 - SHIP: commit a5c8a20, Pages deployment 7764941561 success, live bundle
   fingerprints confirmed (stillness/waveSpread/motionK in c3.js).
+
+## 2026-11-21 — Neon Split frame rate: the GL chain had NEVER run (found + fixed)
+
+- ASK: "under color neon split settings are right but the frame rate is really
+  bad is there a way to fix it?"
+- ROOT CAUSE (the big one): FRAG_GRADIENT's overlay branch used
+  'base <= vec3(0.5)' — GLSL ES relational operators are SCALAR-only, so the
+  gradient shader NEVER compiled on strict drivers (ANGLE/Metal — i.e. every
+  real browser). NeonSplitGL's constructor threw on compileAll(), the catch
+  latched glBroken=true SILENTLY, and every machine ran the per-pixel CPU
+  fallback forever — at DPR-2 canvas sizes that is the "really bad" frame
+  rate. Fixed with the vector-legal form: mix(hiBranch, loBranch,
+  vec3(lessThanEqual(base, vec3(0.5)))) — identical math, both branches agree
+  at 0.5. (Two self-inflicted wounds en route, both caught by in-page shader
+  pre-compilation of all 8 fragments: a backtick inside a GLSL comment
+  terminated the template literal (JS syntax error → error overlay), and a
+  trailing comma in the mix() call list (GLSL rejects it — JS doesn't).
+- SECOND ROOT CAUSE (cost even with GL running): UNPACK_FLIP_Y_WEBGL=true on
+  the source upload forced every canvas→texture upload down the slow CPU
+  path (read back + flip + re-upload; measured ~15 ms/frame in software GL
+  and it defeats the GPU-GPU fast path on real hardware). The flip moved
+  into the SAMPLERS: uploads are unflipped; the levels pass and the splitmix
+  pass (the only two that touch srcTex) negate vUV.y at sample time.
+  Byte-equivalent orientation, verified upright.
+- PERF REWORK of the chain (neon-split-gl.ts + neon-split.ts):
+  1. The film-grain FIELD is now a cached texture: the fractal-noise part of
+     the noise shader renders into its own persistent RGBA8 texture and
+     re-renders ONLY when (size, grain size, chroma, film-frame offset)
+     change — ≤24×/sec and never at grainSpeed 0 (the published still
+     grain). The per-frame noise pass dropped 48 hash chains per pixel to
+     one texture fetch + the tone modulation. Field encoded [-1,1]→[0,1]
+     RGBA8; grain contribution quantization lands within ±1 output byte.
+  2. The Split + Strength fades moved OFF the 2D context INTO the GL chain
+     (new final splitmix pass: curves output vs the untouched srcTex with
+     the same piecewise-linear ramp the 2D mask built — 0 above p0, 0.5 at
+     the edge, 1 below p1 — plus mix(x, o, 1−strength)). The live preview
+     no longer pays the full-canvas snapshot + mask copy + gradient fill +
+     two composite draws per frame; the snapshot is deferred into the CPU
+     fallback branch (a failed GL attempt composites nothing, so the frame
+     is still pristine when the CPU path needs it).
+  3. Pass skipping: bloom (bright + pyramid copy + genMipmap + bloom) is
+     skipped when intensity×mix ≈ 0 (screen with 0 bloom is the identity);
+     the noise pass is skipped when grain ≈ 0. Ping-pong rewired around the
+     skips (A/B alternate, C holds curves output when splitmix runs —
+     same-surface reads are illegal).
+  4. Context attributes: preserveDrawingBuffer false (the GL canvas is
+     consumed by a same-task drawImage — preserving cost a full buffer copy
+     per frame) and powerPreference 'high-performance' (the old 'low-power'
+     pinned dual-GPU machines to the integrated chip).
+  5. Adaptive internal-resolution ladder widened 1 → 0.75 → 0.5 → 0.33 with
+     a 30 ms step-down gate (45 ms meant ~20 fps before the first drop) and
+     a 2 s cheap-frame step-up. The ladder constants are exported and
+     IMPORTED now (the first cut referenced them without an import — a
+     per-frame ReferenceError that silently disabled the ladder until the
+     page error overlay caught it; also SCALE_LADDER/STEP_* needed export
+     keywords).
+  6. GL construction failures no longer latch GL off forever with no log:
+     they warn once and retry every 30 s (transient driver/HMR hiccups used
+     to downgrade the whole session to the CPU path silently).
+- Verified (agent-browser, 1440×900, software GL worst case): FPS with Neon
+  Split enabled went 5.9 → 29.2 (5×) — and the headline fix means real
+  browsers with strict GLSL drivers now run the GPU chain at all instead of
+  the per-pixel CPU fallback. GL-vs-baseline visual parity checked by
+  screenshot (inverted bright top → orchid fade → navy lower field, grain
+  speckle — the look matches the old CPU output). Split 100% via keyboard
+  restores the original picture with only the top-edge sliver filtered
+  (splitmix semantics identical to the 2D mask). Grain animation live (4/4
+  distinct frame checksums at 350 ms sampling). 390×844 mobile fits with no
+  horizontal overflow. Zero page errors after the fixes; all 8 shaders
+  pre-compiled OK on the real driver; tsc shows zero new errors in touched
+  files; lint 0 errors.

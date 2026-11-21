@@ -41,7 +41,14 @@
  * On WebGL2 the whole chain runs as the preset's own shaders (neon-split-gl),
  * pixel-faithful and fast; without GL, a CPU path runs the same math in one
  * per-pixel pass with canvas-composited textures. Both deterministic, both
- * skipped on transparent backgrounds (alpha must stay clean).
+ * skipped on transparent backgrounds (alpha must stay clean). Perf notes:
+ * the film-grain FIELD is a cached texture (re-rendered only when the
+ * film-frame offset rolls — ≤24×/sec, never at grainSpeed 0) instead of
+ * recomputing 48 hash chains per pixel per frame; the split + strength
+ * fades ride the GL chain's own final pass against its source texture, so
+ * the live preview never copies the full canvas around; and the live
+ * preview may drop the internal resolution on a ladder (1 → 0.75 → 0.5 →
+ * 0.33) when the GPU can't keep up.
  *
  * Infrastructure notes:
  *  - One GL instance per source canvas (preview and export each get their
@@ -69,7 +76,13 @@ import {
   srgb22Lut,
   srgbExactLut,
 } from './neon-split-data'
-import { NeonSplitGL } from './neon-split-gl'
+import {
+  NeonSplitGL,
+  SCALE_LADDER,
+  STEP_DOWN_MS,
+  STEP_UP_FRAMES,
+  STEP_UP_MS,
+} from './neon-split-gl'
 
 /* --------------------------- config dial mapping --------------------------- */
 
@@ -140,14 +153,20 @@ type GlEntry = {
   cool: number
 }
 const glEntries = new WeakMap<HTMLCanvasElement, GlEntry>()
-let glBroken = false
-/** performance.now() of the last context loss / construction failure — new
+/** performance.now() of the last context loss / render failure — new
  *  instances wait this out so a dead GPU can't spin a recreate-storm. */
 let lastGlFailAt = -Infinity
+/** performance.now() of the last CONSTRUCTOR failure. Construction used to
+ *  latch GL off FOREVER with no log — a transient hiccup (driver init,
+ *  mixed HMR state) silently downgraded the filter to the slow CPU path for
+ *  the whole session. Now a construction failure logs once and retries
+ *  after a long cooldown; only a genuinely GL-less machine keeps failing,
+ *  and a ms-scale constructor attempt every 30 s costs nothing. */
+let lastBuildFailAt = -Infinity
 const GL_FAIL_COOLDOWN_MS = 4000
+const GL_BUILD_COOLDOWN_MS = 30000
 
 function getGlEntry(source: HTMLCanvasElement): GlEntry | null {
-  if (glBroken) return null
   let entry = glEntries.get(source)
   if (entry && entry.inst.isLost) {
     // The GPU dropped this context. Dispose it and wait out the cooldown
@@ -159,11 +178,15 @@ function getGlEntry(source: HTMLCanvasElement): GlEntry | null {
   }
   if (!entry) {
     if (performance.now() - lastGlFailAt < GL_FAIL_COOLDOWN_MS) return null
+    if (performance.now() - lastBuildFailAt < GL_BUILD_COOLDOWN_MS) return null
     try {
       entry = { inst: new NeonSplitGL(), scale: 1, ema: 0, cool: 0 }
       glEntries.set(source, entry)
-    } catch {
-      glBroken = true
+    } catch (err) {
+      if (performance.now() - lastBuildFailAt > GL_BUILD_COOLDOWN_MS) {
+        console.warn('[neon-split] WebGL2 unavailable (CPU fallback, retrying every 30s):', err)
+      }
+      lastBuildFailAt = performance.now()
       return null
     }
   }
@@ -606,15 +629,13 @@ export function drawNeonSplitFilter(
   // the ramp's bright end reads as harsh white speckle on the frame
   const grainOff = grainOffsetFor(cfg.grainSpeed ?? 0.5, frame.styleTime ?? frame.time ?? 0)
 
-  // the untouched frame — the split region and the mix dial fade back to it
+  // The untouched frame — the split region and the mix dial fade back to it.
+  // The snapshot is taken ONLY when the CPU path actually runs: a failed GL
+  // attempt leaves the canvas untouched (the GL chain composites onto it only
+  // after a successful render), and the GL path folds the split + strength
+  // fades into its own final pass against its source texture — so a live
+  // preview never pays the full-canvas snapshot + mask composites at all.
   const needsSnap = split > 0.001 || strength < 0.999
-  let snap: HTMLCanvasElement | null = null
-  if (needsSnap) {
-    snap = getWork('neon:snap', W, H)
-    const sc = resetWork(snap.getContext('2d')!)
-    sc.clearRect(0, 0, W, H)
-    sc.drawImage(ctx.canvas, 0, 0)
-  }
 
   let done = false
   const entry = getGlEntry(ctx.canvas)
@@ -642,6 +663,8 @@ export function drawNeonSplitFilter(
         mapBlend: GRAD_BLEND_IDS.indexOf((cfg.mapBlend ?? 'normal') as (typeof GRAD_BLEND_IDS)[number]),
         grainOffsetX: grainOff.x,
         grainOffsetY: grainOff.y,
+        split,
+        strength,
         scale: entry.scale,
       })
       ctx.save()
@@ -662,21 +685,25 @@ export function drawNeonSplitFilter(
     }
 
     // Adaptive internal resolution (live preview only): track render +
-    // composite cost; step the scale down when the GPU can't keep up so the
-    // app stays interactive (software GL / weak iGPUs), and back up once
-    // frames are cheap again. Exports never set `interactive`, so exported
-    // frames always render at full scale and stay faithful.
+    // composite cost; step the internal scale down one rung when the GPU
+    // can't keep up so the app stays interactive (software GL / weak iGPUs),
+    // and back up one rung after a sustained cheap stretch. The 30ms gate
+    // steps down EARLY (45ms meant the app was already at ~20fps before the
+    // first drop); exports never set `interactive`, so exported frames
+    // always render at full scale and stay faithful.
     if (done && rc.interactive) {
       const ms = performance.now() - t0
       entry.ema = entry.ema > 0 ? entry.ema * 0.85 + ms * 0.15 : ms
-      if (entry.ema > 45 && entry.scale > 0.5) {
-        entry.scale = entry.scale >= 0.85 ? 0.75 : 0.5
+      if (entry.ema > STEP_DOWN_MS && entry.scale > SCALE_LADDER[SCALE_LADDER.length - 1]) {
+        const i = SCALE_LADDER.indexOf(entry.scale)
+        entry.scale = SCALE_LADDER[Math.min(SCALE_LADDER.length - 1, (i < 0 ? 0 : i) + 1)]
         entry.ema = 0
         entry.cool = 0
-      } else if (entry.ema < 14) {
+      } else if (entry.ema < STEP_UP_MS) {
         entry.cool++
-        if (entry.cool > 90 && entry.scale < 1) {
-          entry.scale = entry.scale <= 0.55 ? 0.75 : 1
+        if (entry.cool > STEP_UP_FRAMES && entry.scale < SCALE_LADDER[0]) {
+          const i = SCALE_LADDER.indexOf(entry.scale)
+          entry.scale = SCALE_LADDER[Math.max(0, (i < 0 ? 2 : i) - 1)]
           entry.ema = 0
           entry.cool = 0
         }
@@ -687,6 +714,17 @@ export function drawNeonSplitFilter(
   }
 
   if (!done) {
+    // CPU fallback — the untouched frame is still on the canvas (the failed
+    // GL attempt composites nothing), so snapshot it now and run the
+    // per-pixel pass. The split/strength composites below are the 2D twins
+    // of the GL chain's splitmix pass.
+    let snap: HTMLCanvasElement | null = null
+    if (needsSnap) {
+      snap = getWork('neon:snap', W, H)
+      const sc = resetWork(snap.getContext('2d')!)
+      sc.clearRect(0, 0, W, H)
+      sc.drawImage(ctx.canvas, 0, 0)
+    }
     drawNeonSplitCPU(
       rc,
       cfg,
@@ -703,36 +741,36 @@ export function drawNeonSplitFilter(
       grainOff.x,
       grainOff.y,
     )
-  }
 
-  // the split — below a soft line the untouched picture fades back in
-  if (snap && split > 0.001) {
-    const soft = 0.06
-    const edge = 1 - split
-    const p0 = Math.max(0, edge - soft)
-    const p1 = Math.min(1, edge + soft)
-    const mctx = getWork('neon:splitmask', W, H)
-    const mc = resetWork(mctx.getContext('2d')!)
-    mc.clearRect(0, 0, W, H)
-    mc.drawImage(snap, 0, 0)
-    mc.globalCompositeOperation = 'destination-in'
-    const g = mc.createLinearGradient(0, 0, 0, H)
-    if (p0 > 0.001) g.addColorStop(0, 'rgba(0,0,0,0)')
-    g.addColorStop(p0, 'rgba(0,0,0,0)')
-    g.addColorStop(Math.min(1, Math.max(p0, edge)), 'rgba(0,0,0,0.5)')
-    g.addColorStop(p1, 'rgba(0,0,0,1)')
-    if (p1 < 0.999) g.addColorStop(1, 'rgba(0,0,0,1)')
-    mc.fillStyle = g
-    mc.fillRect(0, 0, W, H)
-    mc.globalCompositeOperation = 'source-over'
-    ctx.drawImage(mctx, 0, 0)
-  }
+    // the split — below a soft line the untouched picture fades back in
+    if (snap && split > 0.001) {
+      const soft = 0.06
+      const edge = 1 - split
+      const p0 = Math.max(0, edge - soft)
+      const p1 = Math.min(1, edge + soft)
+      const mctx = getWork('neon:splitmask', W, H)
+      const mc = resetWork(mctx.getContext('2d')!)
+      mc.clearRect(0, 0, W, H)
+      mc.drawImage(snap, 0, 0)
+      mc.globalCompositeOperation = 'destination-in'
+      const g = mc.createLinearGradient(0, 0, 0, H)
+      if (p0 > 0.001) g.addColorStop(0, 'rgba(0,0,0,0)')
+      g.addColorStop(p0, 'rgba(0,0,0,0)')
+      g.addColorStop(Math.min(1, Math.max(p0, edge)), 'rgba(0,0,0,0.5)')
+      g.addColorStop(p1, 'rgba(0,0,0,1)')
+      if (p1 < 0.999) g.addColorStop(1, 'rgba(0,0,0,1)')
+      mc.fillStyle = g
+      mc.fillRect(0, 0, W, H)
+      mc.globalCompositeOperation = 'source-over'
+      ctx.drawImage(mctx, 0, 0)
+    }
 
-  // the mix dial — the whole look blends back over the original
-  if (snap && strength < 0.999) {
-    ctx.save()
-    ctx.globalAlpha = 1 - strength
-    ctx.drawImage(snap, 0, 0)
-    ctx.restore()
+    // the mix dial — the whole look blends back over the original
+    if (snap && strength < 0.999) {
+      ctx.save()
+      ctx.globalAlpha = 1 - strength
+      ctx.drawImage(snap, 0, 0)
+      ctx.restore()
+    }
   }
 }
