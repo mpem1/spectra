@@ -28,6 +28,7 @@ import {
   type AnaglyphFilterConfig,
   type NeonSplitFilterConfig,
   type ColorGradeFilterConfig,
+  type GradientMapFilterConfig,
   type HalationFilterConfig,
   type ExposureFilterConfig,
   type PolaroidFilterConfig,
@@ -122,6 +123,8 @@ type StudioState = {
   patchNeonSplitFilter: (partial: Partial<NeonSplitFilterConfig>) => void
   /** Patches config.colorGradeFilter */
   patchColorGradeFilter: (partial: Partial<ColorGradeFilterConfig>) => void
+  /** Patches config.gradientMapFilter (the standalone gradient-map stage) */
+  patchGradientMapFilter: (partial: Partial<GradientMapFilterConfig>) => void
   /** Patches config.halationFilter */
   patchHalationFilter: (partial: Partial<HalationFilterConfig>) => void
   /** Patches config.exposureFilter (the instant-film stock grade) */
@@ -281,6 +284,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, colorGradeFilter: { ...s.config.colorGradeFilter, ...partial } },
     })),
 
+  patchGradientMapFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, gradientMapFilter: { ...s.config.gradientMapFilter, ...partial } },
+    })),
+
   patchHalationFilter: (partial) =>
     set((s) => ({
       config: { ...s.config, halationFilter: { ...s.config.halationFilter, ...partial } },
@@ -405,6 +413,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         anaglyphFilter: { ...DEFAULT_STUDIO_CONFIG.anaglyphFilter, ...config.anaglyphFilter },
         neonSplitFilter: { ...DEFAULT_STUDIO_CONFIG.neonSplitFilter, ...config.neonSplitFilter },
         colorGradeFilter: { ...DEFAULT_STUDIO_CONFIG.colorGradeFilter, ...config.colorGradeFilter },
+        gradientMapFilter: { ...DEFAULT_STUDIO_CONFIG.gradientMapFilter, ...config.gradientMapFilter },
         halationFilter: { ...DEFAULT_STUDIO_CONFIG.halationFilter, ...config.halationFilter },
         exposureFilter: { ...DEFAULT_STUDIO_CONFIG.exposureFilter, ...config.exposureFilter },
         polaroidFilter: { ...DEFAULT_STUDIO_CONFIG.polaroidFilter, ...config.polaroidFilter },

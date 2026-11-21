@@ -2,18 +2,20 @@
 
 import { NeonSplitFilterSection } from '@/components/studio/neon-split-filter-section'
 import { ColorGradeSection } from '@/components/studio/color-grade-section'
+import { GradientMapSection } from '@/components/studio/gradient-map-section'
 import { HalationSection } from '@/components/studio/halation-section'
 import { ExposureSection } from '@/components/studio/exposure-section'
 
 /**
  * Color tab — everything that recolors the whole finished picture, in one
  * place: the Neon Split look (effect.app's preset with every parameter
- * dialable), the classic black & white / sepia grades, the Exposure
- * instant-film stock grade (effect.app's Instant Film effect) and the
- * Halation film glow (effect.app's Halation effect). These are the color
- * stage of the filter chain — the color grade tones whatever is beneath
- * it, the film stock grades over it, and the halation glows whatever is
- * beneath it, so they stack in that order.
+ * dialable), the classic black & white / sepia grades, the Gradient Map
+ * stage (effect.app's Gradient Map effect), the Exposure instant-film
+ * stock grade (effect.app's Instant Film effect) and the Halation film
+ * glow (effect.app's Halation effect). These are the color stage of the
+ * filter chain — the color grade tones whatever is beneath it, the gradient
+ * map re-reads it through a ramp, the film stock grades over it, and the
+ * halation glows whatever is beneath it, so they stack in that order.
  */
 export function ColorTab() {
   return (
@@ -21,8 +23,9 @@ export function ColorTab() {
       <p className="px-1 text-xs leading-relaxed text-zinc-500">
         Color tools for the whole finished picture — the Neon Split look from
         effect.app with every parameter on a dial, the classic black &amp;
-        white and sepia grades, the Exposure instant-film stock grade and
-        the film Halation glow. Everything here is baked into every export.
+        white and sepia grades, the Gradient Map stage, the Exposure
+        instant-film stock grade and the film Halation glow. Everything here
+        is baked into every export.
       </p>
 
       {/* Neon split — the effect.app preset: gradient map + bloom + film
@@ -32,6 +35,12 @@ export function ColorTab() {
       {/* Color grade — black & white / sepia tone shaping, stacks over (or
           under) the neon look */}
       <ColorGradeSection />
+
+      {/* Gradient map — the effect.app Gradient Map effect: every pixel's
+          luminance re-reads through a gradient ramp (blend / opacity /
+          shift / repeat dialable, the window cyclable continuously or on
+          kicks) */}
+      <GradientMapSection />
 
       {/* Exposure — the instant-film stock grade (effect.app's Instant
           Film effect): real Polaroid / Instax / FP-100C LUTs over the

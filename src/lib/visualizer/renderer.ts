@@ -33,6 +33,7 @@ import { drawGlitchFilter } from './glitch-filter'
 import { drawAnaglyphFilter } from './anaglyph-filter'
 import { drawNeonSplitFilter } from './neon-split'
 import { drawColorGradeFilter } from './color-grade'
+import { drawGradientMapFilter } from './gradient-map-filter'
 import { drawHalationFilter } from './halation-filter'
 import { drawExposureFilter } from './exposure-filter'
 import { drawDitherFilter } from './dither-filter'
@@ -233,6 +234,12 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // Split (it grades the neon look when both are on), before the halation /
   // phosphor / contour / dither stages, which stay the outermost layers.
   drawColorGradeFilter(rc, config.colorGradeFilter, frame, transparent)
+  // Gradient map — effect.app's Gradient Map as its own stage: every pixel's
+  // luminance re-reads through a gradient ramp (blend / opacity / shift /
+  // repeat dialable, the window cyclable continuously or on kicks). After
+  // the color grade (a B&W/sepia grade feeds the ramp) and before the film
+  // stock / halation stages grade and glow the mapped tones.
+  drawGradientMapFilter(rc, config.gradientMapFilter, frame, transparent)
   // Exposure — the instant-film stock grade (effect.app's Instant Film
   // effect): the finished picture graded through a real Polaroid/Instax/
   // FP-100C LUT with the Oklab Color/Light mix. After the color stage so

@@ -1195,6 +1195,75 @@ export interface ColorGradeFilterConfig {
 }
 
 /**
+ * Gradient map — effect.app's Gradient Map effect as its own Color-tab
+ * stage: every pixel's Rec.709 luminance re-reads as a position on a
+ * gradient ramp and the mapped color lands on the pixel through a blend
+ * mode at an opacity — the same engine node the Neon Split preset runs
+ * (identical per-channel math, ported from the site's decrypted
+ * gradient-map shader), rebuilt here as a standalone fully dialable pass
+ * with its own preset ramp library and a shift window that can cycle on
+ * its own (continuous) or advance on every detected kick (beat).
+ *
+ * Deterministic per-pixel math like every full-frame filter: the window
+ * position derives from the AudioFrame clocks (styleTime for continuous,
+ * song time through the shared flipGate detector for beat), so exports
+ * match the preview. Skipped on transparent backgrounds.
+ */
+export interface GradientMapFilterConfig {
+  enabled: boolean
+  /** Which built-in ramp the luminance maps onto. 'neon' is the house
+   *  look (the Neon Split preset's own gradient, verbatim stops); the
+   *  others span the classic duotone/thermal families. Absent in old
+   *  saves → 'neon'. */
+  preset: GradientMapPresetId
+  /** Blend mode — how the mapped color lands on each pixel (effect.app's
+   *  Blend dropdown, the map node's five modes with the exact per-channel
+   *  math the shader runs). Absent in old saves → 'normal'. */
+  blend: 'normal' | 'multiply' | 'screen' | 'overlay' | 'add'
+  /** Opacity 0..1 — how much of the blended map color lands on the pixel
+   *  (1 = the full map; 0 = the untouched picture). Absent in old saves
+   *  → 1. */
+  opacity: number
+  /** Gradient shift −1..1 — slides the ramp window along the luminance
+   *  axis (effect.app's Gradient shift; wrapped: colors that slide off
+   *  one end re-enter from the other). The motion modes below ADD to
+   *  this dial. Absent in old saves → 0. */
+  shift: number
+  /** Gradient repeat 1..8 — how many times the ramp tiles across the
+   *  luminance range (effect.app's Gradient repeat). Absent in old
+   *  saves → 1. */
+  repeat: number
+  /** Shift motion: 'manual' = the dial only (the still default);
+   *  'continuous' = the window auto-cycles along the ramp on the style
+   *  clock; 'beat' = every detected kick (the shared flipGate sub-band
+   *  onset detector) advances the window one step with a short glide.
+   *  Absent in old saves → 'manual'. */
+  shiftMode: 'manual' | 'continuous' | 'beat'
+  /** Continuous speed 0..1 — how fast the window cycles (1 = a full
+   *  sweep of the ramp every 2 seconds). Continuous mode only. Absent
+   *  in old saves → 0.3. */
+  shiftSpeed: number
+  /** Beat step 0.05..1 — how far each detected kick advances the window
+   *  (0.25 = a quarter of the ramp per kick). Beat mode only. Absent
+   *  in old saves → 0.25. */
+  beatStep: number
+}
+
+/** The built-in gradient-map ramp library (see gradient-map-filter.ts for
+ *  the stop data). 'neon' is the Neon Split preset's own ramp. */
+export type GradientMapPresetId =
+  | 'neon'
+  | 'uv'
+  | 'acid'
+  | 'ember'
+  | 'ice'
+  | 'sunset'
+  | 'magma'
+  | 'gold'
+  | 'rose'
+  | 'mono'
+
+/**
  * Halation filter — the classic film optical artifact over the whole
  * finished picture: bright highlights bleed a glowing halo into the
  * frame around them, exactly the way light blooms through film into the
@@ -1493,6 +1562,10 @@ export interface StudioConfig {
   neonSplitFilter: NeonSplitFilterConfig
   /** Full-frame color grade (black & white / sepia tone shaping) */
   colorGradeFilter: ColorGradeFilterConfig
+  /** Full-frame gradient-map stage (the effect.app Gradient Map effect —
+   *  luminance re-read through a gradient ramp, blend/opacity/shift/repeat
+   *  dialable, the window cyclable continuously or on kicks) */
+  gradientMapFilter: GradientMapFilterConfig
   /** Full-frame halation post-pass (the film highlight-bleed glow — the
    *  effect.app Halation effect) */
   halationFilter: HalationFilterConfig
@@ -2044,6 +2117,21 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     strength: 1,
     contrast: 0.5,
     warmth: 0.5,
+  },
+  gradientMapFilter: {
+    enabled: false,
+    // effect.app's Gradient Map feature defaults: the house ramp at full
+    // opacity, the window unshifted and untiled, motion off (the shift
+    // dial is manual) — flipping the switch alone repaints the picture
+    // through the ramp, exactly like the site's effect does
+    preset: 'neon',
+    blend: 'normal',
+    opacity: 1,
+    shift: 0,
+    repeat: 1,
+    shiftMode: 'manual',
+    shiftSpeed: 0.3,
+    beatStep: 0.25,
   },
   halationFilter: {
     enabled: false,
