@@ -287,13 +287,26 @@ async function prepareExportAssets(
       onNotice?.('Image visualizer artwork could not be loaded — the style shows its placeholder.')
     }
   }
-  // Polaroid wall's own photo — frame 0 prints it on every card, so it must
-  // be decoded before the first frame like every other layer.
-  if (config.polaroidFilter?.enabled && config.polaroidFilter.photoMode === 'photo' && config.polaroidFilter.photoSrc) {
-    try {
-      await loadBackgroundImage(config.polaroidFilter.photoSrc)
-    } catch {
-      onNotice?.('Polaroid photo could not be loaded — the frames show the picture instead.')
+  // Polaroid wall's own images — frame 0 prints the per-card photo on every
+  // card / reveals the wall image across the page / draws the 'image'
+  // backdrop, so every one must be decoded before the first frame.
+  {
+    const pf = config.polaroidFilter
+    const srcs = new Set<string>()
+    if (pf?.enabled) {
+      if (pf.photoMode === 'photo' && pf.photoSrc) srcs.add(pf.photoSrc)
+      if (pf.photoMode === 'mosaic' && pf.mosaicSrc) srcs.add(pf.mosaicSrc)
+      if (pf.backdrop === 'image') {
+        const backdropSrc = pf.mosaicSrc || pf.photoSrc
+        if (backdropSrc) srcs.add(backdropSrc)
+      }
+    }
+    for (const src of srcs) {
+      try {
+        await loadBackgroundImage(src)
+      } catch {
+        onNotice?.('Polaroid image could not be loaded — the frames show the picture instead.')
+      }
     }
   }
   // Imported fonts (lyrics / title) — registered before frame 0 so every

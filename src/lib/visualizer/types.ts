@@ -1382,8 +1382,10 @@ export interface PolaroidFilterConfig {
   scatter: number
   /** Backdrop behind the wall: 'paper' = the studio-table light look
    *  (the reference image), 'charcoal' = a dark room so the white cards
-   *  pop. Old saves without this field load as 'paper'. */
-  backdrop: 'paper' | 'charcoal'
+   *  pop, 'image' = the wall image (or the polaroid photo) cover-fit
+   *  behind the cards as the background layer. Old saves without this
+   *  field load as 'paper'. */
+  backdrop: 'paper' | 'charcoal' | 'image'
   /** Grid split — the effect.app look: each photo window shows the
    *  picture split into sections that drift (and jump on kicks) inside
    *  the frame. Old saves without this field load as off. */
@@ -1398,13 +1400,22 @@ export interface PolaroidFilterConfig {
   beatStrength: number
   /** What shows through every photo window: 'video' = the finished
    *  picture (the default wall of live prints), 'photo' = the uploaded
-   *  polaroid photo. Old saves → 'video'. */
-  photoMode: 'video' | 'photo'
+   *  polaroid photo printed on every card, 'mosaic' = ONE uploaded image
+   *  spread across the whole wall — every card reveals the piece of it
+   *  at that card's own spot (no two cards alike) and the image doubles
+   *  as the background layer behind the cards. Old saves → 'video'. */
+  photoMode: 'video' | 'photo' | 'mosaic'
   /** The polaroid-specific uploaded photo (data URL) printed on every
    *  card while photoMode is 'photo'. Travels inside saved projects;
    *  stripped from share links like every other image pixel. Old saves
    *  → ''. */
   photoSrc?: string
+  /** The ONE wall image (data URL) for photoMode 'mosaic': it cover-fits
+   *  the whole page, every card's window reveals the piece of it under
+   *  that card, and with the 'image' backdrop it doubles as the background
+   *  layer behind the wall. Travels inside saved projects; stripped from
+   *  share links like every other image pixel. Old saves → ''. */
+  mosaicSrc?: string
   /** Photo zoom 0.6..2.2 — the cover-crop amount for the uploaded photo
    *  (1 = framed by the photo's own edges, higher punches in). Old saves → 1. */
   photoZoom?: number
@@ -2050,6 +2061,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     beatStrength: 0.5,
     photoMode: 'video',
     photoSrc: '',
+    mosaicSrc: '',
     photoZoom: 1,
     strength: 1,
   },

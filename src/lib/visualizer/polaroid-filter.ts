@@ -15,6 +15,13 @@
  * own image on every card instead (still music-reactive: it breathes with
  * the low end, and grid split works on it the same).
  *
+ * ONE IMAGE ACROSS THE WALL (photoMode 'mosaic'): a second upload lays one
+ * image over the whole page — every card's window becomes a live reveal of
+ * the piece of the image at that card's own spot (no two cards alike), the
+ * image itself doubles as the backdrop layer behind the cards (the 'image'
+ * backdrop), and grid split slides its sections over the image the same way.
+ * The whole layer breathes with the low end while React to beat is on.
+ *
  * How it draws (per frame):
  *   1. snapshot the finished picture — the content every window shows;
  *   2. paint the backdrop (paper gradient + soft vignette, or charcoal);
@@ -274,6 +281,51 @@ function fillBackdrop(ctx: CanvasRenderingContext2D, W: number, H: number, charc
   ctx.fillRect(0, 0, W, H)
 }
 
+/* ------------------------------- image layer -------------------------------- */
+
+let layerImg: HTMLImageElement | null = null
+let layerSig = ''
+let layerCanvas: HTMLCanvasElement | null = null
+
+/**
+ * The wall image cover-fit over the whole frame — ONE canvas that serves as
+ * both the backdrop layer and the content every card's window reveals (the
+ * windows see the exact piece of the image at their own spot, so the wall
+ * reads as prints of the picture it sits on). The beat zoom is baked in so
+ * the backdrop and the windows stay glued together while breathing. Cached
+ * per (image, size, zoom, room) — rebuilt only when something changes.
+ */
+function getImageLayer(
+  img: HTMLImageElement,
+  W: number,
+  H: number,
+  zoom: number,
+  dark: boolean,
+): HTMLCanvasElement {
+  const sig = `${W}x${H}|${Math.round(zoom * 400)}|${dark ? 'd' : 'l'}`
+  if (layerImg === img && layerSig === sig && layerCanvas) return layerCanvas
+  const layer = getWork('polaroid:layer', W, H)
+  const c = resetWork(layer.getContext('2d')!)
+  c.clearRect(0, 0, W, H)
+  c.fillStyle = dark ? '#1d1d22' : '#c9c5bd'
+  c.fillRect(0, 0, W, H)
+  const cover = Math.max(W / img.naturalWidth, H / img.naturalHeight) * zoom
+  const dw = img.naturalWidth * cover
+  const dh = img.naturalHeight * cover
+  c.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh)
+  // A gentle vignette so the white prints keep their depth on the photo.
+  const diag = Math.hypot(W, H) * 0.6
+  const v = c.createRadialGradient(W / 2, H / 2, diag * 0.5, W / 2, H / 2, diag * 1.05)
+  v.addColorStop(0, 'rgba(0,0,0,0)')
+  v.addColorStop(1, 'rgba(0,0,0,0.20)')
+  c.fillStyle = v
+  c.fillRect(0, 0, W, H)
+  layerImg = img
+  layerSig = sig
+  layerCanvas = layer
+  return layer
+}
+
 /* ---------------------------------- filter ---------------------------------- */
 
 export function drawPolaroidFilter(
@@ -320,8 +372,38 @@ export function drawPolaroidFilter(
     content = pc
   }
 
-  // Backdrop, wall, sprites.
-  fillBackdrop(ctx, W, H, charcoal)
+  // ONE image across the wall: the mosaic upload cover-fits the whole page
+  // and every window reveals the piece of it at its own spot (while the
+  // image is still decoding the picture stands in — the same graceful
+  // fallback the photo uses). The 'image' backdrop draws the same layer,
+  // falling back to the polaroid photo when no wall image exists.
+  const mosaicImg = cfg.photoMode === 'mosaic' ? getBackgroundImage(cfg.mosaicSrc ?? '') : null
+  const layerZoom = cfg.beatReactive
+    ? 1 + clamp01(cfg.beatStrength ?? 0.5) * clamp01(frame.bass) * 0.07
+    : 1
+  const wallLayer = mosaicImg ? getImageLayer(mosaicImg, W, H, layerZoom, charcoal) : null
+  // The 'image' backdrop: the wall image when the mosaic mode is live, the
+  // polaroid photo otherwise — cover-fit behind the cards as the background
+  // layer. Paper/charcoal keep their studio-table look in every mode (the
+  // mosaic windows still reveal the image; only the table around them is
+  // the user's choice).
+  let tableLayer: HTMLCanvasElement | null = null
+  if (cfg.backdrop === 'image') {
+    if (wallLayer) {
+      tableLayer = wallLayer
+    } else {
+      const img = getBackgroundImage(cfg.photoSrc ?? '')
+      if (img) tableLayer = getImageLayer(img, W, H, layerZoom, charcoal)
+    }
+  }
+
+  // Backdrop, wall, sprites. The image layer IS the background table when
+  // the user picked the 'image' backdrop.
+  if (tableLayer) {
+    ctx.drawImage(tableLayer, 0, 0)
+  } else {
+    fillBackdrop(ctx, W, H, charcoal)
+  }
   const { prints, fw, fh } = getLayout(W, H, density, scatter)
   const { card, bevel, margin: m } = getCardSprites(fw, fh)
 
@@ -356,7 +438,48 @@ export function drawPolaroidFilter(
     const s = pr.scale * pop
     ctx.scale(s, s)
     ctx.translate(-fw / 2, -fh / 2)
-    if (effectiveSplit) {
+    if (wallLayer) {
+      // One image across the wall: the window clips in card space and the
+      // layer paints in canvas space (the inverse transform glues them), so
+      // every card reveals the piece of the image at its own spot — and the
+      // split sections slide over the image inside the frame.
+      const paint = (x: number, y: number, w: number, h: number): void => {
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(x, y, w, h)
+        ctx.clip()
+        ctx.translate(fw / 2, fh / 2)
+        ctx.scale(1 / s, 1 / s)
+        ctx.rotate(-pr.rot)
+        ctx.translate(-pr.cx, -pr.cy)
+        ctx.drawImage(wallLayer, 0, 0)
+        ctx.restore()
+      }
+      if (effectiveSplit) {
+        const cell = wsize / SPLIT_N
+        for (let i = 0; i < SPLIT_N; i++) {
+          for (let j = 0; j < SPLIT_N; j++) {
+            const cellSeed = pr.seed * SPLIT_N * SPLIT_N + i * SPLIT_N + j
+            const phase = hash01(cellSeed, 17) * Math.PI * 2
+            const spd = 1.1 + hash01(cellSeed, 31) * 1.5
+            let ox = Math.sin(frame.styleTime * spd + phase) * drift
+            let oy = Math.cos(frame.styleTime * spd * 0.83 + phase * 1.618) * drift
+            if (jump > 0.5) {
+              ox += (hash01(cellSeed, 91) - 0.5) * 2 * jump
+              oy += (hash01(cellSeed, 92) - 0.5) * 2 * jump
+            }
+            paint(
+              wx + j * cell + ox - bleed,
+              wy + i * cell + oy - bleed,
+              cell + bleed * 2,
+              cell + bleed * 2,
+            )
+          }
+        }
+      } else {
+        paint(wx, wy, wsize, wsize)
+      }
+    } else if (effectiveSplit) {
       // Grid split: each window shows the picture as 3×3 sections, every
       // section drifting on its own phase (and jumping on kicks) INSIDE the
       // frame. Each section draws oversized by the bleed so shifted cells
