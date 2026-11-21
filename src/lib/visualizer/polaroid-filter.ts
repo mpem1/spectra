@@ -20,7 +20,8 @@
  * the piece of the image at that card's own spot (no two cards alike), the
  * image itself doubles as the backdrop layer behind the cards (the 'image'
  * backdrop), and grid split slides its sections over the image the same way.
- * The whole layer breathes with the low end while React to beat is on.
+ * The whole layer breathes with the low end while React to beat is on, and
+ * the Image size dial punches the whole layer in and out.
  *
  * How it draws (per frame):
  *   1. snapshot the finished picture — the content every window shows;
@@ -378,15 +379,23 @@ export function drawPolaroidFilter(
   // fallback the photo uses). The 'image' backdrop draws the same layer,
   // falling back to the polaroid photo when no wall image exists.
   const mosaicImg = cfg.photoMode === 'mosaic' ? getBackgroundImage(cfg.mosaicSrc ?? '') : null
-  const layerZoom = cfg.beatReactive
+  // The user's size dial for the layer — the Image size slider for the wall
+  // image, the Photo zoom slider for the photo-as-table fallback — multiplied
+  // by the beat pulse and baked into the cached layer, so the backdrop and
+  // every window stay glued together while breathing.
+  const pulse = cfg.beatReactive
     ? 1 + clamp01(cfg.beatStrength ?? 0.5) * clamp01(frame.bass) * 0.07
     : 1
+  const layerZoom =
+    (mosaicImg
+      ? Math.min(2.2, Math.max(0.6, cfg.mosaicZoom ?? 1))
+      : Math.min(2.2, Math.max(0.6, cfg.photoZoom ?? 1))) * pulse
   const wallLayer = mosaicImg ? getImageLayer(mosaicImg, W, H, layerZoom, charcoal) : null
   // The 'image' backdrop: the wall image when the mosaic mode is live, the
-  // polaroid photo otherwise — cover-fit behind the cards as the background
-  // layer. Paper/charcoal keep their studio-table look in every mode (the
-  // mosaic windows still reveal the image; only the table around them is
-  // the user's choice).
+  // polaroid photo otherwise (at the Photo zoom dial) — cover-fit behind the
+  // cards as the background layer. Paper/charcoal keep their studio-table
+  // look in every mode (the mosaic windows still reveal the image; only the
+  // table around them is the user's choice).
   let tableLayer: HTMLCanvasElement | null = null
   if (cfg.backdrop === 'image') {
     if (wallLayer) {

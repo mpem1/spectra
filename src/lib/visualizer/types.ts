@@ -1419,6 +1419,12 @@ export interface PolaroidFilterConfig {
   /** Photo zoom 0.6..2.2 — the cover-crop amount for the uploaded photo
    *  (1 = framed by the photo's own edges, higher punches in). Old saves → 1. */
   photoZoom?: number
+  /** Wall image zoom 0.6..2.2 — the cover-crop amount for the ONE image
+   *  spread across the wall in photoMode 'mosaic' (1 = framed by the
+   *  image's own edges, higher punches in). Scales the background layer
+   *  and the piece every card reveals together, so the wall stays glued
+   *  to its backdrop. Old saves → 1. */
+  mosaicZoom?: number
   /** Mix 0..1 — 1 = the whole frame becomes the wall of prints, lower
    *  blends the untouched picture back over it. Old saves → 1. */
   strength: number
@@ -2063,6 +2069,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     photoSrc: '',
     mosaicSrc: '',
     photoZoom: 1,
+    mosaicZoom: 1,
     strength: 1,
   },
   ditherFilter: {

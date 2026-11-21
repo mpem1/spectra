@@ -334,6 +334,17 @@ export function PolaroidFilterSection() {
                         <Trash2 className="size-4" aria-hidden />
                       </Button>
                     </div>
+                    {filter.photoMode === 'mosaic' ? (
+                      <SliderRow
+                        label="Image size"
+                        value={filter.mosaicZoom ?? 1}
+                        min={0.6}
+                        max={2.2}
+                        step={0.05}
+                        onChange={set('mosaicZoom')}
+                        format={(v) => `${Math.round(v * 100)}%`}
+                      />
+                    ) : null}
                   </>
                 ) : (
                   <button
