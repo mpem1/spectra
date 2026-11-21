@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { GradientEditor } from '@/components/studio/gradient-editor'
 import { BackgroundSection } from '@/components/studio/background-section'
+import { PolaroidFilterSection } from '@/components/studio/polaroid-filter-section'
 import { VinylSection } from '@/components/studio/vinyl-section'
 import { WatermarkSection } from '@/components/studio/watermark-section'
 import { PulseImageSection } from '@/components/studio/pulse-image-section'
@@ -1000,6 +1001,12 @@ export function StyleTab() {
 
       {/* Background */}
       <BackgroundSection />
+
+      {/* Polaroid prints — the page becomes a scattered wall of instant print
+          cards over a backdrop scene (its own wall image, sized and panned
+          with the Image size / Position dials); the style above keeps
+          playing in front of it */}
+      <PolaroidFilterSection />
 
       {/* Album art — square cover + spinning vinyl/CD */}
       <VinylSection />

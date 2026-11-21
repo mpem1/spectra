@@ -21,7 +21,13 @@
  * image itself doubles as the backdrop layer behind the cards (the 'image'
  * backdrop), and grid split slides its sections over the image the same way.
  * The whole layer breathes with the low end while React to beat is on, and
- * the Image size dial punches the whole layer in and out.
+ * the Image size / Position dials punch it in and slide it across the frame.
+ *
+ * BACKGROUND SCENE: while the wall covers the page it acts as the page's
+ * backdrop — the renderer re-draws the moving layers (the Style tab's
+ * visualizer, pulse image, vinyl) and the text overlays ON TOP of the wall,
+ * so the style keeps playing in front (the windows still hold their prints
+ * of the picture, which already includes the layers drawn before the chain).
  *
  * How it draws (per frame):
  *   1. snapshot the finished picture — the content every window shows;
@@ -294,16 +300,18 @@ let layerCanvas: HTMLCanvasElement | null = null
  * windows see the exact piece of the image at their own spot, so the wall
  * reads as prints of the picture it sits on). The beat zoom is baked in so
  * the backdrop and the windows stay glued together while breathing. Cached
- * per (image, size, zoom, room) — rebuilt only when something changes.
+ * per (image, size, zoom, pan, room) — rebuilt only when something changes.
  */
 function getImageLayer(
   img: HTMLImageElement,
   W: number,
   H: number,
   zoom: number,
+  panX: number,
+  panY: number,
   dark: boolean,
 ): HTMLCanvasElement {
-  const sig = `${W}x${H}|${Math.round(zoom * 400)}|${dark ? 'd' : 'l'}`
+  const sig = `${W}x${H}|${Math.round(zoom * 400)}|${Math.round(panX * 200)}|${Math.round(panY * 200)}|${dark ? 'd' : 'l'}`
   if (layerImg === img && layerSig === sig && layerCanvas) return layerCanvas
   const layer = getWork('polaroid:layer', W, H)
   const c = resetWork(layer.getContext('2d')!)
@@ -313,7 +321,14 @@ function getImageLayer(
   const cover = Math.max(W / img.naturalWidth, H / img.naturalHeight) * zoom
   const dw = img.naturalWidth * cover
   const dh = img.naturalHeight * cover
-  c.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh)
+  // Pan sweeps the image across its own cover overflow (0 = centered,
+  // ±1 = the image's edge pulls up to the frame's edge) — no pan room on an
+  // axis where the image doesn't overflow, so nothing ever shows through.
+  const overX = Math.max(0, (dw - W) / 2)
+  const overY = Math.max(0, (dh - H) / 2)
+  const dx = (W - dw) / 2 + panX * overX
+  const dy = (H - dh) / 2 + panY * overY
+  c.drawImage(img, dx, dy, dw, dh)
   // A gentle vignette so the white prints keep their depth on the photo.
   const diag = Math.hypot(W, H) * 0.6
   const v = c.createRadialGradient(W / 2, H / 2, diag * 0.5, W / 2, H / 2, diag * 1.05)
@@ -379,10 +394,10 @@ export function drawPolaroidFilter(
   // fallback the photo uses). The 'image' backdrop draws the same layer,
   // falling back to the polaroid photo when no wall image exists.
   const mosaicImg = cfg.photoMode === 'mosaic' ? getBackgroundImage(cfg.mosaicSrc ?? '') : null
-  // The user's size dial for the layer — the Image size slider for the wall
-  // image, the Photo zoom slider for the photo-as-table fallback — multiplied
-  // by the beat pulse and baked into the cached layer, so the backdrop and
-  // every window stay glued together while breathing.
+  // The user's size + position dials for the layer — Image size / Position
+  // for the wall image, the Photo zoom slider for the photo-as-table
+  // fallback — multiplied by the beat pulse and baked into the cached layer,
+  // so the backdrop and every window stay glued together while breathing.
   const pulse = cfg.beatReactive
     ? 1 + clamp01(cfg.beatStrength ?? 0.5) * clamp01(frame.bass) * 0.07
     : 1
@@ -390,19 +405,23 @@ export function drawPolaroidFilter(
     (mosaicImg
       ? Math.min(2.2, Math.max(0.6, cfg.mosaicZoom ?? 1))
       : Math.min(2.2, Math.max(0.6, cfg.photoZoom ?? 1))) * pulse
-  const wallLayer = mosaicImg ? getImageLayer(mosaicImg, W, H, layerZoom, charcoal) : null
+  const panX = Math.min(1, Math.max(-1, cfg.mosaicPanX ?? 0))
+  const panY = Math.min(1, Math.max(-1, cfg.mosaicPanY ?? 0))
+  const wallLayer = mosaicImg
+    ? getImageLayer(mosaicImg, W, H, layerZoom, panX, panY, charcoal)
+    : null
   // The 'image' backdrop: the wall image when the mosaic mode is live, the
-  // polaroid photo otherwise (at the Photo zoom dial) — cover-fit behind the
-  // cards as the background layer. Paper/charcoal keep their studio-table
-  // look in every mode (the mosaic windows still reveal the image; only the
-  // table around them is the user's choice).
+  // polaroid photo otherwise (at the Photo zoom dial, centered) — cover-fit
+  // behind the cards as the background layer. Paper/charcoal keep their
+  // studio-table look in every mode (the mosaic windows still reveal the
+  // image; only the table around them is the user's choice).
   let tableLayer: HTMLCanvasElement | null = null
   if (cfg.backdrop === 'image') {
     if (wallLayer) {
       tableLayer = wallLayer
     } else {
       const img = getBackgroundImage(cfg.photoSrc ?? '')
-      if (img) tableLayer = getImageLayer(img, W, H, layerZoom, charcoal)
+      if (img) tableLayer = getImageLayer(img, W, H, layerZoom, 0, 0, charcoal)
     }
   }
 

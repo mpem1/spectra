@@ -116,8 +116,10 @@ export function PolaroidFilterSection() {
         The page becomes a wall of scattered instant prints — every card&apos;s
         square photo window shows the finished picture, YOUR photo, or its own
         piece of one big image laid across the whole page (with that image as
-        the backdrop). Grid split cuts each square into sections that drift
-        and shuffle inside the frame on the beat. Baked into every export.
+        the backdrop). The wall acts as the page&apos;s background scene: your
+        style keeps playing in front of it, and your text stays on top. Grid
+        split cuts each square into sections that drift and shuffle inside
+        the frame on the beat. Baked into every export.
       </p>
 
       {filter.enabled ? (
@@ -335,15 +337,43 @@ export function PolaroidFilterSection() {
                       </Button>
                     </div>
                     {filter.photoMode === 'mosaic' ? (
-                      <SliderRow
-                        label="Image size"
-                        value={filter.mosaicZoom ?? 1}
-                        min={0.6}
-                        max={2.2}
-                        step={0.05}
-                        onChange={set('mosaicZoom')}
-                        format={(v) => `${Math.round(v * 100)}%`}
-                      />
+                      <div className="space-y-1.5">
+                        <SliderRow
+                          label="Image size"
+                          value={filter.mosaicZoom ?? 1}
+                          min={0.6}
+                          max={2.2}
+                          step={0.05}
+                          onChange={set('mosaicZoom')}
+                          format={(v) => `${Math.round(v * 100)}%`}
+                        />
+                        <SliderRow
+                          label="Position X"
+                          value={filter.mosaicPanX ?? 0}
+                          min={-1}
+                          max={1}
+                          step={0.05}
+                          onChange={set('mosaicPanX')}
+                          format={(v) => `${Math.round(v * 100)}%`}
+                        />
+                        <SliderRow
+                          label="Position Y"
+                          value={filter.mosaicPanY ?? 0}
+                          min={-1}
+                          max={1}
+                          step={0.05}
+                          onChange={set('mosaicPanY')}
+                          format={(v) => `${Math.round(v * 100)}%`}
+                        />
+                        <p className="text-[10px] leading-snug text-zinc-600">
+                          Image size punches the wall image in and out — the
+                          background AND the piece inside every print slide
+                          together, so the wall stays glued to its backdrop.
+                          Position slides it across the frame: push the size
+                          above 100% (or use an image wider/taller than the
+                          page) to get room to move.
+                        </p>
+                      </div>
                     ) : null}
                   </>
                 ) : (
@@ -363,8 +393,9 @@ export function PolaroidFilterSection() {
               &apos;My photo&apos; prints your upload on every card. &apos;One
               image&apos; spreads a single image across the whole page — each
               print shows the piece of it at its own spot (no two prints
-              alike) and the image itself becomes the backdrop. Both stay in
-              your browser (they travel in saved projects, not share links).
+              alike) and the image itself becomes the backdrop, sized and
+              positioned with the dials below it. Both stay in your browser
+              (they travel in saved projects, not share links).
             </p>
           </div>
 
@@ -383,9 +414,10 @@ export function PolaroidFilterSection() {
             a neat grid, 100% the messy overlapping pile). The backdrop sets
             the room: light studio paper, charcoal so the white cards pop, or
             your own image as the table. Mix blends the untouched picture back
-            over the wall. Everything stays put between frames — the same look
-            lands in every export. Skipped on transparent backgrounds so alpha
-            recordings stay clean.
+            over the wall. The wall is the page&apos;s background: your
+            visualizer and text always render in front of it. Everything stays
+            put between frames — the same look lands in every export. Skipped
+            on transparent backgrounds so alpha recordings stay clean.
           </p>
         </>
       ) : null}

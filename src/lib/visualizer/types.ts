@@ -1425,6 +1425,15 @@ export interface PolaroidFilterConfig {
    *  and the piece every card reveals together, so the wall stays glued
    *  to its backdrop. Old saves → 1. */
   mosaicZoom?: number
+  /** Wall image pan X/Y −1..1 — slides the ONE image across its cover-fit
+   *  overflow inside the frame (0 = centered, +100% = the image's right/bottom
+   *  edge pulls up to the frame's edge, −100% the left/top). Room to slide
+   *  comes from the Image size dial (above 100%) or an aspect wider/taller
+   *  than the frame. Scales the background layer and the piece every card
+   *  reveals together, so the wall stays glued to its backdrop. Old saves
+   *  → 0. */
+  mosaicPanX?: number
+  mosaicPanY?: number
   /** Mix 0..1 — 1 = the whole frame becomes the wall of prints, lower
    *  blends the untouched picture back over it. Old saves → 1. */
   strength: number
@@ -2070,6 +2079,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     mosaicSrc: '',
     photoZoom: 1,
     mosaicZoom: 1,
+    mosaicPanX: 0,
+    mosaicPanY: 0,
     strength: 1,
   },
   ditherFilter: {

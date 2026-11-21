@@ -125,6 +125,18 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // stayColored is on (that already lifts the text above everything) and on
   // transparent backgrounds (those skip the filters anyway).
   const textClear = !transparent && !stayColored && !!config.layers?.textClear
+  // Polaroid wall = a background scene: while the wall covers the page (the
+  // filter on, Mix above zero, not a transparent background), the Style tab
+  // stays in front of it — the moving layers and the text overlays are
+  // re-drawn above the finished wall after the chain, so the user's style
+  // keeps playing over the backdrop instead of being swallowed by it. The
+  // wall's photo windows still hold their prints of the picture (drawn
+  // before the chain, layers included); the stayColored/textClear toggles
+  // keep their own meanings untouched.
+  const polaroidWall =
+    !transparent &&
+    !!config.polaroidFilter?.enabled &&
+    clamp01(config.polaroidFilter.strength ?? 1) > 0.001
   let ovCanvas: HTMLCanvasElement | null = null
   let layersRc: RenderContext = rc
   if (stayColored || textClear) {
@@ -140,41 +152,50 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // overlays always draw to layersRc: the overlay whenever either bypass is
   // on, the frame itself on the classic path.
   const movingRc = stayColored ? layersRc : rc
+  // The layer passes, as one reusable block: the lift below re-renders the
+  // exact same draws above the polaroid wall (same order, same targets), so
+  // the wall acts as a background scene with the style playing in front.
+  const drawMovingLayers = (target: RenderContext): void => {
+    // Layer order vs. the album art layer: 'back' tucks the bars behind the
+    // vinyl & cover, 'front' (the default, and what very old saves merge to)
+    // keeps them on top. Lyrics/title always stay above everything.
+    const vizBehind = (config.visualizer as VisualizerConfig | undefined)?.layer === 'back'
+    // Pulse image behind everything except the background (pre-disc saves
+    // merge layer='front', so this only runs when the user asks for it).
+    if (config.pulseImage?.enabled && config.pulseImage.layer === 'back') {
+      drawPulseImage(target, frame, config.pulseImage, config.visualizer.gradient, S)
+    }
+    if (vizBehind) drawVisualizer(target, frame, config.visualizer, S)
+    // Album art layer (square cover + spinning vinyl/CD) — above the
+    // visualizer, below the text overlays. Optional chaining keeps very old
+    // saves (pre-disc) renderable even before the store merge runs.
+    if (config.disc?.enabled) {
+      drawDisc(target, frame, config.disc)
+    }
+    if (!vizBehind) drawVisualizer(target, frame, config.visualizer, S)
+    // Pulse image in front of the bars & vinyl (the default placement).
+    if (config.pulseImage?.enabled && config.pulseImage.layer !== 'back') {
+      drawPulseImage(target, frame, config.pulseImage, config.visualizer.gradient, S)
+    }
+  }
+  const drawTextOverlays = (target: RenderContext): void => {
+    if (config.lyrics.enabled && config.lyrics.lines.length > 0) {
+      drawLyrics(target, frame, config.lyrics, config.visualizer.gradient)
+    }
+    // Optional chaining: configs from very old saves (pre-title) merge over
+    // defaults in setConfig, but stay defensive here anyway.
+    if (config.title?.enabled && config.title.text.trim().length > 0) {
+      drawTitle(target, frame, config.title, config.visualizer.gradient)
+    }
+    // Corner watermark — the very top layer, above lyrics/title, so posted
+    // videos always carry the credit. Optional chaining: pre-watermark saves.
+    if (config.watermark?.enabled) {
+      drawWatermark(target, config.watermark, S)
+    }
+  }
   drawBackground(rc, frame, config.background, S)
-  // Layer order vs. the album art layer: 'back' tucks the bars behind the
-  // vinyl & cover, 'front' (the default, and what very old saves merge to)
-  // keeps them on top. Lyrics/title always stay above everything.
-  const vizBehind = (config.visualizer as VisualizerConfig | undefined)?.layer === 'back'
-  // Pulse image behind everything except the background (pre-disc saves
-  // merge layer='front', so this only runs when the user asks for it).
-  if (config.pulseImage?.enabled && config.pulseImage.layer === 'back') {
-    drawPulseImage(movingRc, frame, config.pulseImage, config.visualizer.gradient, S)
-  }
-  if (vizBehind) drawVisualizer(movingRc, frame, config.visualizer, S)
-  // Album art layer (square cover + spinning vinyl/CD) — above the
-  // visualizer, below the text overlays. Optional chaining keeps very old
-  // saves (pre-disc) renderable even before the store merge runs.
-  if (config.disc?.enabled) {
-    drawDisc(movingRc, frame, config.disc)
-  }
-  if (!vizBehind) drawVisualizer(movingRc, frame, config.visualizer, S)
-  // Pulse image in front of the bars & vinyl (the default placement).
-  if (config.pulseImage?.enabled && config.pulseImage.layer !== 'back') {
-    drawPulseImage(movingRc, frame, config.pulseImage, config.visualizer.gradient, S)
-  }
-  if (config.lyrics.enabled && config.lyrics.lines.length > 0) {
-    drawLyrics(layersRc, frame, config.lyrics, config.visualizer.gradient)
-  }
-  // Optional chaining: configs from very old saves (pre-title) merge over
-  // defaults in setConfig, but stay defensive here anyway.
-  if (config.title?.enabled && config.title.text.trim().length > 0) {
-    drawTitle(layersRc, frame, config.title, config.visualizer.gradient)
-  }
-  // Corner watermark — the very top layer, above lyrics/title, so posted
-  // videos always carry the credit. Optional chaining: pre-watermark saves.
-  if (config.watermark?.enabled) {
-    drawWatermark(layersRc, config.watermark, S)
-  }
+  drawMovingLayers(movingRc)
+  drawTextOverlays(layersRc)
   // "Filter alpha" — a single transparency dial on top of the ENTIRE filter
   // chain. Below 100% the pre-filter frame (background + moving layers +
   // text — exactly what the filters are about to texture) is snapshotted
@@ -250,6 +271,16 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
     rc.ctx.globalAlpha = 1 - filterAlpha
     rc.ctx.drawImage(alphaSnapshot, 0, 0)
     rc.ctx.restore()
+  }
+  // The polaroid wall as a background scene: with the wall covering the
+  // page, re-draw the moving layers (and the text overlays, unless the text
+  // already rides the overlay below) straight on top of it — the Style tab
+  // stays in front. The draws are pure (deterministic from the same frame),
+  // so this costs one extra layer pass and changes nothing else; when
+  // stayColored is on the overlay below already carries everything.
+  if (polaroidWall && !stayColored) {
+    drawMovingLayers(rc)
+    if (!textClear) drawTextOverlays(rc)
   }
   // "Layers stay colored" / "Text stays legible": bring the overlay back on
   // top of the finished filter chain — the very last pass, so every filter

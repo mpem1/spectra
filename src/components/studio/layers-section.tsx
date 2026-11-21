@@ -26,6 +26,7 @@ export function LayersSection() {
   const patchLayers = useStudioStore((s) => s.patchLayers)
   const lyrics = useStudioStore((s) => s.config.lyrics)
   const patchLyrics = useStudioStore((s) => s.patchLyrics)
+  const polaroidOn = useStudioStore((s) => s.config.polaroidFilter?.enabled ?? false)
 
   return (
     <section className={sectionShell('teal')} aria-label="Layers">
@@ -83,6 +84,13 @@ export function LayersSection() {
           )}
         </>
       )}
+      {polaroidOn ? (
+        <p className="text-[11px] leading-snug text-teal-300/70">
+          With the Polaroid wall on (it lives in the Style tab now), your
+          style and text always play in front of it automatically — these
+          switches are for the other filters.
+        </p>
+      ) : null}
       <SliderRow
         label="Lyrics alpha"
         value={lyrics.opacity ?? 1}
