@@ -21,7 +21,9 @@
  * image itself doubles as the backdrop layer behind the cards (the 'image'
  * backdrop), and grid split slides its sections over the image the same way.
  * The whole layer breathes with the low end while React to beat is on, and
- * the Image size / Position dials punch it in and slide it across the frame.
+ * the Image size / Position / Rotation dials punch it in, slide it across
+ * the frame and spin it — with the scale auto-grown just enough that the
+ * frame always stays covered (no flat filler ever peeks through).
  *
  * BACKGROUND SCENE: while the wall covers the page it acts as the page's
  * backdrop — the renderer re-draws the moving layers (the Style tab's
@@ -65,6 +67,13 @@ const SPLIT_N = 3
 /** Hard cap on prints per frame — density 1 on a wide canvas would otherwise
  *  spawn ~350 cards; 140 keeps phones smooth while reading as a full wall. */
 const MAX_PRINTS = 140
+
+/** Minimum pan room per axis, as a fraction of the frame. The wall image can
+ *  always slide this far even when its cover fit leaves no overflow (a square
+ *  or portrait image on a wide page binds the width axis at Image size 100%,
+ *  which used to leave Position X dead). Sliding past the dial's own overflow
+ *  quietly grows the layer scale just enough to stay covered. */
+const PAN_SLACK = 0.25
 
 interface PolaroidPrint {
   /** Card center, canvas px */
@@ -299,8 +308,17 @@ let layerCanvas: HTMLCanvasElement | null = null
  * both the backdrop layer and the content every card's window reveals (the
  * windows see the exact piece of the image at their own spot, so the wall
  * reads as prints of the picture it sits on). The beat zoom is baked in so
- * the backdrop and the windows stay glued together while breathing. Cached
- * per (image, size, zoom, pan, room) — rebuilt only when something changes.
+ * the backdrop and the windows stay glued together while breathing.
+ *
+ * Position + Rotation dials (all canvas-space, around the frame center):
+ * the image slides by (panX, panY) and spins by rotDeg. The scale solves for
+ * coverage — the dial's own overflow is spent first (±100% still lands
+ * edge-to-edge exactly like before), then the PAN_SLACK room kicks in, and
+ * the scale grows only as far as the requested pan/rotation demands, so the
+ * frame is filled at every combination and no flat filler ever shows. When
+ * the image deliberately doesn't cover (Image size below 100%) the constraints
+ * step aside — the filler around it is already the look. Cached per (image,
+ * size, zoom, pan, rotation, room) — rebuilt only when something changes.
  */
 function getImageLayer(
   img: HTMLImageElement,
@@ -309,26 +327,45 @@ function getImageLayer(
   zoom: number,
   panX: number,
   panY: number,
+  rotDeg: number,
   dark: boolean,
 ): HTMLCanvasElement {
-  const sig = `${W}x${H}|${Math.round(zoom * 400)}|${Math.round(panX * 200)}|${Math.round(panY * 200)}|${dark ? 'd' : 'l'}`
+  const rot = Math.min(180, Math.max(-180, rotDeg)) * (Math.PI / 180)
+  const sig = `${W}x${H}|${Math.round(zoom * 400)}|${Math.round(panX * 200)}|${Math.round(panY * 200)}|${Math.round(Math.min(180, Math.max(-180, rotDeg)))}|${dark ? 'd' : 'l'}`
   if (layerImg === img && layerSig === sig && layerCanvas) return layerCanvas
   const layer = getWork('polaroid:layer', W, H)
   const c = resetWork(layer.getContext('2d')!)
   c.clearRect(0, 0, W, H)
   c.fillStyle = dark ? '#1d1d22' : '#c9c5bd'
   c.fillRect(0, 0, W, H)
-  const cover = Math.max(W / img.naturalWidth, H / img.naturalHeight) * zoom
-  const dw = img.naturalWidth * cover
-  const dh = img.naturalHeight * cover
-  // Pan sweeps the image across its own cover overflow (0 = centered,
-  // ±1 = the image's edge pulls up to the frame's edge) — no pan room on an
-  // axis where the image doesn't overflow, so nothing ever shows through.
-  const overX = Math.max(0, (dw - W) / 2)
-  const overY = Math.max(0, (dh - H) / 2)
-  const dx = (W - dw) / 2 + panX * overX
-  const dy = (H - dh) / 2 + panY * overY
-  c.drawImage(img, dx, dy, dw, dh)
+  const iw = img.naturalWidth
+  const ih = img.naturalHeight
+  const s0 = Math.max(W / iw, H / ih) * zoom
+  const covering = s0 * iw >= W - 0.5 && s0 * ih >= H - 0.5
+  // Pan targets: the dial's own cover overflow first (0 = centered, ±1 = the
+  // image's edge pulls up to the frame's edge), with a guaranteed minimum
+  // room per axis so the dials always do something at Image size 100%.
+  const overX0 = Math.max(0, (s0 * iw - W) / 2)
+  const overY0 = Math.max(0, (s0 * ih - H) / 2)
+  const dx = panX * Math.max(overX0, PAN_SLACK * W)
+  const dy = panY * Math.max(overY0, PAN_SLACK * H)
+  // Coverage solve: the shifted frame corners must stay inside the rotated
+  // image rect — |(x_rel·cos + y_rel·sin)| ≤ dw/2 etc. for all four corners,
+  // which peaks at (W/2 + |dx|)·c + (H/2 + |dy|)·s' per axis. Closed form:
+  const ca = Math.abs(Math.cos(rot))
+  const sa = Math.abs(Math.sin(rot))
+  let s = s0
+  if (covering) {
+    const sx = ((W + 2 * Math.abs(dx)) * ca + (H + 2 * Math.abs(dy)) * sa) / iw
+    const sy = ((W + 2 * Math.abs(dx)) * sa + (H + 2 * Math.abs(dy)) * ca) / ih
+    s = Math.max(s0, sx, sy)
+  }
+  const dw = iw * s
+  const dh = ih * s
+  c.translate(W / 2 + dx, H / 2 + dy)
+  c.rotate(rot)
+  c.drawImage(img, -dw / 2, -dh / 2, dw, dh)
+  c.setTransform(1, 0, 0, 1, 0, 0)
   // A gentle vignette so the white prints keep their depth on the photo.
   const diag = Math.hypot(W, H) * 0.6
   const v = c.createRadialGradient(W / 2, H / 2, diag * 0.5, W / 2, H / 2, diag * 1.05)
@@ -407,8 +444,9 @@ export function drawPolaroidFilter(
       : Math.min(2.2, Math.max(0.6, cfg.photoZoom ?? 1))) * pulse
   const panX = Math.min(1, Math.max(-1, cfg.mosaicPanX ?? 0))
   const panY = Math.min(1, Math.max(-1, cfg.mosaicPanY ?? 0))
+  const mosaicRot = Math.min(180, Math.max(-180, cfg.mosaicRot ?? 0))
   const wallLayer = mosaicImg
-    ? getImageLayer(mosaicImg, W, H, layerZoom, panX, panY, charcoal)
+    ? getImageLayer(mosaicImg, W, H, layerZoom, panX, panY, mosaicRot, charcoal)
     : null
   // The 'image' backdrop: the wall image when the mosaic mode is live, the
   // polaroid photo otherwise (at the Photo zoom dial, centered) — cover-fit
@@ -421,7 +459,7 @@ export function drawPolaroidFilter(
       tableLayer = wallLayer
     } else {
       const img = getBackgroundImage(cfg.photoSrc ?? '')
-      if (img) tableLayer = getImageLayer(img, W, H, layerZoom, 0, 0, charcoal)
+      if (img) tableLayer = getImageLayer(img, W, H, layerZoom, 0, 0, 0, charcoal)
     }
   }
 

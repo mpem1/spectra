@@ -365,13 +365,23 @@ export function PolaroidFilterSection() {
                           onChange={set('mosaicPanY')}
                           format={(v) => `${Math.round(v * 100)}%`}
                         />
+                        <SliderRow
+                          label="Rotation"
+                          value={filter.mosaicRot ?? 0}
+                          min={-180}
+                          max={180}
+                          step={1}
+                          onChange={set('mosaicRot')}
+                          format={(v) => `${Math.round(v)}°`}
+                        />
                         <p className="text-[10px] leading-snug text-zinc-600">
                           Image size punches the wall image in and out — the
                           background AND the piece inside every print slide
                           together, so the wall stays glued to its backdrop.
-                          Position slides it across the frame: push the size
-                          above 100% (or use an image wider/taller than the
-                          page) to get room to move.
+                          Position slides it across the frame and Rotation
+                          spins it — the picture quietly zooms itself just
+                          enough to keep the frame filled while they move, so
+                          these always work at any size.
                         </p>
                       </div>
                     ) : null}
