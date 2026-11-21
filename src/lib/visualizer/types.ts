@@ -1213,9 +1213,16 @@ export interface GradientMapFilterConfig {
   enabled: boolean
   /** Which built-in ramp the luminance maps onto. 'neon' is the house
    *  look (the Neon Split preset's own gradient, verbatim stops); the
-   *  others span the classic duotone/thermal families. Absent in old
+   *  others span the classic duotone/thermal families; 'custom' reads
+   *  the user's own editable stops (customStops below). Absent in old
    *  saves → 'neon'. */
   preset: GradientMapPresetId
+  /** The CUSTOM ramp's editable stops ({ t: 0..1, c: '#rrggbb' }, any
+   *  order — the LUT sorts internally). Only read when preset is
+   *  'custom'; 2..8 stops, garbage falls back to the house ramp. Seeded
+   *  with the Neon stops so Custom starts as the house look, editable.
+   *  Absent in old saves → the seed stops. */
+  customStops: { t: number; c: string }[]
   /** Blend mode — how the mapped color lands on each pixel (effect.app's
    *  Blend dropdown, the map node's five modes with the exact per-channel
    *  math the shader runs). Absent in old saves → 'normal'. */
@@ -1247,6 +1254,21 @@ export interface GradientMapFilterConfig {
    *  (0.25 = a quarter of the ramp per kick). Beat mode only. Absent
    *  in old saves → 0.25. */
   beatStep: number
+  /** Beat direction — which way each kick walks the window: 'forward'
+   *  climbs the ramp per kick (the shipped behavior), 'backward' walks
+   *  down it, 'bounce' ping-pongs (forward a full sweep, then back).
+   *  Beat mode only. Absent in old saves → 'forward'. */
+  beatDir: 'forward' | 'backward' | 'bounce'
+  /** Kick sensitivity 0..1 for the beat mode's detector (the flipGate
+   *  sens dial, same one the halftone/3D-glasses/halation flips expose):
+   *  lower = only the hardest slams fire a step, higher = every tap.
+   *  Beat mode only. Absent in old saves → 0.12 (the value this pass
+   *  shipped with hardcoded, so old saves behave identically). */
+  beatSens: number
+  /** Glide 0.02..0.6 s — how long each kick's step takes to ease in
+   *  (short = snappy strobe cuts, long = smooth rolls). Beat mode only.
+   *  Absent in old saves → 0.14 (the hardcoded shipped ease). */
+  beatEase: number
 }
 
 /** The built-in gradient-map ramp library (see gradient-map-filter.ts for
@@ -1262,6 +1284,7 @@ export type GradientMapPresetId =
   | 'gold'
   | 'rose'
   | 'mono'
+  | 'custom'
 
 /**
  * Halation filter — the classic film optical artifact over the whole
@@ -2132,6 +2155,17 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     shiftMode: 'manual',
     shiftSpeed: 0.3,
     beatStep: 0.25,
+    beatDir: 'forward',
+    beatSens: 0.12,
+    beatEase: 0.14,
+    // Custom ramp seed — the Neon stops verbatim, so picking Custom
+    // starts as the house look and the stop editor takes it from there
+    customStops: [
+      { t: 0, c: '#000000' },
+      { t: 0.406, c: '#002266' },
+      { t: 0.857, c: '#d55fec' },
+      { t: 1, c: '#ffd6fa' },
+    ],
   },
   halationFilter: {
     enabled: false,

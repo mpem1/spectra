@@ -9,7 +9,9 @@
  *
  * What's on dials, mirroring the site's feature one-for-one:
  *   - Gradient map   — the ramp itself: ten built-in presets, 'neon'
- *     being the Neon Split preset's own gradient (verbatim stops).
+ *     being the Neon Split preset's own gradient (verbatim stops) —
+ *     plus a CUSTOM ramp whose stops the user edits in place (2..8
+ *     color stops with positions, seeded from the house look).
  *   - Blend          — the map node's five modes (normal / multiply /
  *     screen / overlay / add), exact per-channel shader math.
  *   - Opacity        — the mapped color mixed back toward the original
@@ -25,7 +27,11 @@
  *   - React to beat: every detected kick — the shared flipGate sub-band
  *     onset detector the halftone print, the 3D glasses and the polaroid
  *     kicks already ride — advances the window one step (a Beat step
- *     dial) with a short ease, so the colors roll forward on the song.
+ *     dial), and the mode carries its own full control set: a Kick
+ *     sensitivity dial (the flipGate sens input — only slams vs every
+ *     hit), a Direction chooser (forward climbs the ramp per kick,
+ *     backward walks down it, ping-pong sweeps up then back), and a
+ *     Glide dial for how long each step takes to ease in.
  *
  * Performance: the ramp is a cached 256-entry LUT (rebuilt only when the
  * preset's stops change), so the per-frame work is ONE luma + one window
@@ -116,10 +122,40 @@ export const GRADIENT_MAP_PRESETS: {
 const presetFor = (id: string): RampStop[] =>
   GRADIENT_MAP_PRESETS.find((p) => p.id === id)?.stops ?? GRADIENT_MAP_PRESETS[0].stops
 
+/** Ramp CSS for UI swatches, from explicit stops (the Custom editor's
+ *  live preview reads this). */
+export function gradientStopsCss(stops: { t: number; c: string }[]): string {
+  const sorted = [...stops].sort((a, b) => a.t - b.t)
+  return `linear-gradient(90deg,${sorted.map((s) => `${s.c} ${Math.round(s.t * 100)}%`).join(',')})`
+}
+
 /** Ramp CSS for the UI preset swatches. */
 export function gradientPresetCss(id: string): string {
-  const stops = presetFor(id)
-  return `linear-gradient(90deg,${stops.map((s) => `${s.c} ${Math.round(s.t * 100)}%`).join(',')})`
+  return gradientStopsCss(presetFor(id))
+}
+
+/* ------------------------------ custom ramp -------------------------------- */
+
+const HEX6 = /^#[0-9a-fA-F]{6}$/
+
+/** The Custom ramp's stops, garbage-proofed: 2..8 entries, each a finite
+ *  position clamped into 0..1 and a #rrggbb color; anything else (or too
+ *  few valid stops) falls back to the house ramp so the pass can never
+ *  crash or render black from a corrupted save. */
+export function sanitizeCustomStops(raw: unknown): RampStop[] {
+  const fallback = GRADIENT_MAP_PRESETS[0].stops
+  if (!Array.isArray(raw)) return fallback
+  const clean: RampStop[] = []
+  for (const s of raw) {
+    if (typeof s !== 'object' || s === null) continue
+    const t = (s as { t?: unknown }).t
+    const c = (s as { c?: unknown }).c
+    if (typeof t !== 'number' || !Number.isFinite(t)) continue
+    if (typeof c !== 'string' || !HEX6.test(c)) continue
+    clean.push({ t: Math.min(1, Math.max(0, t)), c: c.toLowerCase() })
+  }
+  if (clean.length < 2) return fallback
+  return clean.slice(0, 8)
 }
 
 /* ------------------------------- blend modes ------------------------------- */
@@ -157,6 +193,9 @@ function rampLut(stops: RampStop[]): Uint8ClampedArray {
     lut[i * 3 + 1] = px[i * 4 + 1]
     lut[i * 3 + 2] = px[i * 4 + 2]
   }
+  // Every Custom-stop drag builds a fresh 768-byte LUT entry; cap the
+  // cache so a long editing session can't grow it without bound.
+  if (rampLuts.size > 96) rampLuts.clear()
   rampLuts.set(key, lut)
   return lut
 }
@@ -167,18 +206,24 @@ function rampLut(stops: RampStop[]): Uint8ClampedArray {
  * Kick-driven window position for the 'beat' motion mode: the shared
  * flipGate detector (sub-band onsets — fires once on the hit, never on
  * sustained bass or swells) marks each kick, and every kick advances the
- * window one Beat step. The advance eases in over ~140 ms so the colors
- * roll forward instead of strobing. State lives per canvas (preview and
- * export each get their own), so live preview and offline export evolve
- * the exact same window sequence; a seek / loop restart (song time moving
- * backward) drops the count like every flipGate consumer.
+ * window one Beat step along the chosen Direction — forward climbs the
+ * ramp per kick, backward walks down it, bounce ping-pongs (forward a
+ * full sweep, then back down, over and over). The advance eases in over
+ * the Glide dial's time (from wherever the window actually is, so dial
+ * and direction changes never jump) so the colors roll instead of
+ * strobing. State lives per canvas (preview and export each get their
+ * own), so live preview and offline export evolve the exact same window
+ * sequence; a seek / loop restart (song time moving backward) drops the
+ * count like every flipGate consumer.
  */
 interface BeatShiftState {
   kicks: number
   prevEnv: number
   lastT: number
-  /** Window position the glide eases FROM (the pre-kick target). */
+  /** Window position the glide eases FROM (where the window actually is). */
   from: number
+  /** The last returned position — the next kick's glide origin. */
+  lastPos: number
   kickT: number
 }
 
@@ -189,10 +234,13 @@ function beatShiftFor(
   sub: number,
   time: number,
   step: number,
+  sens: number,
+  ease: number,
+  dir: 'forward' | 'backward' | 'bounce',
 ): number {
   let st = beatStates.get(ctx)
   if (!st) {
-    st = { kicks: 0, prevEnv: 0, lastT: time, from: 0, kickT: -Infinity }
+    st = { kicks: 0, prevEnv: 0, lastT: time, from: 0, lastPos: 0, kickT: -Infinity }
     beatStates.set(ctx, st)
   }
   if (time < st.lastT) {
@@ -200,21 +248,36 @@ function beatShiftFor(
     st.kicks = 0
     st.prevEnv = 0
     st.from = 0
+    st.lastPos = 0
     st.kickT = -Infinity
   }
-  const env = flipGate(ctx, sub, time, 0.12, 0.18, 'gradient-map')
+  const env = flipGate(ctx, sub, time, sens, 0.18, 'gradient-map')
   if (env > 0.6 && st.prevEnv <= 0.6) {
-    st.from = st.kicks * step
+    st.from = st.lastPos
     st.kicks += 1
     st.kickT = time
   }
   st.prevEnv = env
   st.lastT = time
-  const target = st.kicks * step
+  // The kick count's target under the chosen direction. Bounce folds the
+  // walk into a triangle: it climbs to a full ramp sweep, then walks back
+  // down, over and over (0, .25, .5, .75, 1, .75, .5, .25, 0, … at a .25
+  // step).
+  let target: number
+  if (dir === 'backward') {
+    target = -st.kicks * step
+  } else if (dir === 'bounce') {
+    const x = (st.kicks * step) % 2
+    target = x <= 1 ? x : 2 - x
+  } else {
+    target = st.kicks * step
+  }
   const k =
-    st.kickT === -Infinity ? 1 : Math.min(1, Math.max(0, (time - st.kickT) / 0.14))
-  const ease = k * k * (3 - 2 * k)
-  return st.from + (target - st.from) * ease
+    st.kickT === -Infinity ? 1 : Math.min(1, Math.max(0, (time - st.kickT) / Math.max(0.02, ease)))
+  const g = k * k * (3 - 2 * k)
+  const pos = st.from + (target - st.from) * g
+  st.lastPos = pos
+  return pos
 }
 
 /* --------------------------------- the pass --------------------------------- */
@@ -232,7 +295,8 @@ export function drawGradientMapFilter(
   const mix = clamp01(cfg.opacity ?? 1)
   if (mix <= 0.001) return // opacity 0 = the untouched picture, any blend
 
-  const lut = rampLut(presetFor(cfg.preset))
+  const stops = cfg.preset === 'custom' ? sanitizeCustomStops(cfg.customStops) : presetFor(cfg.preset)
+  const lut = rampLut(stops)
   const blendId = Math.max(0, BLEND_IDS.indexOf(cfg.blend ?? 'normal'))
   const repeat = Math.min(8, Math.max(1, cfg.repeat ?? 1))
   const baseShift = Math.min(1, Math.max(-1, cfg.shift ?? 0))
@@ -246,7 +310,15 @@ export function drawGradientMapFilter(
   } else if (cfg.shiftMode === 'beat') {
     shift =
       baseShift +
-      beatShiftFor(ctx, clamp01(frame.sub ?? frame.bass), frame.time, Math.max(0, cfg.beatStep ?? 0.25))
+      beatShiftFor(
+        ctx,
+        clamp01(frame.sub ?? frame.bass),
+        frame.time,
+        Math.max(0, cfg.beatStep ?? 0.25),
+        clamp01(cfg.beatSens ?? 0.12),
+        Math.max(0.02, cfg.beatEase ?? 0.14),
+        cfg.beatDir ?? 'forward',
+      )
   }
 
   // snapshot → map every pixel through the ramp window → draw back

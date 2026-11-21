@@ -1,13 +1,24 @@
 'use client'
 
-import { Blend } from 'lucide-react'
+import { Blend, Plus, X } from 'lucide-react'
 import type { GradientMapFilterConfig, GradientMapPresetId } from '@/lib/visualizer/types'
-import { GRADIENT_MAP_BLENDS, GRADIENT_MAP_PRESETS, gradientPresetCss } from '@/lib/visualizer/gradient-map-filter'
+import {
+  GRADIENT_MAP_BLENDS,
+  GRADIENT_MAP_PRESETS,
+  gradientPresetCss,
+  gradientStopsCss,
+} from '@/lib/visualizer/gradient-map-filter'
 import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SliderRow, sectionShell, MicroLabel } from '@/components/studio/controls'
+import { ColorPickerButton } from '@/components/studio/color-picker'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+
+/** Custom ramps cap at 8 stops (2 minimum) — beyond that the ramp stops
+ *  resolving into anything a human can steer. */
+const MAX_STOPS = 8
 
 /** Group divider inside the card — a small uppercase header with a rule. */
 function Group({ children }: { children: React.ReactNode }) {
@@ -127,8 +138,9 @@ export function GradientMapSection() {
             The effect.app Gradient Map as its own stage: every pixel&apos;s
             brightness re-reads as a position on a gradient ramp and the mapped
             color lands on the picture through a blend mode at an opacity —
-            the same engine node Neon Split runs, standalone. Slide and tile
-            the window, or let it cycle on its own.
+            the same engine node Neon Split runs, standalone. Pick a preset
+            ramp or build your own, then slide and tile the window, or let it
+            cycle on its own.
           </p>
 
           <div className="space-y-3">
@@ -144,7 +156,121 @@ export function GradientMapSection() {
                   onClick={() => patch({ preset: p.id as GradientMapPresetId })}
                 />
               ))}
+              {/* Custom — a full-width chip with a live swatch of the
+                  user's own stops (seeded from the house look). */}
+              <button
+                type="button"
+                aria-pressed={filter.preset === 'custom'}
+                onClick={() => patch({ preset: 'custom' as GradientMapPresetId })}
+                className={cn(
+                  'col-span-2 flex min-h-[44px] items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors',
+                  filter.preset === 'custom'
+                    ? 'border-cyan-400/70 bg-cyan-500/15'
+                    : 'border-dashed border-zinc-700 bg-zinc-900/60 hover:border-zinc-500',
+                )}
+              >
+                <span
+                  aria-hidden
+                  className="h-2.5 min-w-0 flex-1 rounded-full border border-zinc-700"
+                  style={{ background: gradientStopsCss(filter.customStops ?? []) }}
+                />
+                {filter.preset === 'custom' ? (
+                  <span className="text-[11px] font-medium leading-none text-cyan-200">Custom</span>
+                ) : (
+                  <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium leading-none text-zinc-300">
+                    <Plus className="size-3" aria-hidden />
+                    Custom ramp
+                  </span>
+                )}
+              </button>
             </div>
+
+            {filter.preset === 'custom' ? (
+              <div className="space-y-1.5" role="group" aria-label="Custom ramp stops">
+                {filter.customStops.map((stop, index) => (
+                  // Stable index keys — a key derived from color/position
+                  // would remount the row mid-drag and slam the color
+                  // picker popover shut (same contract as the background
+                  // gradient editor).
+                  <div key={index} className="flex items-center gap-2">
+                    <ColorPickerButton
+                      value={stop.c}
+                      onChange={(color) => {
+                        const stops = filter.customStops.map((s, i) =>
+                          i === index ? { ...s, c: color.toLowerCase() } : s,
+                        )
+                        patch({ customStops: stops })
+                      }}
+                      ariaLabel={`Ramp stop ${index + 1} color`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <SliderRow
+                        label={`Stop ${index + 1}`}
+                        value={stop.t}
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        onChange={(t) => {
+                          const stops = filter.customStops.map((s, i) =>
+                            i === index ? { ...s, t: Math.min(1, Math.max(0, t)) } : s,
+                          )
+                          patch({ customStops: stops })
+                        }}
+                        format={(v) => `${Math.round(v * 100)}%`}
+                      />
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 shrink-0 text-zinc-500 hover:text-red-400"
+                      aria-label={`Delete ramp stop ${index + 1}`}
+                      disabled={filter.customStops.length <= 2}
+                      onClick={() =>
+                        patch({ customStops: filter.customStops.filter((_, i) => i !== index) })
+                      }
+                    >
+                      <X className="size-3.5" />
+                    </Button>
+                  </div>
+                ))}
+                {filter.customStops.length < MAX_STOPS ? (
+                  <Button
+                    variant="outline"
+                    className="h-8 w-full border-dashed border-zinc-700 text-xs text-zinc-400 hover:border-cyan-500/60 hover:text-cyan-400"
+                    onClick={() => {
+                      // New stop lands at the midpoint of the widest gap
+                      // (or dead center on a two-stop ramp), color picked
+                      // from the ramp's midpoint so it never fights the look.
+                      const sorted = [...filter.customStops].sort((a, b) => a.t - b.t)
+                      let gap = 0
+                      let t = 0.5
+                      for (let i = 1; i < sorted.length; i++) {
+                        const g = sorted[i].t - sorted[i - 1].t
+                        if (g > gap) {
+                          gap = g
+                          t = sorted[i - 1].t + g / 2
+                        }
+                      }
+                      patch({
+                        customStops: [...filter.customStops, { t, c: '#c084fc' }].sort(
+                          (a, b) => a.t - b.t,
+                        ),
+                      })
+                    }}
+                  >
+                    + Add stop
+                  </Button>
+                ) : (
+                  <p className="text-[10px] text-zinc-600">Eight stops is the ramp cap.</p>
+                )}
+                <p className="text-[10px] leading-snug text-zinc-600">
+                  Your own ramp: each row is one color and where it sits
+                  along the brightness axis — dark tones read the low
+                  positions, bright tones the high ones. The ramp saves with
+                  the project and ships in every export.
+                </p>
+              </div>
+            ) : null}
 
             <Group>Look</Group>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -252,11 +378,56 @@ export function GradientMapSection() {
                   onChange={set('beatStep')}
                   format={(v) => `${Math.round(v * 100)}%`}
                 />
+                <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Beat direction">
+                  <ModeChip
+                    label="Forward"
+                    sub="climbs per kick"
+                    active={(filter.beatDir ?? 'forward') === 'forward'}
+                    onClick={() => patch({ beatDir: 'forward' })}
+                  />
+                  <ModeChip
+                    label="Backward"
+                    sub="walks down"
+                    active={filter.beatDir === 'backward'}
+                    onClick={() => patch({ beatDir: 'backward' })}
+                  />
+                  <ModeChip
+                    label="Ping-pong"
+                    sub="up then back"
+                    active={filter.beatDir === 'bounce'}
+                    onClick={() => patch({ beatDir: 'bounce' })}
+                  />
+                </div>
+                <SliderRow
+                  label="Kick sensitivity"
+                  value={filter.beatSens ?? 0.12}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  onChange={set('beatSens')}
+                  format={(v) =>
+                    v <= 0.025 ? 'Slams only' : v >= 0.975 ? 'Every hit' : `${Math.round(v * 100)}%`
+                  }
+                />
+                <SliderRow
+                  label="Glide"
+                  value={filter.beatEase ?? 0.14}
+                  min={0.02}
+                  max={0.6}
+                  step={0.02}
+                  onChange={set('beatEase')}
+                  format={(v) => `${Math.round(v * 1000)}ms`}
+                />
                 <p className="text-[10px] leading-snug text-zinc-600">
-                  Every detected kick slides the window one step forward with a
-                  short ease — 25% is a quarter of the ramp per kick, so the
-                  colors roll through on the song. The manual shift dial still
-                  offsets the starting point.
+                  Every detected kick slides the window one Beat step in the
+                  chosen direction — Forward climbs the ramp per kick,
+                  Backward walks down it, Ping-pong sweeps a full ramp then
+                  sweeps back. Kick sensitivity listens for the HIT on a
+                  clean sub-bass channel (lower = only the hardest slams,
+                  higher = every tap), Beat step sets how far each kick
+                  travels, and Glide sets how long each step takes to ease
+                  in — short is snappy strobe cuts, long is smooth rolls.
+                  The manual shift dial still offsets the starting point.
                 </p>
               </>
             ) : null}
