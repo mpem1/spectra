@@ -1303,6 +1303,60 @@ export interface HalationFilterConfig {
   blueComp: number
 }
 
+/**
+ * Exposure filter — effect.app's "Instant Film" effect over the whole
+ * finished picture (renamed Exposure in Spectra): the frame is graded
+ * through a real instant-film stock LUT (Polaroid 600/669/690 and expired
+ * cousins, Instax Mini, Fuji FP-100C in warm/cool/expired) — the site's
+ * own 33³ LUT data and its own shader math, ported byte-faithfully and
+ * verified against the live editor to the exact byte.
+ *
+ * The shader grades by trilinear-sampling the stock's 33³ sRGB LUT, then
+ * mixes the graded color over the original in Oklab — LIGHTNESS by the
+ * Light dial, CHROMA (a/b) by the Color dial — and converts back to sRGB.
+ * Both dials run 0..2: 1 is the published look, 0 leaves the picture
+ * untouched, 2 pushes past the stock. The whole pipeline is precomputed
+ * once per (stock, Color, Light) into a 65³ expansion grid (four times
+ * denser than the site's own LUT) so the per-frame cost is one trilinear
+ * lookup per pixel; the stock strips themselves are the site's decoded
+ * LUT texels shipped as lazily-fetched PNGs. Runs as the color stage of
+ * the filter chain, directly after the color grade and before the
+ * halation glow (so the glow lands on the film-graded tones). Skipped on
+ * transparent backgrounds (alpha must stay clean) like every full-frame
+ * filter; while a stock's LUT strip is still downloading the pass lets
+ * the frame through untouched.
+ */
+export type ExposureStockId =
+  | 'polaroid-600'
+  | 'polaroid-600-golden'
+  | 'polaroid-600-expired'
+  | 'polaroid-669'
+  | 'polaroid-669-expired'
+  | 'polaroid-690'
+  | 'polaroid-690-expired'
+  | 'instax-mini'
+  | 'instax-mini-deep'
+  | 'fp100c'
+  | 'fp100c-warm'
+  | 'fp100c-cool'
+  | 'fp100c-expired'
+
+export interface ExposureFilterConfig {
+  enabled: boolean
+  /** Which instant-film stock's LUT grades the picture (the site's Type
+   *  selector — its factory default, 'polaroid-600', is first). Absent in
+   *  old saves → 'polaroid-600'. */
+  stock: ExposureStockId
+  /** Color amount 0..2 — how much of the graded color's CHROMA (Oklab a/b)
+   *  lands on the picture (the site's Amount X; 1 = the published look).
+   *  Absent in old saves → 1. */
+  color: number
+  /** Light amount 0..2 — how much of the graded color's LIGHTNESS (Oklab L)
+   *  lands on the picture (the site's Amount Y; 1 = the published look).
+   *  Absent in old saves → 1. */
+  light: number
+}
+
 /* -------------------------------- Custom fonts ------------------------------- */
 
 /**
@@ -1350,6 +1404,9 @@ export interface StudioConfig {
   /** Full-frame halation post-pass (the film highlight-bleed glow — the
    *  effect.app Halation effect) */
   halationFilter: HalationFilterConfig
+  /** Full-frame instant-film stock grade (the effect.app "Instant Film"
+   *  effect — renamed Exposure in Spectra) */
+  exposureFilter: ExposureFilterConfig
   /** Full-frame retro-dither post-pass (Bayer dot patterns + glow bloom) */
   ditherFilter: DitherFilterConfig
   /** Full-frame phosphor-monitor post-pass (vertical dash columns + bloom) */
@@ -1912,6 +1969,14 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     beatFlipTo: 'print',
     flipSensitivity: 0.1,
     flipHold: 0.2,
+  },
+  exposureFilter: {
+    enabled: false,
+    // effect.app's published Instant Film defaults — the first stock in its
+    // Type list and the Amount pad at center (1, 1)
+    stock: 'polaroid-600',
+    color: 1,
+    light: 1,
   },
   ditherFilter: {
     enabled: false,

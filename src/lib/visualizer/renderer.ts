@@ -34,6 +34,7 @@ import { drawAnaglyphFilter } from './anaglyph-filter'
 import { drawNeonSplitFilter } from './neon-split'
 import { drawColorGradeFilter } from './color-grade'
 import { drawHalationFilter } from './halation-filter'
+import { drawExposureFilter } from './exposure-filter'
 import { drawDitherFilter } from './dither-filter'
 import { drawPhosphorFilter } from './phosphor-filter'
 import { drawContourFilter } from './contour-filter'
@@ -210,6 +211,12 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // Split (it grades the neon look when both are on), before the halation /
   // phosphor / contour / dither stages, which stay the outermost layers.
   drawColorGradeFilter(rc, config.colorGradeFilter, frame, transparent)
+  // Exposure — the instant-film stock grade (effect.app's Instant Film
+  // effect): the finished picture graded through a real Polaroid/Instax/
+  // FP-100C LUT with the Oklab Color/Light mix. After the color stage so
+  // a B&W/sepia grade feeds the film stock, before the halation glow so
+  // highlights bloom over the graded tones.
+  drawExposureFilter(rc, config.exposureFilter, frame, transparent)
   // Halation — the film highlight-bleed glow (effect.app's Halation effect):
   // bright spots of the GRADED picture bloom red/orange halos. After the
   // color stage so the glow lands on the finished tones, before the

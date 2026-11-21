@@ -29,6 +29,7 @@ import {
   type NeonSplitFilterConfig,
   type ColorGradeFilterConfig,
   type HalationFilterConfig,
+  type ExposureFilterConfig,
   type DitherFilterConfig,
   type PhosphorFilterConfig,
   type ContourFilterConfig,
@@ -122,6 +123,8 @@ type StudioState = {
   patchColorGradeFilter: (partial: Partial<ColorGradeFilterConfig>) => void
   /** Patches config.halationFilter */
   patchHalationFilter: (partial: Partial<HalationFilterConfig>) => void
+  /** Patches config.exposureFilter (the instant-film stock grade) */
+  patchExposureFilter: (partial: Partial<ExposureFilterConfig>) => void
   patchDitherFilter: (partial: Partial<DitherFilterConfig>) => void
   /** Patches config.phosphorFilter */
   patchPhosphorFilter: (partial: Partial<PhosphorFilterConfig>) => void
@@ -280,6 +283,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, halationFilter: { ...s.config.halationFilter, ...partial } },
     })),
 
+  patchExposureFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, exposureFilter: { ...s.config.exposureFilter, ...partial } },
+    })),
+
   patchDitherFilter: (partial) =>
     set((s) => ({
       config: { ...s.config, ditherFilter: { ...s.config.ditherFilter, ...partial } },
@@ -390,6 +398,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         neonSplitFilter: { ...DEFAULT_STUDIO_CONFIG.neonSplitFilter, ...config.neonSplitFilter },
         colorGradeFilter: { ...DEFAULT_STUDIO_CONFIG.colorGradeFilter, ...config.colorGradeFilter },
         halationFilter: { ...DEFAULT_STUDIO_CONFIG.halationFilter, ...config.halationFilter },
+        exposureFilter: { ...DEFAULT_STUDIO_CONFIG.exposureFilter, ...config.exposureFilter },
         ditherFilter: { ...DEFAULT_STUDIO_CONFIG.ditherFilter, ...config.ditherFilter },
         phosphorFilter: { ...DEFAULT_STUDIO_CONFIG.phosphorFilter, ...config.phosphorFilter },
         contourFilter: { ...DEFAULT_STUDIO_CONFIG.contourFilter, ...config.contourFilter },
