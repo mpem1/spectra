@@ -49,6 +49,57 @@ export function GlitchFilterSection() {
             onStrength={(beatStrength) => patchGlitchFilter({ beatStrength })}
             strengthLabel="Beat pop"
           />
+          <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5">
+            <div className="flex h-5 items-center justify-between">
+              <MicroLabel className="text-zinc-400">Randomize</MicroLabel>
+              <Switch
+                aria-label="Randomize slices and burst rate"
+                checked={filter.randomize}
+                onCheckedChange={(randomize) => patchGlitchFilter({ randomize })}
+              />
+            </div>
+            {filter.randomize ? (
+              <>
+                <SliderRow
+                  label="Min step"
+                  value={filter.randomStepMin}
+                  min={0.01}
+                  max={0.5}
+                  step={0.01}
+                  onChange={set('randomStepMin')}
+                  format={(v) => `${Math.round(v * 100)}%`}
+                />
+                <SliderRow
+                  label="Max step"
+                  value={filter.randomStepMax}
+                  min={0.01}
+                  max={0.5}
+                  step={0.01}
+                  onChange={set('randomStepMax')}
+                  format={(v) => `${Math.round(v * 100)}%`}
+                />
+                <SliderRow
+                  label="Step time"
+                  value={filter.randomStepTime}
+                  min={0.1}
+                  max={3}
+                  step={0.1}
+                  onChange={set('randomStepTime')}
+                  format={(v) => `${v.toFixed(1)}s`}
+                />
+                <p className="text-[10px] leading-snug text-zinc-600">
+                  Slices and Burst rate wander in a random walk: every Step
+                  time each jumps a random distance between Min and Max in
+                  either direction, landing where the next jump starts.
+                  Hitting 0% or 100% sends the next two jumps back toward
+                  your dial, so the walk never gets stuck at an edge. Blocks
+                  stays dialed; moving Slices or Burst rate re-anchors its
+                  walk. The same song second walks the same chaos in every
+                  export.
+                </p>
+              </>
+            ) : null}
+          </div>
           <SliderRow
             label="Blocks"
             value={filter.blocks}

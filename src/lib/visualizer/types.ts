@@ -958,6 +958,22 @@ export interface GlitchFilterConfig {
   beatReactive: boolean
   /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
   beatStrength: number
+  /** RANDOMIZE — Slices and Burst rate stop being fixed settings and wander
+   *  in a seeded random walk: every Step time each value jumps a random
+   *  distance between the Min and Max step dials in a random direction,
+   *  lands there, and starts its next jump from there; hitting 0% or 100%
+   *  forces the next TWO jumps back toward the dial (the walk's home) so
+   *  the walk can never get stuck at an edge. Blocks stays dialed. Moving
+   *  a dial re-anchors its walk. The walks are pure functions of the song
+   *  clock with fixed dice seeds — the live preview, the MP4 export and
+   *  the PNG sequence walk the exact same chaos, second for second. */
+  randomize: boolean
+  /** Smallest jump per walk step, 0.01..0.5 (default 0.03 = 3%) */
+  randomStepMin: number
+  /** Largest jump per walk step, 0.01..0.5 (default 0.2 = 20%) */
+  randomStepMax: number
+  /** Seconds between walk steps, 0.1..3 (default 1) */
+  randomStepTime: number
 }
 
 /**
@@ -2116,6 +2132,10 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     rate: 0.5,
     beatReactive: false,
     beatStrength: 0.5,
+    randomize: false,
+    randomStepMin: 0.03,
+    randomStepMax: 0.2,
+    randomStepTime: 1,
   },
   anaglyphFilter: {
     enabled: false,

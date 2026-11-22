@@ -16,10 +16,21 @@
  * long they last), so intensity (`blocks` / `slices`) never has to be traded
  * for frequency: a rare burst is exactly as violent as a frequent one.
  *
+ * RANDOMIZE: Slices and Burst rate can stop being fixed settings and wander
+ * in a random walk — every Step time each value jumps a random distance
+ * between the Min/Max step dials (3–20% by default) in a random direction,
+ * lands there, and starts its next jump from there; hitting 0% or 100%
+ * forces the next TWO jumps back toward the dial (the walk's home), so the
+ * walk can bounce off the edges but can never get pinned oscillating
+ * against one. Blocks stays dialed. Both walks are pure functions of the
+ * song clock with fixed dice seeds — the same song second walks the exact
+ * same chaos in the live preview, the MP4 export and the PNG sequence.
+ *
  * No Math.random / Date.now anywhere: the burst schedule comes from the song
- * clock (time modulo a period), and every block/slice/bar position comes from
- * integer hashes of (index, quantized time), so the live preview, the MP4
- * export and the PNG sequence render identical pixels for the same song
+ * clock (time modulo a period), every block/slice/bar position comes from
+ * integer hashes of (index, quantized time), and the randomize walks are
+ * seeded PRNG streams stepped by the song clock — so the live preview, the
+ * MP4 export and the PNG sequence render identical pixels for the same song
  * second. Transparent backgrounds skip the pass (alpha must stay clean).
  */
 import type { AudioFrame, RenderContext, GlitchFilterConfig } from './types'
@@ -27,6 +38,134 @@ import { beatBoost, clamp01, frameSeed, getWork, hash01, resetWork } from './fil
 
 /** Raw "broken signal" palette for color bars and tinted blocks. */
 const PALETTE = ['#ff00ff', '#00ffff', '#ffff00', '#ff0000', '#00ff00', '#0000ff', '#ffffff']
+
+/* ------------------------------ random walks ------------------------------ */
+
+/** mulberry32 — a tiny seeded PRNG. The walks need a random sequence that
+ *  stays CONSISTENT across frames: step i's direction and size must be the
+ *  same every time the walk is read (including reads that land mid-step),
+ *  so a shared Math.random() call per extension won't do — the seed makes
+ *  step i a fixed draw. The seeds are FIXED constants, so every canvas
+ *  (preview, MP4 export, PNG sequence) walks the same dice stream and the
+ *  same song second lands the same values everywhere. */
+function mulberry32(a: number): () => number {
+  return function () {
+    a |= 0
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/** Distinct dice per walk — slices and rate must not move in lockstep. */
+const SLICES_WALK_SEED = 0x6c078965
+const RATE_WALK_SEED = 0x9e3779b9
+
+/** One parameter's random walk. `home` is the dial the walk starts from —
+ *  and the position the edge rule steers back toward; `seed` is the walk's
+ *  fixed dice stream, re-used when a dial move re-anchors the walk. */
+interface GlitchWalkState {
+  rng: () => number
+  seed: number
+  /** Cached positions: pos[i] = the value after i steps; pos[0] = home. */
+  pos: number[]
+  /** How many of the next steps are forced back toward home (the edge rule). */
+  forced: number
+  /** The dialed value the walk is anchored to (re-anchored on dial moves). */
+  home: number
+}
+
+/** Both walks per canvas, so preview and export each evolve the same
+ *  sequences (the dice are fixed — the clock is what differs). */
+const glitchWalks = new Map<CanvasRenderingContext2D, { slices: GlitchWalkState; rate: GlitchWalkState }>()
+
+/** Edge-anchored homes (dial at exactly 0% or 100%) pre-arm ONE forced
+ *  step so the very first jump is guaranteed interior — the walk can never
+ *  open with a clamp no-op sitting on the edge. */
+function edgeAnchorForced(home: number): number {
+  return home <= 0 || home >= 1 ? 1 : 0
+}
+
+function glitchWalksFor(ctx: CanvasRenderingContext2D, homeSlices: number, homeRate: number) {
+  let w = glitchWalks.get(ctx)
+  if (!w) {
+    w = {
+      slices: { rng: mulberry32(SLICES_WALK_SEED), seed: SLICES_WALK_SEED, pos: [homeSlices], forced: edgeAnchorForced(homeSlices), home: homeSlices },
+      rate: { rng: mulberry32(RATE_WALK_SEED), seed: RATE_WALK_SEED, pos: [homeRate], forced: edgeAnchorForced(homeRate), home: homeRate },
+    }
+    glitchWalks.set(ctx, w)
+  }
+  return w
+}
+
+/** Extend the cached prefix to `target` steps, consuming the RNG exactly
+ *  once per new step — reads that land mid-step re-read the same target,
+ *  and seeks backward just read a shorter prefix (no state ever goes
+ *  stale). Each step jumps a uniform random distance in [minStep, maxStep]
+ *  in a random direction; the landed value is clamped into 0..1 and an
+ *  EDGE HIT (0% or 100%) arms the next TWO jumps back toward home, so the
+ *  walk can bounce off the edges but can never get stuck pinned against
+ *  one (a walk anchored AT an edge — dial 0% or 100% — recovers through
+ *  the center fallback in the forced direction). */
+function extendGlitchWalk(st: GlitchWalkState, target: number, minStep: number, maxStep: number): void {
+  while (st.pos.length <= target) {
+    const prev = st.pos[st.pos.length - 1]
+    const mag = minStep + (maxStep - minStep) * st.rng()
+    let sign: number
+    if (st.forced > 0) {
+      // The edge rule: this jump heads home, whatever the dice say.
+      sign = prev < st.home ? 1 : prev > st.home ? -1 : prev < 0.5 ? 1 : -1
+      st.forced -= 1
+    } else {
+      sign = st.rng() < 0.5 ? -1 : 1
+    }
+    let p = prev + sign * mag
+    if (p >= 1) {
+      p = 1 // hit 100% — the next two jumps walk back toward the dial
+      st.forced = 2
+    } else if (p <= 0) {
+      p = 0 // hit 0% — same recovery
+      st.forced = 2
+    }
+    st.pos.push(p)
+  }
+}
+
+/** The walked value at song `time`: iteration i = floor(time / stepTime)
+ *  is a pure function of the song clock, so the walk never goes stale and
+ *  every render of the same second reads the same value. Each landing
+ *  eases in over 150 ms so the values roll to their new spot instead of
+ *  strobing. Moving the home dial mid-play re-anchors the walk (fresh
+ *  dice, restart from the dial) — the dial stays live, not a one-time
+ *  seed. */
+const WALK_EASE = 0.15
+
+function glitchWalkValue(
+  st: GlitchWalkState,
+  time: number,
+  stepTime: number,
+  minStep: number,
+  maxStep: number,
+  home: number,
+): number {
+  if (Math.abs(home - st.home) > 1e-6) {
+    st.home = home
+    st.pos = [home]
+    st.forced = edgeAnchorForced(home)
+    st.rng = mulberry32(st.seed)
+  }
+  const i = Math.max(0, Math.floor(time / stepTime))
+  extendGlitchWalk(st, i, Math.min(minStep, maxStep), Math.max(minStep, maxStep))
+  const target = st.pos[i]
+  if (i === 0) return target
+  const tIn = time - i * stepTime
+  if (tIn >= WALK_EASE) return target
+  const from = st.pos[i - 1]
+  const k = Math.max(0, Math.min(1, tIn / WALK_EASE))
+  const g = k * k * (3 - 2 * k)
+  return from + (target - from) * g
+}
 
 export function drawGlitchFilter(
   rc: RenderContext,
@@ -50,9 +189,26 @@ export function drawGlitchFilter(
   const bass = clamp01(frame.bass)
   const boost = beatBoost(cfg, bass, 1.3)
   const beatHit = beatOn && punch * bass * bass > 0.08
+
+  // The raw intensities: the dials — or, with RANDOMIZE on, the walks (the
+  // dials become the walks' homes, and moving one re-anchors its walk).
+  // Read BEFORE any early return so the walks keep stepping every frame
+  // the filter runs.
+  const slicesDialed = clamp01(cfg.slices)
+  const rateDialed = clamp01(cfg.rate ?? 0.5)
+  let slicesBase = slicesDialed
+  let rate = rateDialed
+  if (cfg.randomize) {
+    const walk = glitchWalksFor(ctx, slicesDialed, rateDialed)
+    const stepT = Math.max(0.1, cfg.randomStepTime ?? 1)
+    const minS = Math.min(0.5, Math.max(0.01, cfg.randomStepMin ?? 0.03))
+    const maxS = Math.min(0.5, Math.max(0.01, cfg.randomStepMax ?? 0.2))
+    slicesBase = glitchWalkValue(walk.slices, frame.time, stepT, minS, maxS, slicesDialed)
+    rate = glitchWalkValue(walk.rate, frame.time, stepT, minS, maxS, rateDialed)
+  }
+
   const blocks = Math.min(1, clamp01(cfg.blocks) * boost)
-  const slices = Math.min(1, clamp01(cfg.slices) * boost)
-  const rate = clamp01(cfg.rate ?? 0.5)
+  const slices = Math.min(1, slicesBase * boost)
   if (blocks <= 0.001 && slices <= 0.001) return
 
   // Burst schedule — cadence lives here and ONLY here (Task 71's lesson
