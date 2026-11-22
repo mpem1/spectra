@@ -143,7 +143,7 @@ export function StyleTab() {
           under the style grid (previously buried inside "Shape & motion",
           where nobody could tell the controls belonged to this style). */}
       {visualizer.style === 'imgviz' ? (
-        <section className={sectionShell('rose', 'space-y-2')}>
+        <section className={sectionShell('rose', 'space-y-2', !!visualizer.imgvizSrc)}>
           <SectionLabel accent="rose">IMAGE VISUALIZER</SectionLabel>
           <p className="text-xs leading-relaxed text-zinc-500">
             Your PNG is the visualizer — everything below belongs to it: what

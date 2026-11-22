@@ -453,8 +453,16 @@ export function BackgroundSection() {
 
   const solidRgb = parseColor(background.color) ?? { r: 10, g: 10, b: 10, a: 1 }
 
+  // The background has no switch — adding media IS turning it on. Light the
+  // shell up whenever the current mode actually carries a picture or clip,
+  // so an image/video background reads as active just like switched-on
+  // sections elsewhere (solid / gradient / alpha have nothing "added").
+  const mediaOn =
+    (background.mode === 'image' && !!background.imageSrc) ||
+    (background.mode === 'video' && !!background.videoSrc)
+
   return (
-    <div className={sectionShell('rose', 'space-y-4')}>
+    <div className={sectionShell('rose', 'space-y-4', mediaOn)}>
       <span className={cn('text-[11px] font-medium uppercase tracking-widest', SECTION_ACCENT.rose.label)}>
         BACKGROUND
       </span>

@@ -47,7 +47,15 @@ export function VinylSection() {
     if (!file || !file.type.startsWith('image/')) return
     try {
       const imageSrc = await fileToDataUrl(file)
-      patchDisc(target === 'cover' ? { imageSrc } : { discImageSrc: imageSrc })
+      // Adding art turns the layer on — uploading into a disabled layer
+      // used to change nothing on screen, which read as "broken". With
+      // enabled: true the addition is live immediately and the section
+      // lights up like every other turned-on card.
+      patchDisc(
+        target === 'cover'
+          ? { imageSrc, enabled: true }
+          : { discImageSrc: imageSrc, enabled: true },
+      )
     } catch {
       // Reading failed — keep the previous art.
     }
