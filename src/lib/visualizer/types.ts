@@ -1815,6 +1815,10 @@ export interface ExportSettings {
   resolution: ExportResolution
   length: ExportLength
   quality: ExportQuality
+  /** Song position (seconds) a sample export (15s/30s) starts at — both the
+   * video render and the muxed audio slice read from here. Full-song exports
+   * ignore it. */
+  startSec: number
 }
 
 export interface ExportProgress {

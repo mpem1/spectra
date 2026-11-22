@@ -147,23 +147,27 @@ type NegotiatedAudio =
  * common AAC path costs zero extra memory. Mono sources are duplicated to
  * both planes; >2-channel sources use the first two channels.
  */
-function extractStereoAudio(buffer: AudioBuffer, maxSeconds: number): {
+function extractStereoAudio(buffer: AudioBuffer, maxSeconds: number, startSeconds = 0): {
   chL: Float32Array
   chR: Float32Array
   sampleRate: number
   truncated: boolean
 } {
-  const maxSamples = Math.min(
+  const first = Math.min(
     buffer.length,
+    Math.max(0, Math.round(startSeconds * buffer.sampleRate)),
+  )
+  const maxSamples = Math.min(
+    buffer.length - first,
     Math.max(1, Math.ceil(maxSeconds * buffer.sampleRate)),
   )
   const left = buffer.getChannelData(0)
   const right = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : left
   return {
-    chL: left.subarray(0, maxSamples),
-    chR: right.subarray(0, maxSamples),
+    chL: left.subarray(first, first + maxSamples),
+    chR: right.subarray(first, first + maxSamples),
     sampleRate: buffer.sampleRate,
-    truncated: maxSamples < buffer.length,
+    truncated: first + maxSamples < buffer.length,
   }
 }
 
@@ -361,7 +365,7 @@ export async function exportMP4(opts: ExportMP4Options): Promise<ExportMediaResu
   const bgVideoSrc = await prepareExportAssets(config, onNotice)
 
   const fps = settings.fps
-  const analyzer = new OfflineAnalyzer(audioBuffer, fps)
+  const analyzer = new OfflineAnalyzer(audioBuffer, fps, settings.startSec ?? 0)
 
   // Serato strip: the whole-song envelope must exist before frame 0 so the
   // scroll is identical to the preview (see serato.ts). Binding also points
@@ -373,9 +377,15 @@ export async function exportMP4(opts: ExportMP4Options): Promise<ExportMediaResu
 
   const previewFrames =
     settings.length === '30s' ? 30 * fps : settings.length === '15s' ? 15 * fps : null
+  // Sample exports may start mid-song — only the frames from analyzer.startSec
+  // on are available to render.
+  const availableFrames = Math.max(
+    1,
+    analyzer.totalFrames - Math.floor(analyzer.startSec * fps),
+  )
   const totalFrames = Math.min(
-    previewFrames === null ? analyzer.totalFrames : Math.ceil(previewFrames),
-    analyzer.totalFrames,
+    previewFrames === null ? availableFrames : Math.ceil(previewFrames),
+    availableFrames,
   )
   if (totalFrames < 1) {
     throw new Error('Audio buffer is empty — nothing to export.')
@@ -388,7 +398,7 @@ export async function exportMP4(opts: ExportMP4Options): Promise<ExportMediaResu
   // the encoded chunks: AAC as-is, Opus resampled to 48 kHz, or video-only).
   // Audio is taken straight from the original decoded buffer (true stereo) and
   // truncated to the exported length so 15s/30s previews stay in sync.
-  const stereoSource = extractStereoAudio(audioBuffer, durationSeconds)
+  const stereoSource = extractStereoAudio(audioBuffer, durationSeconds, analyzer.startSec)
   const audio =
     stereoSource.chL.length > 0 ? await negotiateAudioCodec(stereoSource) : { kind: 'silent' as const }
   if (audio.kind === 'silent') {
@@ -516,7 +526,7 @@ export async function exportMP4(opts: ExportMP4Options): Promise<ExportMediaResu
         report({
           phase: 'rendering',
           progress: ((i + 1) / totalFrames) * 0.9,
-          time: (i + 1) / fps,
+          time: analyzer.startSec + (i + 1) / fps,
         })
       }
     }
@@ -595,11 +605,11 @@ export async function exportMP4(opts: ExportMP4Options): Promise<ExportMediaResu
 
   /* ------------------------------- finalize ------------------------------- */
 
-  report({ phase: 'muxing', progress: 0.97, time: durationSeconds })
+  report({ phase: 'muxing', progress: 0.97, time: analyzer.startSec + durationSeconds })
   muxer.finalize()
 
   const blob = new Blob([target.buffer], { type: 'video/mp4' })
-  report({ phase: 'done', progress: 1, time: durationSeconds })
+  report({ phase: 'done', progress: 1, time: analyzer.startSec + durationSeconds })
   return {
     blob,
     audioKind: audio.kind,
@@ -649,7 +659,7 @@ export async function exportWEBM(opts: ExportMP4Options): Promise<ExportMediaRes
   const bgVideoSrc = await prepareExportAssets(config, onNotice)
 
   const fps = settings.fps
-  const analyzer = new OfflineAnalyzer(audioBuffer, fps)
+  const analyzer = new OfflineAnalyzer(audioBuffer, fps, settings.startSec ?? 0)
 
   // Serato strip: identical whole-song envelope + sync binding as the MP4
   // path so the scroll matches the preview frame for frame.
@@ -660,9 +670,15 @@ export async function exportWEBM(opts: ExportMP4Options): Promise<ExportMediaRes
 
   const previewFrames =
     settings.length === '30s' ? 30 * fps : settings.length === '15s' ? 15 * fps : null
+  // Sample exports may start mid-song — only the frames from analyzer.startSec
+  // on are available to render.
+  const availableFrames = Math.max(
+    1,
+    analyzer.totalFrames - Math.floor(analyzer.startSec * fps),
+  )
   const totalFrames = Math.min(
-    previewFrames === null ? analyzer.totalFrames : Math.ceil(previewFrames),
-    analyzer.totalFrames,
+    previewFrames === null ? availableFrames : Math.ceil(previewFrames),
+    availableFrames,
   )
   if (totalFrames < 1) {
     throw new Error('Audio buffer is empty — nothing to export.')
@@ -683,7 +699,7 @@ export async function exportWEBM(opts: ExportMP4Options): Promise<ExportMediaRes
         bitrate: 192_000,
       })
       if (support.supported) {
-        const stereo = extractStereoAudio(audioBuffer, durationSeconds)
+        const stereo = extractStereoAudio(audioBuffer, durationSeconds, analyzer.startSec)
         if (stereo.chL.length > 0) {
           opus = {
             chL: resampleLinear(stereo.chL, stereo.sampleRate, 48_000),
@@ -797,7 +813,7 @@ export async function exportWEBM(opts: ExportMP4Options): Promise<ExportMediaRes
         report({
           phase: 'rendering',
           progress: ((i + 1) / totalFrames) * 0.9,
-          time: (i + 1) / fps,
+          time: analyzer.startSec + (i + 1) / fps,
         })
       }
     }
@@ -869,11 +885,11 @@ export async function exportWEBM(opts: ExportMP4Options): Promise<ExportMediaRes
     if (failure) throw failure
   }
 
-  report({ phase: 'muxing', progress: 0.97, time: durationSeconds })
+  report({ phase: 'muxing', progress: 0.97, time: analyzer.startSec + durationSeconds })
   muxer.finalize()
 
   const blob = new Blob([target.buffer], { type: 'video/webm' })
-  report({ phase: 'done', progress: 1, time: durationSeconds })
+  report({ phase: 'done', progress: 1, time: analyzer.startSec + durationSeconds })
   return {
     blob,
     audioKind: opus ? ('opus' as const) : ('silent' as const),
@@ -891,10 +907,14 @@ export async function exportWEBM(opts: ExportMP4Options): Promise<ExportMediaRes
  * browser had no audio encoder at all and the song must be attached to a
  * silent MP4 as AAC. Truncated to maxSeconds (the exported length).
  */
-export function audioBufferToWav(buffer: AudioBuffer, maxSeconds: number): Blob {
+export function audioBufferToWav(buffer: AudioBuffer, maxSeconds: number, startSeconds = 0): Blob {
   const sampleRate = buffer.sampleRate
-  const maxSamples = Math.min(
+  const first = Math.min(
     buffer.length,
+    Math.max(0, Math.round(startSeconds * sampleRate)),
+  )
+  const maxSamples = Math.min(
+    buffer.length - first,
     Math.max(1, Math.ceil(maxSeconds * sampleRate)),
   )
   const chL = buffer.getChannelData(0)
@@ -922,8 +942,8 @@ export function audioBufferToWav(buffer: AudioBuffer, maxSeconds: number): Blob 
 
   let off = 44
   for (let i = 0; i < maxSamples; i++) {
-    const l = Math.max(-1, Math.min(1, chL[i]))
-    const r = Math.max(-1, Math.min(1, chR[i]))
+    const l = Math.max(-1, Math.min(1, chL[first + i]))
+    const r = Math.max(-1, Math.min(1, chR[first + i]))
     view.setInt16(off, l < 0 ? l * 0x8000 : l * 0x7fff, true)
     off += 2
     view.setInt16(off, r < 0 ? r * 0x8000 : r * 0x7fff, true)

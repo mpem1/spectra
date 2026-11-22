@@ -149,7 +149,7 @@ export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResu
     }
   }
 
-  const analyzer = new OfflineAnalyzer(audioBuffer, settings.fps)
+  const analyzer = new OfflineAnalyzer(audioBuffer, settings.fps, settings.startSec ?? 0)
 
   // Serato strip: precompute the whole-song envelope before frame 0 (same
   // contract as the MP4 path — see exporter.ts).
@@ -158,9 +158,15 @@ export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResu
     await prepareSeratoEnvelope(audioBuffer)
   }
 
+  // Sample sequences may start mid-song — only frames from analyzer.startSec
+  // on are available to render.
+  const availableFrames = Math.max(
+    1,
+    analyzer.totalFrames - Math.floor(analyzer.startSec * settings.fps),
+  )
   const total = Math.min(
     Math.ceil(lengthSeconds(settings.length, analyzer.duration) * settings.fps),
-    analyzer.totalFrames,
+    availableFrames,
     PNG_SEQ_MAX_FRAMES,
   )
   const capped = Math.ceil(analyzer.duration * settings.fps) > total

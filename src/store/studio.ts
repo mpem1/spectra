@@ -61,6 +61,7 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   resolution: '1920x1080',
   length: 'full',
   quality: 'high',
+  startSec: 0,
 }
 
 /**
@@ -588,7 +589,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
             // — re-encoded lossless-ish to WAV — as a fresh AAC track.
             blob = await muxWavIntoMp4(
               result.blob,
-              audioBufferToWav(audioBuffer, dur),
+              audioBufferToWav(audioBuffer, dur, state.exportSettings.startSec ?? 0),
               { durationSec: dur, onProgress: converting },
             )
           }

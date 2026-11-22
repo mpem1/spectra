@@ -30,6 +30,11 @@ export class OfflineAnalyzer {
   private readonly fps: number
   private readonly trackDuration: number
 
+  /** Song position frame 0 renders at (sample exports start mid-song). Frame
+   * `index` always lands at `startSec + index / fps` — clamped to
+   * [0, duration - 0.05] so at least one real frame always remains. */
+  readonly startSec: number
+
   private readonly window: Float32Array
   private readonly re = new Float32Array(FFT_SIZE)
   private readonly im = new Float32Array(FFT_SIZE)
@@ -55,7 +60,7 @@ export class OfflineAnalyzer {
     sub: 0,
   }
 
-  constructor(audioBuffer: AudioBuffer, fps: number) {
+  constructor(audioBuffer: AudioBuffer, fps: number, startSec = 0) {
     const channels = audioBuffer.numberOfChannels
     const length = audioBuffer.length
     this.mono = new Float32Array(length)
@@ -69,6 +74,7 @@ export class OfflineAnalyzer {
     this.rate = audioBuffer.sampleRate
     this.fps = clamp(fps, 1, 240)
     this.trackDuration = length / this.rate
+    this.startSec = clamp(startSec, 0, Math.max(0, this.trackDuration - 0.05))
     this.window = hannWindow(FFT_SIZE)
   }
 
@@ -107,7 +113,7 @@ export class OfflineAnalyzer {
    */
   frame(index: number, barCount: number, smoothing: number): AudioFrame {
     const bc = Math.max(1, Math.floor(barCount))
-    const time = clamp(index / this.fps, 0, this.trackDuration)
+    const time = clamp(this.startSec + index / this.fps, 0, this.trackDuration)
     const start = Math.floor(time * this.rate)
 
     // --- Spectrum: 2048-sample Hann-windowed slice at the frame offset. ---

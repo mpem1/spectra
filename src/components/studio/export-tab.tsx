@@ -17,13 +17,14 @@ import {
 } from '@/store/studio'
 import { exportPngSequence, PNG_SEQ_MAX_FRAMES } from '@/lib/export/png-seq'
 import { getPreviewCanvas } from '@/components/studio/canvas-registry'
-import { getEngine } from '@/components/studio/engine-registry'
+import { getEngine, getPreviewControls } from '@/components/studio/engine-registry'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Slider } from '@/components/ui/slider'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { MicroLabel } from '@/components/studio/controls'
+import { formatTime, MicroLabel } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 
 const RESOLUTION_LABELS: Record<ExportResolution, string> = {
@@ -133,6 +134,23 @@ export function ExportTab() {
   const outlineW = shape.orientation === 'portrait' ? Math.round(OUTLINE_MAX * shape.aspect) : OUTLINE_MAX
   const outlineH = shape.orientation === 'landscape' ? Math.round(OUTLINE_MAX / shape.aspect) : OUTLINE_MAX
 
+  // Sample exports (15s / 30s) can start anywhere in the song — the latest
+  // start leaves the whole sample inside the track.
+  const sampleLengthSec =
+    exportSettings.length === '30s' ? 30 : exportSettings.length === '15s' ? 15 : null
+  const maxStart =
+    sampleLengthSec !== null && audioMeta
+      ? Math.max(0, audioMeta.duration - sampleLengthSec)
+      : 0
+  const showStart = sampleLengthSec !== null && maxStart > 0.05
+
+  const usePlayhead = () => {
+    const t = getPreviewControls()?.getTime() ?? 0
+    const clamped = Math.max(0, Math.min(t, maxStart))
+    setExportSettings({ startSec: clamped })
+    toast.success(`Sample starts at ${formatTime(clamped)}`)
+  }
+
   const handleSnapshot = () => {
     const canvas = getPreviewCanvas()
     if (!canvas) {
@@ -225,7 +243,20 @@ export function ExportTab() {
             <MicroLabel>Length</MicroLabel>
             <Select
               value={exportSettings.length}
-              onValueChange={(length) => setExportSettings({ length: length as ExportLength })}
+              onValueChange={(length) => {
+                const len = length as ExportLength
+                // Moving the sample shorter can strand the saved start point
+                // past the new latest position — pull it back inside.
+                const secs = len === '30s' ? 30 : len === '15s' ? 15 : null
+                const max =
+                  secs !== null && audioMeta ? Math.max(0, audioMeta.duration - secs) : null
+                setExportSettings({
+                  length: len,
+                  ...(max !== null
+                    ? { startSec: Math.min(exportSettings.startSec ?? 0, max) }
+                    : {}),
+                })
+              }}
               disabled={exporting}
             >
               <SelectTrigger size="sm" className="w-full" aria-label="Export length">
@@ -260,6 +291,44 @@ export function ExportTab() {
             </Select>
           </div>
         </div>
+
+        {/* Start point — only for sample exports; full song always starts at 0 */}
+        {showStart ? (
+          <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/60 p-2.5">
+            <div className="flex h-5 items-center justify-between">
+              <MicroLabel>Start at</MicroLabel>
+              <span className="text-xs tabular-nums text-zinc-300">
+                {formatTime(exportSettings.startSec ?? 0)}
+                {' · '}
+                {formatTime(maxStart)} max
+              </span>
+            </div>
+            <Slider
+              aria-label="Export start point"
+              min={0}
+              max={maxStart}
+              step={0.1}
+              value={[Math.min(exportSettings.startSec ?? 0, maxStart)]}
+              onValueChange={(vals: number[]) => setExportSettings({ startSec: vals[0] ?? 0 })}
+              disabled={exporting}
+              className="py-1"
+            />
+            <div className="flex items-center justify-between gap-3">
+              <p className="min-w-0 text-[10px] leading-snug text-zinc-600">
+                Where the sample begins — the video and its audio both start here.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 shrink-0 border-zinc-700 text-[11px]"
+                disabled={exporting}
+                onClick={usePlayhead}
+              >
+                Use playhead
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         {/* Orientation outline — shows the frame shape the export will use */}
         <div
