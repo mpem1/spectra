@@ -21,7 +21,7 @@ export function GlitchFilterSection() {
     patchGlitchFilter({ [key]: value } as Partial<GlitchFilterConfig>)
 
   return (
-    <section className={sectionShell('fuchsia')}>
+    <section className={sectionShell('fuchsia', undefined, filter.enabled)}>
       <div className="flex h-7 items-center justify-between">
         <div className="flex items-center gap-2">
           <Zap className="size-3.5 text-fuchsia-500" aria-hidden />

@@ -119,7 +119,7 @@ export function GradientMapSection() {
     patch({ [key]: value } as Partial<GradientMapFilterConfig>)
 
   return (
-    <section className={sectionShell('cyan')}>
+    <section className={sectionShell('cyan', undefined, filter.enabled)}>
       <div className="flex h-7 items-center justify-between">
         <div className="flex items-center gap-2">
           <Blend className="size-3.5 text-cyan-500" aria-hidden />

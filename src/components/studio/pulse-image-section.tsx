@@ -37,7 +37,7 @@ export function PulseImageSection() {
   }
 
   return (
-    <section className={sectionShell('fuchsia')}>
+    <section className={sectionShell('fuchsia', undefined, pulseImage.enabled)}>
       <input
         ref={inputRef}
         type="file"

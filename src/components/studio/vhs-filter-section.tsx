@@ -20,7 +20,7 @@ export function VhsFilterSection() {
     patchVhsFilter({ [key]: value } as Partial<VhsFilterConfig>)
 
   return (
-    <section className={sectionShell('violet')}>
+    <section className={sectionShell('violet', undefined, filter.enabled)}>
       <div className="flex h-7 items-center justify-between">
         <div className="flex items-center gap-2">
           <Videotape className="size-3.5 text-violet-500" aria-hidden />

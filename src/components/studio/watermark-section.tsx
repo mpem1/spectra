@@ -44,7 +44,7 @@ export function WatermarkSection() {
   }
 
   return (
-    <section className={sectionShell('teal')}>
+    <section className={sectionShell('teal', undefined, watermark.enabled)}>
       <input
         ref={inputRef}
         type="file"

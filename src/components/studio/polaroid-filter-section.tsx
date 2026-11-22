@@ -111,7 +111,7 @@ export function PolaroidFilterSection() {
   }
 
   return (
-    <section className={sectionShell('teal')}>
+    <section className={sectionShell('teal', undefined, filter.enabled)}>
       <div className="flex h-7 items-center justify-between">
         <div className="flex items-center gap-2">
           <Images className="size-3.5 text-teal-500" aria-hidden />

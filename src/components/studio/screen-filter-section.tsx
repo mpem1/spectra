@@ -20,7 +20,7 @@ export function ScreenFilterSection() {
     patchScreenFilter({ [key]: value } as Partial<ScreenFilterConfig>)
 
   return (
-    <section className={sectionShell('pink')}>
+    <section className={sectionShell('pink', undefined, filter.enabled)}>
       <div className="flex h-7 items-center justify-between">
         <div className="flex items-center gap-2">
           <Tv className="size-3.5 text-pink-500" aria-hidden />

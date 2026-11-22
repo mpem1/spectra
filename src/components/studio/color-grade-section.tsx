@@ -23,7 +23,7 @@ export function ColorGradeSection() {
   const patch = useStudioStore((s) => s.patchColorGradeFilter)
 
   return (
-    <section className={sectionShell('amber')}>
+    <section className={sectionShell('amber', undefined, filter.enabled)}>
       <div className="flex h-7 items-center justify-between">
         <div className="flex items-center gap-2">
           <Contrast className="size-3.5 text-amber-500" aria-hidden />

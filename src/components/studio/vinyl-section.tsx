@@ -54,7 +54,7 @@ export function VinylSection() {
   }
 
   return (
-    <section className={sectionShell('lime')}>
+    <section className={sectionShell('lime', undefined, disc.enabled)}>
       <input
         ref={inputRef}
         type="file"

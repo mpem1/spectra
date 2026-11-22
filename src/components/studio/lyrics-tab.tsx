@@ -531,7 +531,7 @@ export function LyricsTab() {
       </div>
 
       {/* Source text */}
-      <section className={sectionShell('orange', 'space-y-2')}>
+      <section className={sectionShell('orange', 'space-y-2', lyrics.enabled)}>
         <SectionTitle icon={AlignLeft} accent="orange">
           Source text
         </SectionTitle>
@@ -565,7 +565,7 @@ export function LyricsTab() {
       </section>
 
       {/* Auto-detect from song */}
-      <section className={sectionShell('cyan', 'space-y-2')}>
+      <section className={sectionShell('cyan', 'space-y-2', lyrics.enabled)}>
         <SectionTitle icon={AudioLines} accent="cyan">
           Auto-detect from song
         </SectionTitle>
@@ -640,7 +640,7 @@ export function LyricsTab() {
       </section>
 
       {/* Parsed lines */}
-      <section className={sectionShell('yellow', 'space-y-2')}>
+      <section className={sectionShell('yellow', 'space-y-2', lyrics.enabled)}>
         <SectionTitle
           icon={Type}
           accent="yellow"
@@ -724,7 +724,7 @@ export function LyricsTab() {
       </section>
 
       {/* Style */}
-      <section className={sectionShell('green')}>
+      <section className={sectionShell('green', undefined, lyrics.enabled)}>
         <SectionTitle icon={Palette} accent="green">Style</SectionTitle>
 
         <div className="space-y-1.5">
@@ -1002,7 +1002,7 @@ export function LyricsTab() {
       </section>
 
       {/* Title card — timed intro text with its own styling */}
-      <section className={sectionShell('purple')}>
+      <section className={sectionShell('purple', undefined, title.enabled)}>
         <div className="flex h-7 items-center justify-between">
           <SectionTitle icon={Heading1} accent="purple">Title card</SectionTitle>
           <Switch

@@ -24,7 +24,7 @@ export function PhosphorFilterSection() {
     patchPhosphorFilter({ [key]: value } as Partial<PhosphorFilterConfig>)
 
   return (
-    <section className={sectionShell('green')}>
+    <section className={sectionShell('green', undefined, filter.enabled)}>
       <div className="flex h-7 items-center justify-between">
         <div className="flex items-center gap-2">
           <MonitorDot className="size-3.5 text-green-500" aria-hidden />

@@ -65,7 +65,7 @@ export function HalftoneFilterSection() {
     filter.printOnly || !!filter.gradient || !!filter.imageFill
 
   return (
-    <section className={sectionShell('yellow')}>
+    <section className={sectionShell('yellow', undefined, filter.enabled)}>
       <div className="flex h-7 items-center justify-between">
         <div className="flex items-center gap-2">
           <Newspaper className="size-3.5 text-yellow-500" aria-hidden />

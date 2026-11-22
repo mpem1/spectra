@@ -17,7 +17,11 @@ export function MicroLabel({ children, className }: { children: React.ReactNode;
 /** Subtle per-section accent hues — every section of the Style tab lives in
  * its own faintly tinted card with a matching header, so the panel scans as
  * clearly separated, color-coded blocks. Full literal class strings so the
- * Tailwind scanner picks them all up. */
+ * Tailwind scanner picks them all up.
+ *
+ * `shell` is the resting (switch off) card; `onShell` is the same card with
+ * a brighter border — same hue, one step lighter and far more opaque — so
+ * a section whose switch is flipped on reads at a glance. */
 export type SectionAccent =
   | 'emerald'
   | 'violet'
@@ -33,77 +37,97 @@ export type SectionAccent =
   | 'purple'
   | 'pink'
 
-export const SECTION_ACCENT: Record<SectionAccent, { shell: string; icon: string; label: string }> = {
+export const SECTION_ACCENT: Record<SectionAccent, { shell: string; onShell: string; icon: string; label: string }> = {
   emerald: {
     shell: 'border-emerald-500/20 bg-emerald-500/[0.04]',
+    onShell: 'border-emerald-400/50 bg-emerald-500/[0.04]',
     icon: 'text-emerald-500',
     label: 'text-emerald-300/80',
   },
   violet: {
     shell: 'border-violet-500/20 bg-violet-500/[0.04]',
+    onShell: 'border-violet-400/50 bg-violet-500/[0.04]',
     icon: 'text-violet-500',
     label: 'text-violet-300/80',
   },
   amber: {
     shell: 'border-amber-500/20 bg-amber-500/[0.04]',
+    onShell: 'border-amber-400/50 bg-amber-500/[0.04]',
     icon: 'text-amber-500',
     label: 'text-amber-300/80',
   },
   cyan: {
     shell: 'border-cyan-500/20 bg-cyan-500/[0.04]',
+    onShell: 'border-cyan-400/50 bg-cyan-500/[0.04]',
     icon: 'text-cyan-500',
     label: 'text-cyan-300/80',
   },
   rose: {
     shell: 'border-rose-500/20 bg-rose-500/[0.04]',
+    onShell: 'border-rose-400/50 bg-rose-500/[0.04]',
     icon: 'text-rose-500',
     label: 'text-rose-300/80',
   },
   lime: {
     shell: 'border-gold-500/20 bg-gold-500/[0.04]',
+    onShell: 'border-gold-400/50 bg-gold-500/[0.04]',
     icon: 'text-gold-500',
     label: 'text-gold-300/80',
   },
   fuchsia: {
     shell: 'border-sky-500/20 bg-sky-500/[0.04]',
+    onShell: 'border-sky-400/50 bg-sky-500/[0.04]',
     icon: 'text-sky-500',
     label: 'text-sky-300/80',
   },
   teal: {
     shell: 'border-teal-500/20 bg-teal-500/[0.04]',
+    onShell: 'border-teal-400/50 bg-teal-500/[0.04]',
     icon: 'text-teal-500',
     label: 'text-teal-300/80',
   },
   orange: {
     shell: 'border-orange-500/20 bg-orange-500/[0.04]',
+    onShell: 'border-orange-400/50 bg-orange-500/[0.04]',
     icon: 'text-orange-500',
     label: 'text-orange-300/80',
   },
   yellow: {
     shell: 'border-yellow-500/20 bg-yellow-500/[0.04]',
+    onShell: 'border-yellow-400/50 bg-yellow-500/[0.04]',
     icon: 'text-yellow-500',
     label: 'text-yellow-300/80',
   },
   green: {
     shell: 'border-green-500/20 bg-green-500/[0.04]',
+    onShell: 'border-green-400/50 bg-green-500/[0.04]',
     icon: 'text-green-500',
     label: 'text-green-300/80',
   },
   purple: {
     shell: 'border-purple-500/20 bg-purple-500/[0.04]',
+    onShell: 'border-purple-400/50 bg-purple-500/[0.04]',
     icon: 'text-purple-500',
     label: 'text-purple-300/80',
   },
   pink: {
     shell: 'border-pink-500/20 bg-pink-500/[0.04]',
+    onShell: 'border-pink-400/50 bg-pink-500/[0.04]',
     icon: 'text-pink-500',
     label: 'text-pink-300/80',
   },
 }
 
-/** Standard card shell for a studio section — the accent-tinted separation card. */
-export function sectionShell(accent: SectionAccent, extra?: string): string {
-  return cn('space-y-3 rounded-xl border p-3', SECTION_ACCENT[accent].shell, extra)
+/** Standard card shell for a studio section — the accent-tinted separation
+ * card. Pass `on` (the feature's enabled switch) to brighten the border so
+ * every turned-on section reads at a glance; the colors crossfade smoothly. */
+export function sectionShell(accent: SectionAccent, extra?: string, on?: boolean): string {
+  const a = SECTION_ACCENT[accent]
+  return cn(
+    'space-y-3 rounded-xl border p-3 transition-colors duration-300',
+    on ? a.onShell : a.shell,
+    extra,
+  )
 }
 
 /** Formats seconds as m:ss for time readouts. */
