@@ -35,6 +35,7 @@ import {
   type DitherFilterConfig,
   type PhosphorFilterConfig,
   type ContourFilterConfig,
+  type CubifyFilterConfig,
 } from '@/lib/visualizer/types'
 import {
   exportMP4,
@@ -137,6 +138,8 @@ type StudioState = {
   patchPhosphorFilter: (partial: Partial<PhosphorFilterConfig>) => void
   /** Patches config.contourFilter */
   patchContourFilter: (partial: Partial<ContourFilterConfig>) => void
+  /** Patches config.cubifyFilter (the glossy cube-tile print) */
+  patchCubifyFilter: (partial: Partial<CubifyFilterConfig>) => void
   /** Patches config.layers (the layers-vs-filters options) */
   patchLayers: (partial: Partial<LayersConfig>) => void
   /** Adds an imported font file to the shared lyrics/title library */
@@ -320,6 +323,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, contourFilter: { ...s.config.contourFilter, ...partial } },
     })),
 
+  patchCubifyFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, cubifyFilter: { ...s.config.cubifyFilter, ...partial } },
+    })),
+
   patchLayers: (partial) =>
     set((s) => ({
       config: { ...s.config, layers: { ...s.config.layers, ...partial } },
@@ -421,6 +429,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         ditherFilter: { ...DEFAULT_STUDIO_CONFIG.ditherFilter, ...config.ditherFilter },
         phosphorFilter: { ...DEFAULT_STUDIO_CONFIG.phosphorFilter, ...config.phosphorFilter },
         contourFilter: { ...DEFAULT_STUDIO_CONFIG.contourFilter, ...config.contourFilter },
+        cubifyFilter: { ...DEFAULT_STUDIO_CONFIG.cubifyFilter, ...config.cubifyFilter },
         // Layers-vs-filters options: new saves carry their own section; old
         // saves graduate the halftone's flip-gated "Layers stay colored".
         layers: resolveLayersConfig(config),

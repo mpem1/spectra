@@ -8,6 +8,7 @@ import { GlitchFilterSection } from '@/components/studio/glitch-filter-section'
 import { AnaglyphFilterSection } from '@/components/studio/anaglyph-filter-section'
 import { PhosphorFilterSection } from '@/components/studio/phosphor-section'
 import { ContourFilterSection } from '@/components/studio/contour-filter-section'
+import { CubifyFilterSection } from '@/components/studio/cubify-filter-section'
 import { DitherFilterSection } from '@/components/studio/dither-filter-section'
 import { LayersSection } from '@/components/studio/layers-section'
 
@@ -53,6 +54,10 @@ export function FiltersTab() {
       {/* Contour threads — the picture woven into glowing horizontal lines
           that bend with its shapes and ripple with the music */}
       <ContourFilterSection />
+
+      {/* Cubify — the picture rebuilt as big glossy 3D cubes (averaged
+          colors with a beveled face under one light) */}
+      <CubifyFilterSection />
 
       {/* Retro dither — chunky Bayer dot patterns (glowing blue poster,
           1-bit B&W, retro color, or custom duotone) with a bright-dot bloom */}

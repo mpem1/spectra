@@ -855,6 +855,41 @@ export interface DitherFilterConfig {
 }
 
 /**
+ * Cubify filter — effect.app's Cubify effect over the whole finished
+ * picture: the frame is resampled onto a chunky grid and every cell repaints
+ * as a glossy 3D cube face — the cell's averaged color with a beveled top-left
+ * highlight / bottom-right shadow (one global light direction), a soft
+ * specular sheen near the upper corner and optional seams between cubes, so
+ * the picture reads as bold, blocky glass-tile mosaic. Deterministic (no
+ * randomness — same frame in, same pixels out), so exports match the preview
+ * frame-exactly. Skipped on transparent backgrounds.
+ */
+export interface CubifyFilterConfig {
+  enabled: boolean
+  /** Cube size in px on the 720p reference canvas (4..80) — scaled with the
+   *  frame like every resolution-relative metric */
+  size: number
+  /** Bevel 0..1 — the 3D-face shading: top-left highlight / bottom-right
+   *  shadow inside every cube (0 = flat mosaic) */
+  bevel: number
+  /** Gloss 0..1 — the soft specular sheen near each cube's upper-left
+   *  corner */
+  gloss: number
+  /** Seam between neighboring cubes 0..0.5 (fraction of the cube size) —
+   *  the cubes inset and the seams show a darkened grout */
+  gap: number
+  /** Strength 0..1 — how much of the frame the cube print takes over
+   *  (below 1 the untouched frame fades back through) */
+  strength: number
+  /** React to beat — the cubes brighten and their gloss flares on the
+   *  song's low end (driven by frame.bass, additive, resting exactly at the
+   *  dialed look between kicks) */
+  beatReactive: boolean
+  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
+}
+
+/**
  * Phosphor monitor filter — the lo-fi sci-fi video-tube look: the whole
  * picture is repainted as glowing vertical lines or columns of short
  * horizontal dashes (one sample per cell, tone → shade of the picked
@@ -1638,6 +1673,9 @@ export interface StudioConfig {
   phosphorFilter: PhosphorFilterConfig
   /** Full-frame contour post-pass (glowing woven-thread waveform lines) */
   contourFilter: ContourFilterConfig
+  /** Full-frame cubify post-pass (the picture resampled into glossy 3D
+   *  cube tiles — the effect.app Cubify effect) */
+  cubifyFilter: CubifyFilterConfig
   /** How the moving layers interact with the full-frame filter chain */
   layers: LayersConfig
   /** Imported font library — shared by the lyrics and the title card */
@@ -2313,6 +2351,16 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     glow: 0.6,
     stillness: 0.6,
     waveSpread: 0.6,
+    strength: 1,
+    beatReactive: false,
+    beatStrength: 0.5,
+  },
+  cubifyFilter: {
+    enabled: false,
+    size: 36,
+    bevel: 0.6,
+    gloss: 0.55,
+    gap: 0.14,
     strength: 1,
     beatReactive: false,
     beatStrength: 0.5,

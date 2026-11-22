@@ -40,6 +40,7 @@ import { drawDitherFilter } from './dither-filter'
 import { drawPolaroidFilter } from './polaroid-filter'
 import { drawPhosphorFilter } from './phosphor-filter'
 import { drawContourFilter } from './contour-filter'
+import { drawCubifyFilter } from './cubify-filter'
 import { getWork, resetWork } from './filter-utils'
 
 /* --------------------------------- Utilities -------------------------------- */
@@ -260,6 +261,10 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // woven waveform look). Before the dither, which stays the outermost
   // poster layer.
   drawContourFilter(rc, config.contourFilter, frame, transparent)
+  // Cubify — the picture resampled into glossy 3D cube tiles (effect.app's
+  // Cubify): one global light direction bevels every averaged-color cell.
+  // Before the dither, which stays the outermost poster layer.
+  drawCubifyFilter(rc, config.cubifyFilter, frame, transparent)
   // Retro dither last — it re-quantizes the finished picture (glitches
   // included) into chunky Bayer dot patterns, so it always reads as the
   // outermost poster layer.
