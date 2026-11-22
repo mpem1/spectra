@@ -79,34 +79,44 @@ export interface ExportMediaResult {
  * Synthetic visualizer content (glow, gradients, saturated neon on dark)
  * compresses poorly at camera-style rates — banding shows up fast — so the
  * factors here are deliberately generous:
- *  - standard ≈ 0.10 bpp: 1080p30 →  6.2 Mbps (small files, still decent)
- *  - high     ≈ 0.20 bpp: 1080p30 → 12.4 Mbps (recommended default)
- *  - max      ≈ 0.35 bpp: 1080p30 → 21.8 Mbps (near transparent)
- * The clamp keeps short/low-res exports from dropping below usable rates and
- * full-length 1080p60 "max" runs from becoming absurdly large.
+ *  - standard ≈ 0.12 bpp: 1080p30 →  7.5 Mbps (small files, still decent)
+ *  - high     ≈ 0.28 bpp: 1080p30 → 17.4 Mbps (recommended default)
+ *  - max      ≈ 0.45 bpp: 1080p30 → 28.0 Mbps (near transparent)
+ * Grain, film dust and glitch slices are the worst case for H.264 — they
+ * read as mush at camera-style rates, so High now targets what premium
+ * tools ship (16–25 Mbps at 1080p30). The clamp keeps short/low-res exports
+ * from dropping below usable rates and full-length 1080p60 "max" runs from
+ * becoming absurdly large.
  */
 const QUALITY_PRESETS: Record<ExportQuality, { bpp: number; min: number; max: number }> = {
-  standard: { bpp: 0.1, min: 4_000_000, max: 16_000_000 },
-  high: { bpp: 0.2, min: 6_000_000, max: 40_000_000 },
-  max: { bpp: 0.35, min: 8_000_000, max: 80_000_000 },
+  standard: { bpp: 0.12, min: 5_000_000, max: 24_000_000 },
+  high: { bpp: 0.28, min: 10_000_000, max: 60_000_000 },
+  max: { bpp: 0.45, min: 16_000_000, max: 80_000_000 },
 }
 
 /**
  * Smallest H.264 High-profile level that legally carries this stream
- * (macroblocks/second limits from Annex A). Encoding 1080p60 while declaring
- * level 4.0 makes strict decoders refuse or degrade the file, so the level is
- * derived from the actual resolution × fps.
+ * (macroblock/second AND bitrate ceilings from Annex A). Encoding 1080p60
+ * — or 1080p30 above 20 Mbps — while declaring level 4.0 makes strict
+ * decoders refuse or degrade the file, so the level is derived from the
+ * actual resolution × fps × bitrate.
  */
-function h264LevelHex(width: number, height: number, fps: number): string {
+function h264LevelHex(width: number, height: number, fps: number, bitrate: number): string {
   const macroblocksPerSec = ((width + 15) >> 4) * ((height + 15) >> 4) * fps
-  if (macroblocksPerSec <= 245_760) return '28' // level 4.0 — 1080p30 and below
-  if (macroblocksPerSec <= 522_240) return '2a' // level 4.2 — up to 1080p60
+  if (macroblocksPerSec <= 245_760) {
+    // level 4.0 tops out at 20 Mbps (High profile) — 1080p30 and below
+    return bitrate > 20_000_000 ? '2a' : '28'
+  }
+  if (macroblocksPerSec <= 522_240) {
+    // level 4.2 — up to 1080p60, 50 Mbps ceiling
+    return bitrate > 50_000_000 ? '33' : '2a'
+  }
   return '33' // level 5.1 — headroom beyond
 }
 
 /** H.264 High profile configs tried in order, then a constrained-baseline fallback. */
-function avcCodecCandidates(width: number, height: number, fps: number): string[] {
-  const high = `avc1.6400${h264LevelHex(width, height, fps)}`
+function avcCodecCandidates(width: number, height: number, fps: number, bitrate: number): string[] {
+  const high = `avc1.6400${h264LevelHex(width, height, fps, bitrate)}`
   return [high, 'avc1.640033', 'avc1.42001f']
 }
 
@@ -456,7 +466,7 @@ export async function exportMP4(opts: ExportMP4Options): Promise<ExportMediaResu
   // isConfigSupported, so a browser that dislikes VBR/quality-latency still
   // gets the highest bitrate it can encode rather than a failed export.
   let chosenConfig: EncoderConfig | null = null
-  for (const codec of avcCodecCandidates(width, height, fps)) {
+  for (const codec of avcCodecCandidates(width, height, fps, encoderBitrate)) {
     for (const rateControl of RATE_CONTROL_SETS) {
       const candidate: EncoderConfig = {
         codec,
