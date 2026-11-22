@@ -32,6 +32,11 @@
  *     hit), a Direction chooser (forward climbs the ramp per kick,
  *     backward walks down it, ping-pong sweeps up then back), and a
  *     Glide dial for how long each step takes to ease in.
+ *   - Randomize: a random walk — the window starts at 0% and every step
+ *     time it jumps a random distance between the Min/Max step dials
+ *     (3–20% by default) in either direction, landing there and starting
+ *     the next jump from there; hitting ±100% forces the next TWO jumps
+ *     back toward 0% so the walk can never pile up at the edges.
  *
  * Performance: the ramp is a cached 256-entry LUT (rebuilt only when the
  * preset's stops change), so the per-frame work is ONE luma + one window
@@ -280,6 +285,99 @@ function beatShiftFor(
   return pos
 }
 
+/* ------------------------------- random walk ------------------------------- */
+
+/** mulberry32 — a tiny seeded PRNG. The walk needs a random sequence
+ *  that stays CONSISTENT across frames for a given canvas: step i's
+ *  direction and size must be the same every time the walk is read
+ *  (including reads that land mid-step), so a shared Math.random()
+ *  call per extension won't do — the seed makes step i a fixed draw. */
+function mulberry32(a: number): () => number {
+  return function () {
+    a |= 0
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/**
+ * Random-walk window position for the 'random' motion mode. The walk is
+ * a pure function of the style clock: iteration i = floor(time /
+ * stepTime), and the position after i steps is cached per canvas (the
+ * cached prefix never changes, so seeks backward just read a shorter
+ * prefix and no state ever goes stale). Each step draws a uniform
+ * distance between the Min/Max step dials and a random direction; when
+ * a step lands on ±100% (the ramp window's edge) the next TWO steps are
+ * forced back toward 0%, so the walk can bounce off the edges but can
+ * never get stuck oscillating against one. Each landed position eases
+ * in over 150 ms so the window rolls to its new spot instead of
+ * strobing. Per-canvas seed: preview and export each grow their own
+ * walk (random by definition), both starting at 0%.
+ */
+interface RandomWalkState {
+  rng: () => number
+  /** Cached positions: pos[i] = the window position after i steps.
+   *  pos[0] = 0 — the walk starts at the 0% position. */
+  pos: number[]
+  /** How many of the next steps are forced back toward 0 (the edge rule). */
+  forced: number
+}
+
+const randomWalks = new Map<CanvasRenderingContext2D, RandomWalkState>()
+
+const RANDOM_EASE = 0.15
+
+function extendRandomWalk(st: RandomWalkState, target: number, minStep: number, maxStep: number): void {
+  while (st.pos.length <= target) {
+    const prev = st.pos[st.pos.length - 1]
+    const mag = minStep + (maxStep - minStep) * st.rng()
+    let sign: number
+    if (st.forced > 0) {
+      // The edge rule: this jump goes home, whatever the dice say.
+      sign = prev >= 0 ? -1 : 1
+      st.forced -= 1
+    } else {
+      sign = st.rng() < 0.5 ? -1 : 1
+    }
+    let p = prev + sign * mag
+    if (p >= 1) {
+      p = 1 // hit +100% — the next two jumps walk back toward 0%
+      st.forced = 2
+    } else if (p <= -1) {
+      p = -1
+      st.forced = 2
+    }
+    st.pos.push(p)
+  }
+}
+
+function randomShiftFor(
+  ctx: CanvasRenderingContext2D,
+  time: number,
+  stepTime: number,
+  minStep: number,
+  maxStep: number,
+): number {
+  let st = randomWalks.get(ctx)
+  if (!st) {
+    st = { rng: mulberry32((Math.random() * 0xffffffff) >>> 0), pos: [0], forced: 0 }
+    randomWalks.set(ctx, st)
+  }
+  const step = Math.max(0.05, stepTime)
+  const i = Math.max(0, Math.floor(time / step))
+  extendRandomWalk(st, i, Math.min(minStep, maxStep), Math.max(minStep, maxStep))
+  const target = st.pos[i]
+  if (i === 0) return target
+  const tIn = time - i * step
+  if (tIn >= RANDOM_EASE) return target
+  const from = st.pos[i - 1]
+  const k = Math.max(0, Math.min(1, tIn / RANDOM_EASE))
+  const g = k * k * (3 - 2 * k)
+  return from + (target - from) * g
+}
+
 /* --------------------------------- the pass --------------------------------- */
 
 export function drawGradientMapFilter(
@@ -318,6 +416,19 @@ export function drawGradientMapFilter(
         clamp01(cfg.beatSens ?? 0.12),
         Math.max(0.02, cfg.beatEase ?? 0.14),
         cfg.beatDir ?? 'forward',
+      )
+  } else if (cfg.shiftMode === 'random') {
+    // styleTime: wall clock live (the walk keeps wandering while
+    // paused), song time in exports — the same decorative-clock
+    // contract as Continuous, with a per-canvas random seed.
+    shift =
+      baseShift +
+      randomShiftFor(
+        ctx,
+        frame.styleTime,
+        cfg.randomStepTime ?? 0.5,
+        Math.min(0.5, Math.max(0.01, cfg.randomStepMin ?? 0.03)),
+        Math.min(0.5, Math.max(0.01, cfg.randomStepMax ?? 0.2)),
       )
   }
 

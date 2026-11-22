@@ -328,7 +328,7 @@ export function GradientMapSection() {
             </p>
 
             <Group>Shift motion</Group>
-            <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Shift motion">
+            <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="Shift motion">
               <ModeChip
                 label="Manual"
                 sub="the dial only"
@@ -346,6 +346,12 @@ export function GradientMapSection() {
                 sub="advances on kicks"
                 active={filter.shiftMode === 'beat'}
                 onClick={() => patch({ shiftMode: 'beat' })}
+              />
+              <ModeChip
+                label="Randomize"
+                sub="random walk"
+                active={filter.shiftMode === 'random'}
+                onClick={() => patch({ shiftMode: 'random' })}
               />
             </div>
             {filter.shiftMode === 'continuous' ? (
@@ -431,11 +437,51 @@ export function GradientMapSection() {
                 </p>
               </>
             ) : null}
+            {filter.shiftMode === 'random' ? (
+              <>
+                <SliderRow
+                  label="Min step"
+                  value={filter.randomStepMin ?? 0.03}
+                  min={0.01}
+                  max={0.5}
+                  step={0.01}
+                  onChange={set('randomStepMin')}
+                  format={(v) => `${Math.round(v * 100)}%`}
+                />
+                <SliderRow
+                  label="Max step"
+                  value={filter.randomStepMax ?? 0.2}
+                  min={0.01}
+                  max={0.5}
+                  step={0.01}
+                  onChange={set('randomStepMax')}
+                  format={(v) => `${Math.round(v * 100)}%`}
+                />
+                <SliderRow
+                  label="Step time"
+                  value={filter.randomStepTime ?? 0.5}
+                  min={0.1}
+                  max={3}
+                  step={0.05}
+                  onChange={set('randomStepTime')}
+                  format={(v) => `${v.toFixed(2)}s`}
+                />
+                <p className="text-[10px] leading-snug text-zinc-600">
+                  A random walk: the window starts at 0% and, every Step
+                  time, jumps a random distance between Min and Max step —
+                  3–20% by default — in either direction, landing there and
+                  starting the next jump from that spot. If a jump hits the
+                  ramp&apos;s edge at ±100%, the next TWO jumps walk back
+                  toward 0% so the walk can never get stuck at the ends.
+                  The manual shift dial still offsets the starting point.
+                </p>
+              </>
+            ) : null}
             {filter.shiftMode === 'manual' ? (
               <p className="text-[10px] leading-snug text-zinc-600">
                 The window stays exactly where the shift dial puts it. Pick
-                Continuous for a steady cycle or React to beat to advance the
-                window on every kick.
+                Continuous for a steady cycle, React to beat to advance the
+                window on every kick, or Randomize for a random walk.
               </p>
             ) : null}
           </div>

@@ -1243,9 +1243,13 @@ export interface GradientMapFilterConfig {
   /** Shift motion: 'manual' = the dial only (the still default);
    *  'continuous' = the window auto-cycles along the ramp on the style
    *  clock; 'beat' = every detected kick (the shared flipGate sub-band
-   *  onset detector) advances the window one step with a short glide.
-   *  Absent in old saves → 'manual'. */
-  shiftMode: 'manual' | 'continuous' | 'beat'
+   *  onset detector) advances the window one step with a short glide;
+   *  'random' = a random walk — the window starts at 0% and every step
+   *  time it jumps a random 3–20% (min/max dials) in either direction,
+   *  landing there and starting the next jump from there; hitting
+   *  ±100% forces the next TWO jumps back toward 0% so the walk can't
+   *  pile up at the edges. Absent in old saves → 'manual'. */
+  shiftMode: 'manual' | 'continuous' | 'beat' | 'random'
   /** Continuous speed 0..1 — how fast the window cycles (1 = a full
    *  sweep of the ramp every 2 seconds). Continuous mode only. Absent
    *  in old saves → 0.3. */
@@ -1269,6 +1273,20 @@ export interface GradientMapFilterConfig {
    *  (short = snappy strobe cuts, long = smooth rolls). Beat mode only.
    *  Absent in old saves → 0.14 (the hardcoded shipped ease). */
   beatEase: number
+  /** Random-walk mode — smallest jump per iteration, 0.01..0.5 of the
+   *  ramp. Randomize mode only. Absent in old saves → 0.03 (the
+   *  requested 3% floor). */
+  randomStepMin: number
+  /** Random-walk mode — largest jump per iteration, 0.01..0.5 of the
+   *  ramp (each jump draws uniformly between the min and max dials;
+   *  swapped dials are swapped back). Randomize mode only. Absent in
+   *  old saves → 0.2 (the requested 20% ceiling). */
+  randomStepMax: number
+  /** Random-walk mode — seconds per iteration: how long the window
+   *  rests at each landed position before the next jump (each jump
+   *  eases in over 150 ms). Randomize mode only. Absent in old saves
+   *  → 0.5. */
+  randomStepTime: number
 }
 
 /** The built-in gradient-map ramp library (see gradient-map-filter.ts for
@@ -2158,6 +2176,9 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     beatDir: 'forward',
     beatSens: 0.12,
     beatEase: 0.14,
+    randomStepMin: 0.03,
+    randomStepMax: 0.2,
+    randomStepTime: 0.5,
     // Custom ramp seed — the Neon stops verbatim, so picking Custom
     // starts as the house look and the stop editor takes it from there
     customStops: [
