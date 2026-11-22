@@ -855,35 +855,52 @@ export interface DitherFilterConfig {
 }
 
 /**
- * Cubify filter — effect.app's Cubify effect over the whole finished
- * picture: the frame is resampled onto a chunky grid and every cell repaints
- * as a glossy 3D cube face — the cell's averaged color with a beveled top-left
- * highlight / bottom-right shadow (one global light direction), a soft
- * specular sheen near the upper corner and optional seams between cubes, so
- * the picture reads as bold, blocky glass-tile mosaic. Deterministic (no
- * randomness — same frame in, same pixels out), so exports match the preview
- * frame-exactly. Skipped on transparent backgrounds.
+ * Cubify filter — effect.app's Cubify effect, ported 1:1 from its shader
+ * (captured from the live editor) over the whole finished picture: the
+ * frame's coordinates are rotated, snapped onto an exponentially-scaled grid
+ * and warped INSIDE every cell — the cell's fractional position is pushed
+ * toward the cell edges by an iterated smoothstep ("depth distortion") —
+ * then un-transformed and resampled. The result reads as the picture
+ * refracted through an array of beveled glass cubes. "Hard edges" snaps the
+ * warp to the cell corners instead, "dispersion" splits the warp per RGB
+ * channel. The grid can rotate, drift (animation speed) and be offset.
+ * Deterministic (no randomness — same frame in, same pixels out), so exports
+ * match the preview frame-exactly. Skipped on transparent backgrounds.
  */
 export interface CubifyFilterConfig {
   enabled: boolean
-  /** Cube size in px on the 720p reference canvas (4..80) — scaled with the
-   *  frame like every resolution-relative metric */
-  size: number
-  /** Bevel 0..1 — the 3D-face shading: top-left highlight / bottom-right
-   *  shadow inside every cube (0 = flat mosaic) */
-  bevel: number
-  /** Gloss 0..1 — the soft specular sheen near each cube's upper-left
-   *  corner */
-  gloss: number
-  /** Seam between neighboring cubes 0..0.5 (fraction of the cube size) —
-   *  the cubes inset and the seams show a darkened grout */
-  gap: number
-  /** Strength 0..1 — how much of the frame the cube print takes over
-   *  (below 1 the untouched frame fades back through) */
-  strength: number
-  /** React to beat — the cubes brighten and their gloss flares on the
-   *  song's low end (driven by frame.bass, additive, resting exactly at the
-   *  dialed look between kicks) */
+  /** Cube size — the logarithmic grid scale, 0..8 (effect.app's dial, its
+   *  default 1.1 ≈ 6 cubes across the short side; the cell size is
+   *  exp(-scale) of the half-height) */
+  scale: number
+  /** Cube stretch -1..1 — squashes the grid horizontally (positive) or
+   *  vertically (negative) before the warp */
+  stretch: number
+  /** Depth distortion 0..5 — the per-cell edge pull: how many whole
+   *  smoothstep warps apply inside every cube (the 3D depth of the look) */
+  depth: number
+  /** Hard edges — snap the warp to the cell's four corners (hard pixels)
+   *  instead of the smooth glass refraction */
+  hard: boolean
+  /** Rotation angle of the cube grid, 0..90 degrees */
+  angle: number
+  /** Position offset of the grid, -1..1 in grid cells */
+  offsetX: number
+  offsetY: number
+  /** Animation speed — the grid drifts this many cells per second while
+   *  the song plays (the decorative style clock: it keeps drifting while
+   *  the preview is paused and freezes to song time in exports) */
+  speedX: number
+  speedY: number
+  /** Dispersion 0..1 — the warp strength splits per RGB channel, fringing
+   *  the cube edges like chromatic glass */
+  dispersion: number
+  /** Mix 0..1 — how much of the frame the cube print takes over (below 1
+   *  the untouched frame fades back through) */
+  blend: number
+  /** React to beat — the depth distortion punches deeper and the
+   *  dispersion flares on the song's low end (driven by frame.bass,
+   *  additive, resting exactly at the dialed look between kicks) */
   beatReactive: boolean
   /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
   beatStrength: number
@@ -2357,11 +2374,17 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
   },
   cubifyFilter: {
     enabled: false,
-    size: 36,
-    bevel: 0.6,
-    gloss: 0.55,
-    gap: 0.14,
-    strength: 1,
+    scale: 1.1,
+    stretch: 0,
+    depth: 1.8,
+    hard: false,
+    angle: 0,
+    offsetX: 0,
+    offsetY: 0,
+    speedX: 0.1,
+    speedY: 0,
+    dispersion: 0,
+    blend: 1,
     beatReactive: false,
     beatStrength: 0.5,
   },

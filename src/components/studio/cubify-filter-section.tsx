@@ -4,14 +4,15 @@ import { Blocks as CubeIcon } from 'lucide-react'
 import type { CubifyFilterConfig } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
-import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, BeatPunchRow, SliderRow, ToggleRow, sectionShell } from '@/components/studio/controls'
 
 /**
- * Cubify card — effect.app's Cubify effect: the whole picture becomes a
- * mosaic of glossy 3D cubes (averaged colors with a beveled face, one global
- * light direction, soft specular sheen and optional seams). Deterministic,
- * so every export bakes the identical look; skipped on transparent
- * backgrounds.
+ * Cubify card — effect.app's Cubify effect, ported 1:1 from its shader: the
+ * frame resamples through an array of glass cubes (rotated exponential grid,
+ * per-cell edge-pull warp = the 3D depth, optional hard pixel snap, RGB
+ * dispersion on the edges). Dials match the original effect's controls.
+ * Deterministic, so every export bakes the identical look; skipped on
+ * transparent backgrounds.
  */
 export function CubifyFilterSection() {
   const filter = useStudioStore((s) => s.config.cubifyFilter)
@@ -34,57 +35,107 @@ export function CubifyFilterSection() {
         />
       </div>
       <p className="text-[11px] leading-snug text-zinc-600">
-        Cubify — the whole picture is rebuilt as big glossy cubes: every tile
-        takes the average color of what it covers, beveled like a 3D block
-        under one light. Small sizes read as glass mosaic, large ones as bold
-        blocky art. Baked into every export.
+        Cubify — the whole picture refracts through an array of glass cubes:
+        the frame snaps onto a rotated grid and every cell bends its content
+        toward the cube edges, reading as 3D blocks. The real effect.app
+        algorithm, dial for dial.
       </p>
 
       {filter.enabled ? (
         <>
           <SliderRow
             label="Cube size"
-            value={filter.size}
-            min={4}
-            max={80}
+            value={filter.scale}
+            min={0}
+            max={8}
+            step={0.01}
+            onChange={set('scale')}
+            format={(v) => v.toFixed(2)}
+          />
+          <SliderRow
+            label="Cube stretch"
+            value={filter.stretch}
+            min={-1}
+            max={1}
+            step={0.01}
+            onChange={set('stretch')}
+            format={(v) => v.toFixed(2)}
+          />
+          <SliderRow
+            label="Depth distortion"
+            value={filter.depth}
+            min={0}
+            max={5}
+            step={0.01}
+            onChange={set('depth')}
+            format={(v) => v.toFixed(2)}
+          />
+          <SliderRow
+            label="Rotation angle"
+            value={filter.angle}
+            min={0}
+            max={90}
             step={1}
-            onChange={set('size')}
-            format={(v) => `${Math.round(v)} px`}
+            onChange={set('angle')}
+            format={(v) => `${Math.round(v)}°`}
+          />
+          <ToggleRow
+            label="Hard edges"
+            checked={filter.hard}
+            onCheckedChange={(hard) => patchCubifyFilter({ hard })}
           />
           <SliderRow
-            label="Bevel"
-            value={filter.bevel}
+            label="Position offset X"
+            value={filter.offsetX}
+            min={-1}
+            max={1}
+            step={0.01}
+            onChange={set('offsetX')}
+            format={(v) => v.toFixed(2)}
+          />
+          <SliderRow
+            label="Position offset Y"
+            value={filter.offsetY}
+            min={-1}
+            max={1}
+            step={0.01}
+            onChange={set('offsetY')}
+            format={(v) => v.toFixed(2)}
+          />
+          <SliderRow
+            label="Animation speed X"
+            value={filter.speedX}
+            min={-5}
+            max={5}
+            step={0.01}
+            onChange={set('speedX')}
+            format={(v) => `${v.toFixed(2)} cells/s`}
+          />
+          <SliderRow
+            label="Animation speed Y"
+            value={filter.speedY}
+            min={-5}
+            max={5}
+            step={0.01}
+            onChange={set('speedY')}
+            format={(v) => `${v.toFixed(2)} cells/s`}
+          />
+          <SliderRow
+            label="Dispersion"
+            value={filter.dispersion}
+            min={0}
+            max={1}
+            step={0.001}
+            onChange={set('dispersion')}
+            format={(v) => `${(v * 100).toFixed(1)}%`}
+          />
+          <SliderRow
+            label="Mix"
+            value={filter.blend}
             min={0}
             max={1}
             step={0.05}
-            onChange={set('bevel')}
-            format={(v) => `${Math.round(v * 100)}%`}
-          />
-          <SliderRow
-            label="Gloss"
-            value={filter.gloss}
-            min={0}
-            max={1}
-            step={0.05}
-            onChange={set('gloss')}
-            format={(v) => `${Math.round(v * 100)}%`}
-          />
-          <SliderRow
-            label="Seams"
-            value={filter.gap}
-            min={0}
-            max={0.5}
-            step={0.02}
-            onChange={set('gap')}
-            format={(v) => `${Math.round(v * 100)}%`}
-          />
-          <SliderRow
-            label="Strength"
-            value={filter.strength}
-            min={0}
-            max={1}
-            step={0.05}
-            onChange={set('strength')}
+            onChange={set('blend')}
             format={(v) => `${Math.round(v * 100)}%`}
           />
           <BeatPunchRow
@@ -95,7 +146,10 @@ export function CubifyFilterSection() {
             strengthLabel="Beat lift"
           />
           <p className="text-[10px] leading-snug text-zinc-600">
-            Skipped on transparent backgrounds so alpha recordings stay clean.
+            The grid drifts with the song (speed dials above). Hard edges
+            snaps every cube to hard pixels; dispersion fringes the cube
+            edges like chromatic glass. Skipped on transparent backgrounds so
+            alpha recordings stay clean.
           </p>
         </>
       ) : null}
