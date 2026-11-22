@@ -119,12 +119,14 @@ export const SECTION_ACCENT: Record<SectionAccent, { shell: string; onShell: str
 }
 
 /** Standard card shell for a studio section — the accent-tinted separation
- * card. Pass `on` (the feature's enabled switch) to brighten the border so
- * every turned-on section reads at a glance; the colors crossfade smoothly. */
+ * card. Pass `on` (the feature's enabled switch) to brighten AND thicken the
+ * border (1px dim -> 2px brighter, same hue) so every turned-on section
+ * reads at a glance; the colors crossfade smoothly. */
 export function sectionShell(accent: SectionAccent, extra?: string, on?: boolean): string {
   const a = SECTION_ACCENT[accent]
   return cn(
-    'space-y-3 rounded-xl border p-3 transition-colors duration-300',
+    'space-y-3 rounded-xl p-3 transition-colors duration-300',
+    on ? 'border-2' : 'border',
     on ? a.onShell : a.shell,
     extra,
   )
