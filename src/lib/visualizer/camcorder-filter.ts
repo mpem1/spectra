@@ -44,6 +44,20 @@
  * same math serves WebGL-less devices (run at a capped working resolution
  * and upscaled — see drawCPU; float64 vs the GPU's float32 can round ±1/255
  * differently, but the algorithm is identical).
+ *
+ * THE TAPE ANCHORS TO THE PICTURE: effect.app's editor always renders the
+ * effect with the media filling the frame — their canvas adopts the media's
+ * aspect, so the pipeline's own edges ARE the picture's edges and the
+ * captured shaders' vertical-edge artifacts (the colored chroma streaks
+ * that seep in from the left/right frame edges — the clamped chroma-tap
+ * decode at the grid boundary — plus the bottom head-switch smear and the
+ * top tear) land ON the picture. Spectra composes a floating artwork
+ * instead, so when an Image-visualizer artwork is on screen the whole
+ * pipeline runs on the artwork's rect (recorded per frame in
+ * RenderContext.imageVizRect): the artwork's rect is the tape frame, the
+ * print composites back onto it, and every edge artifact hugs the picture's
+ * own edges. Without an artwork the frame is the tape, exactly as their
+ * engine renders a full-bleed media.
  */
 import type { AudioFrame, CamcorderFilterConfig, RenderContext } from './types'
 import { beatAmount, clamp01, getWork, resetWork } from './filter-utils'
@@ -457,28 +471,67 @@ function runPass(
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
 }
 
-function drawGL(g: CamcorderGL, rc: RenderContext, p: CamcorderParams): void {
+/** The picture anchor — the Image-visualizer artwork's animated footprint
+ *  plus its stable work size (see RenderContext.imageVizRect). When present
+ *  the whole captured pipeline runs ON THE PICTURE: the source texture is
+ *  the artwork's rect crop, the offscreen print is artwork-sized, and the
+ *  composite lands back on the rect — so every edge artifact (the colored
+ *  streaks seeping in from the left/right vertical edges, the bottom
+ *  head-switch smear, the top tear) sits on the picture's own edges, the
+ *  way effect.app's engine always renders the media filling the frame. */
+type AnchorRect = NonNullable<RenderContext['imageVizRect']>
+
+/** The anchor's crop region, clamped to the canvas — the rect already is
+ *  (drawImageViz clamps it), but a defensive intersect keeps a motion spike
+ *  from ever sampling outside the frame into transparent pixels. */
+function anchorCrop(rc: RenderContext, a: AnchorRect): { x: number; y: number; w: number; h: number } {
+  const x0 = Math.max(0, Math.min(a.x, rc.width - 1))
+  const y0 = Math.max(0, Math.min(a.y, rc.height - 1))
+  const x1 = Math.min(rc.width, a.x + a.w)
+  const y1 = Math.min(rc.height, a.y + a.h)
+  return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) }
+}
+
+function drawGL(g: CamcorderGL, rc: RenderContext, p: CamcorderParams, anchor: AnchorRect | null): void {
   const { gl } = g
   const { width: W, height: H, ctx } = rc
-  if (g.w !== W || g.h !== H) {
-    g.canvas.width = W
-    g.canvas.height = H
-    g.w = W
-    g.h = H
+  // Anchored: the pipeline runs at the artwork's stable work size; the
+  // animated crop resamples into it and the print stretches back out —
+  // sub-percent scaling, invisible under the tape's own resample, and the
+  // offscreen layers never churn with the beat motion.
+  const PW = anchor ? anchor.workW : W
+  const PH = anchor ? anchor.workH : H
+  if (g.w !== PW || g.h !== PH) {
+    g.canvas.width = PW
+    g.canvas.height = PH
+    g.w = PW
+    g.h = PH
     for (const layer of [g.a, g.b, g.c, g.d]) {
       gl.bindTexture(gl.TEXTURE_2D, layer.tex)
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, PW, PH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
     }
   }
 
-  // The finished frame IS the source texture.
+  // The finished frame IS the source texture. Anchored: the artwork's rect
+  // crop goes up instead of the whole frame — a smaller upload than the
+  // full canvas.
   gl.activeTexture(gl.TEXTURE0)
   gl.bindTexture(gl.TEXTURE_2D, g.srcTex)
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ctx.canvas)
+  if (anchor) {
+    const crop = anchorCrop(rc, anchor)
+    const srcCanvas = getWork('camcorder:src', PW, PH)
+    const sctx = resetWork(srcCanvas.getContext('2d')!)
+    sctx.imageSmoothingEnabled = true
+    sctx.clearRect(0, 0, PW, PH)
+    sctx.drawImage(ctx.canvas, crop.x, crop.y, crop.w, crop.h, 0, 0, PW, PH)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, srcCanvas)
+  } else {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ctx.canvas)
+  }
 
   // Pass 1 — VHS pipeline → a
-  runPass(g, g.vhs, g.a, W, H, p, () => {
+  runPass(g, g.vhs, g.a, PW, PH, p, () => {
     const { u } = g.vhs
     if (u.iChannel0) gl.uniform1i(u.iChannel0, 0)
     if (u.internalWidth) gl.uniform1f(u.internalWidth, p.resolution)
@@ -500,7 +553,7 @@ function drawGL(g: CamcorderGL, rc: RenderContext, p: CamcorderParams): void {
   })
 
   // Pass 2 — Oklab zone grade (the Backrooms preset values) → b
-  runPass(g, g.grade, g.b, W, H, p, () => {
+  runPass(g, g.grade, g.b, PW, PH, p, () => {
     const { u } = g.grade
     if (u.iChannel0) gl.uniform1i(u.iChannel0, 0)
     gl.activeTexture(gl.TEXTURE0)
@@ -545,12 +598,12 @@ function drawGL(g: CamcorderGL, rc: RenderContext, p: CamcorderParams): void {
     if (u.strength) gl.uniform1f(u.strength, p.blur)
     if (u.aspect) gl.uniform1f(u.aspect, 0)
   }
-  runPass(g, g.blurH, g.c, W, H, p, blurStrengthU(g.blurH, g.b.tex))
-  runPass(g, g.blurV, g.d, W, H, p, blurStrengthU(g.blurV, g.c.tex))
+  runPass(g, g.blurH, g.c, PW, PH, p, blurStrengthU(g.blurH, g.b.tex))
+  runPass(g, g.blurV, g.d, PW, PH, p, blurStrengthU(g.blurV, g.c.tex))
 
   // Pass 5 — the composite: mix(graded, blurred, blurMix), Normal blend,
   // rendered straight into the offscreen canvas.
-  runPass(g, g.mix, null, W, H, p, () => {
+  runPass(g, g.mix, null, PW, PH, p, () => {
     const { u } = g.mix
     gl.activeTexture(gl.TEXTURE0)
     gl.bindTexture(gl.TEXTURE_2D, g.d.tex)
@@ -653,23 +706,37 @@ for (let i = 0; i < SRGB_LUT_N; i++) {
 
 /** Full JS transcription of the five captured passes, in their render order.
  *  Float64 vs the GPU's float32 can round ±1/255 differently, but every
- *  transform, constant and tap is the original's. */
-function drawCPU(rc: RenderContext, p: CamcorderParams): void {
+ *  transform, constant and tap is the original's. Anchored (an
+ *  Image-visualizer artwork is on screen): the same transcription runs on
+ *  the artwork's rect crop at its stable work size — the tape edge
+ *  artifacts land on the picture's own edges — and the finished print
+ *  composites back onto the animated rect. */
+function drawCPU(rc: RenderContext, p: CamcorderParams, anchor: AnchorRect | null): void {
   const { ctx, width: W, height: H } = rc
+
+  // Work size — the frame, or the artwork's stable box when anchored (the
+  // animated crop resamples into it, the print stretches back out).
+  const FW = anchor ? anchor.workW : W
+  const FH = anchor ? anchor.workH : H
 
   // Cap the working resolution — every dial of this effect is computed
   // relative to a 420px-wide tape grid, so the upscaled result keeps the
   // character while the per-pixel JS cost stays sane.
   const maxW = rc.interactive ? CPU_PREVIEW_MAX_W : CPU_EXPORT_MAX_W
-  const scale = Math.min(1, maxW / Math.max(W, 1))
-  const CW = Math.max(16, Math.round(W * scale))
-  const CH = Math.max(16, Math.round(H * scale))
+  const scale = Math.min(1, maxW / Math.max(FW, 1))
+  const CW = Math.max(16, Math.round(FW * scale))
+  const CH = Math.max(16, Math.round(FH * scale))
 
   const snap = getWork('camcorder:snap', CW, CH)
   const sctx = resetWork(snap.getContext('2d')!)
   sctx.imageSmoothingEnabled = true
   sctx.clearRect(0, 0, CW, CH)
-  sctx.drawImage(ctx.canvas, 0, 0, CW, CH)
+  if (anchor) {
+    const crop = anchorCrop(rc, anchor)
+    sctx.drawImage(ctx.canvas, crop.x, crop.y, crop.w, crop.h, 0, 0, CW, CH)
+  } else {
+    sctx.drawImage(ctx.canvas, 0, 0, CW, CH)
+  }
   const src = sctx.getImageData(0, 0, CW, CH).data
 
   const aspect = CW / Math.max(CH, 1)
@@ -1187,7 +1254,13 @@ function drawCPU(rc: RenderContext, p: CamcorderParams): void {
   ctx.globalAlpha = 1
   ctx.globalCompositeOperation = 'source-over'
   ctx.shadowBlur = 0
-  ctx.drawImage(snap, 0, 0, W, H)
+  if (anchor) {
+    // The print lands back on the picture, stretched to its animated rect
+    // — the tape frame follows the artwork's swell/sway/bob exactly.
+    ctx.drawImage(snap, anchor.x, anchor.y, anchor.w, anchor.h)
+  } else {
+    ctx.drawImage(snap, 0, 0, W, H)
+  }
   ctx.restore()
 }
 
@@ -1205,13 +1278,23 @@ export function drawCamcorderFilter(
 
   const params = resolveCamcorder(cfg, frame)
 
-  const g = getGL(W, H)
+  // Anchor to the picture: when an Image-visualizer artwork is on screen,
+  // the whole captured pipeline runs ON THE ARTWORK — its rect is the tape
+  // frame, so the colored chroma streaks seep in from the picture's own
+  // left/right vertical edges (effect.app's engine always renders the
+  // effect with the media filling the frame; a floating picture would
+  // otherwise push those edge artifacts onto the empty margins where
+  // nothing can show). Without an artwork (other styles, placeholder) the
+  // frame IS the tape, exactly as before.
+  const anchor = rc.imageVizRect && rc.imageVizRect.w >= 16 && rc.imageVizRect.h >= 16 ? rc.imageVizRect : null
+
+  const g = getGL(anchor ? anchor.workW : W, anchor ? anchor.workH : H)
   if (!g) {
     if (!camPathLogged) {
       camPathLogged = true
       console.info('[camcorder] CPU fallback active (WebGL2 unavailable)')
     }
-    drawCPU(rc, params)
+    drawCPU(rc, params, anchor)
     return
   }
   if (!camPathLogged) {
@@ -1219,12 +1302,18 @@ export function drawCamcorderFilter(
     console.info('[camcorder] GPU path active (WebGL2, 5 captured programs)')
   }
 
-  drawGL(g, rc, params)
+  drawGL(g, rc, params, anchor)
 
   ctx.save()
   ctx.globalAlpha = 1
   ctx.globalCompositeOperation = 'source-over'
   ctx.shadowBlur = 0
-  ctx.drawImage(g.canvas, 0, 0, W, H)
+  if (anchor) {
+    // The finished print stretches over the artwork's animated rect — the
+    // tape frame rides the picture's swell/sway/bob exactly.
+    ctx.drawImage(g.canvas, anchor.x, anchor.y, anchor.w, anchor.h)
+  } else {
+    ctx.drawImage(g.canvas, 0, 0, W, H)
+  }
   ctx.restore()
 }

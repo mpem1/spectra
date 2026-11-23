@@ -735,6 +735,38 @@ export function drawImageViz(rc: RenderContext, frame: AudioFrame, cfg: Visualiz
   const cx = W / 2
   const cy = H / 2
 
+  // The artwork's on-canvas footprint, for full-frame filters that anchor to
+  // the picture (the Camcorder's tape runs on this rect so effect.app's
+  // colored streaks seep in from the picture's own left/right vertical
+  // edges, the way their engine always renders the media filling the frame).
+  // The rect follows every motion term — swell, sway, bob, and the tilt
+  // folded into its axis-aligned bounds — clamped to the canvas. `workW`/
+  // `workH` carry the stable, un-animated base box: the pipeline's offscreen
+  // size stays constant so the GL bundle and CPU pool never churn with the
+  // beat (the animated crop just resamples into it — sub-1% squeeze,
+  // invisible under the tape's own resample).
+  const stillBase = (clamp(cfg.imgvizSize ?? 55, 10, 100) / 100) * H
+  const stillW = stillBase * (Number.isFinite(aspect) && aspect > 0 ? Math.min(4, aspect) : 1)
+  const cosT = Math.cos(Math.abs(tilt))
+  const sinT = Math.sin(Math.abs(tilt))
+  const bw = w * cosT + h * sinT
+  const bh = w * sinT + h * cosT
+  const ax0 = Math.max(0, Math.round(cx + sway - bw / 2))
+  const ay0 = Math.max(0, Math.round(cy + bob - bh / 2))
+  const ax1 = Math.min(W, Math.round(cx + sway + bw / 2))
+  const ay1 = Math.min(H, Math.round(cy + bob + bh / 2))
+  rc.imageVizRect =
+    ax1 - ax0 >= 16 && ay1 - ay0 >= 16
+      ? {
+          x: ax0,
+          y: ay0,
+          w: ax1 - ax0,
+          h: ay1 - ay0,
+          workW: Math.max(16, Math.round(stillW)),
+          workH: Math.max(16, Math.round(stillBase)),
+        }
+      : null
+
   ctx.save()
   ctx.translate(cx + sway, cy + bob)
   ctx.rotate(tilt)

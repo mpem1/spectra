@@ -1876,6 +1876,25 @@ export interface RenderContext {
    *  for interactivity on slow GPUs. The exporter never sets it, so exported
    *  frames always render at full fidelity. */
   interactive?: boolean
+  /** The on-screen footprint of the Image-visualizer artwork, recorded by
+   *  drawImageViz each frame (null whenever no artwork is drawn — other
+   *  styles, placeholder, still decoding, or the artwork lifted above the
+   *  filter chain by "layers stay colored"). Full-frame filters that
+   *  represent a physical medium anchor to it: the Camcorder's tape pipeline
+   *  runs on this rect so its edge artifacts (effect.app's colored streaks
+   *  seeping in from the picture's left/right vertical edges, the bottom
+   *  head-switch smear, the top tear) land on the picture's own edges, the
+   *  way their engine always renders the effect with the media filling the
+   *  frame. `workW`/`workH` carry the artwork's stable, un-animated size so
+   *  the pipeline's offscreen buffers never churn with the beat motion. */
+  imageVizRect?: {
+    x: number
+    y: number
+    w: number
+    h: number
+    workW: number
+    workH: number
+  } | null
 }
 
 /** Stateless, pure render call: same inputs → same pixels. */

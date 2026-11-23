@@ -41,7 +41,10 @@ export function CamcorderFilterSection() {
         for dial: the picture resamples onto a low-res tape grid, decodes its
         colors through a PAL-style chroma carrier, and picks up wobble, crease
         tears, tracking noise and frame jumps, all under the Backrooms
-        yellow-green grade with a faint blur haze.
+        yellow-green grade with a faint blur haze. With an Image-style
+        picture on screen the whole tape runs on the picture itself — the
+        colored streaks seep in from its own left and right edges, the
+        head-switch smear rides its bottom, exactly like the original.
       </p>
 
       {filter.enabled ? (
@@ -229,7 +232,8 @@ export function CamcorderFilterSection() {
             Kicks (Tape jolt) punch the tracking, crease and vertical jump
             past their dials. The Backrooms color grade ships baked at the
             preset&apos;s own zone settings; Grade strength fades it. Skipped
-            on transparent backgrounds so alpha recordings stay clean.
+            on transparent backgrounds so alpha recordings stay clean. With
+            no picture (other styles) the tape covers the whole frame.
           </p>
         </>
       ) : null}

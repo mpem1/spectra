@@ -110,6 +110,10 @@ function fillRoundRect(
 export function renderFrame(rc: RenderContext, frame: AudioFrame, config: StudioConfig): void {
   const S = rc.height / 720
   rc.ctx.save()
+  // Per-frame anchor state: the Image-visualizer artwork re-records its
+  // footprint below (drawImageViz); resetting here keeps a stale rect from a
+  // previous frame/style from feeding the filter chain.
+  rc.imageVizRect = null
   // Full-frame filter chain gate: transparent backgrounds skip them all so
   // alpha recordings stay clean.
   const transparent = config.background?.mode === 'transparent'
