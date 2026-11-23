@@ -1014,8 +1014,10 @@ export interface DotSphereFilterConfig {
   ripple: number
   /** Glow 0..1 — the soft halo radiating around every dot */
   glow: number
-  /** Backdrop 0..1 — the dark space painted behind the ball (100% =
-   *  the full reference look, lower lets the picture shine through) */
+  /** Backdrop 0..1 — how far the scene (background picture, visualizer)
+   *  sinks into the dark toward the screen edges behind the ball (100% =
+   *  the full reference look, lower keeps the scene brighter out to the
+   *  edges; the bend itself is baked to the reference) */
   backdrop: number
   /** Dot colors — 'neon' = the fixed pink/blue LED palette (the
    *  reference look), 'picture' = sampled from the finished frame */

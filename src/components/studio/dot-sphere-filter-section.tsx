@@ -8,15 +8,15 @@ import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/
 import { cn } from '@/lib/utils'
 
 /**
- * Dot Sphere card — the picture bends away and fades toward the screen
- * edges behind a fully visible centered ball (your image-visualizer PNG,
- * album art or Background picture), while a 3D LED ball floats in the
- * center: a grid of glowing dots streaming horizontally around it (they
+ * Dot Sphere card — a true filter over the live scene: everything on the
+ * frame (background picture, visualizer, every layer below) bends away
+ * and fades toward the screen edges behind a fully visible centered LED
+ * ball, while a grid of glowing dots streams horizontally around it (they
  * swell toward the viewer and squeeze into vertical ellipses rounding the
- * limb), wavy neon bands weaving over the surface. Neon gives the classic
- * pink/blue LED palette; Picture rebuilds the actual image as dot colors.
- * Deterministic, so every export bakes the identical look; skipped on
- * transparent backgrounds.
+ * limb) and wavy neon bands weave over the surface. Neon gives the
+ * classic pink/blue LED palette; Picture rebuilds the actual image as dot
+ * colors. Deterministic, so every export bakes the identical look;
+ * skipped on transparent backgrounds.
  */
 export function DotSphereFilterSection() {
   const filter = useStudioStore((s) => s.config.dotSphereFilter)
@@ -39,12 +39,13 @@ export function DotSphereFilterSection() {
         />
       </div>
       <p className="text-[11px] leading-snug text-zinc-600">
-        LED ball floating in the center while the picture around it bends
-        away and fades toward the screen edges — and on the ball a grid of
-        glowing dots streams horizontally around it, squeezed at the edges
-        like a real dot ball, while wavy neon bands weave over the surface.
-        Neon gives the classic pink/blue LED palette; Picture rebuilds the
-        actual image as dot colors.
+        A filter over your whole scene — background picture and visualizer
+        keep playing, bent away and fading toward the screen edges — while
+        an LED ball floats in the center with a grid of glowing dots
+        streaming horizontally around it, squeezed at the edges like a real
+        dot ball, and wavy neon bands weave over the surface. Neon gives
+        the classic pink/blue LED palette; Picture rebuilds the scene as
+        dot colors.
       </p>
 
       {filter.enabled ? (
@@ -194,12 +195,12 @@ export function DotSphereFilterSection() {
           <p className="text-[10px] leading-snug text-zinc-600">
             The dots stream around the ball with the song (flow speed above,
             negative reverses). Music ripple lets every row ride its own
-            frequency band. Your picture (the image-visualizer PNG, the
-            album art or the Background tab's picture) always bends away
-            toward the screen edges and sinks into the dark behind the ball;
-            the wave closes on itself in whole cycles, so the rotation never
-            shows a seam. Skipped on transparent backgrounds so alpha
-            recordings stay clean.
+            frequency band. Your whole scene — background, visualizer and
+            all — bends away toward the screen edges and sinks into the
+            dark behind the ball (Backdrop sets how far it sinks); the wave
+            closes on itself in whole cycles, so the rotation never shows a
+            seam. Skipped on transparent backgrounds so alpha recordings
+            stay clean.
           </p>
         </>
       ) : null}

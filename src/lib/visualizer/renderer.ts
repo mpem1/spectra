@@ -274,22 +274,13 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // Cubify): one global light direction bevels every averaged-color cell.
   // Before the dither, which stays the outermost poster layer.
   drawCubifyFilter(rc, config.cubifyFilter, frame, transparent)
-  // Dot sphere — the picture bends away and fades toward the screen edges
+  // Dot sphere — the scene bends away and fades toward the screen edges
   // while a 3D LED ball floats in the center: rows of glowing dots stream
   // horizontally around it and wavy neon bands weave over the surface (the
-  // bent backdrop uses the image-visualizer PNG first, then the album art,
-  // then the Background tab's picture — whichever the project actually has).
-  // Before the dither, which stays the outermost poster layer.
-  drawDotSphereFilter(
-    rc,
-    config.dotSphereFilter,
-    frame,
-    transparent,
-    config.visualizer.imgvizSrc ||
-      config.disc.imageSrc ||
-      (config.background.mode === 'image' ? config.background.imageSrc : '') ||
-      '',
-  )
+  // backdrop is the scene itself — the background and the visualizer keep
+  // playing, bent). Before the dither, which stays the outermost poster
+  // layer.
+  drawDotSphereFilter(rc, config.dotSphereFilter, frame, transparent)
   // Retro dither last — it re-quantizes the finished picture (glitches
   // included) into chunky Bayer dot patterns, so it always reads as the
   // outermost poster layer.

@@ -5,20 +5,23 @@
  * through a wave field fixed to the viewer, which weaves the rows into
  * wavy neon bands.
  *
- * The backdrop: the artwork (the image-visualizer PNG, falling back to
- * the album art, then the Background tab's picture) fills the frame
- * behind the ball through a radial fisheye bulge — the center stays put,
+ * The backdrop: the SCENE ITSELF — the background picture, the
+ * visualizer and every layer drawn before this filter — fills the frame
+ * behind the ball through a radial fisheye bulge: the center stays put,
  * straight lines curve and the picture compresses as it bends toward the
- * screen edges — then sinks into the dark through a vignette. The bend
- * and the fade are BAKED (no dials — the look is the filter's identity,
- * tuned to the reference, not a control to babysit). One tiny WebGL pass
- * (a fullscreen quad, one texture, zero per-pixel CPU reads); devices
- * without WebGL draw the picture flat under the same vignette (the bend
- * needs the GPU pass). Sampling beyond the picture's edges MIRRORS it, so
- * the far corners the bulge reaches never smear — and the vignette owns
- * them anyway. A solid disk of the backdrop's near-black sits under the
- * ball so the LED face stays solid against the picture. Without artwork
- * the classic dark LED space remains ("Backdrop" dial).
+ * screen edges, then sinks into the dark through a vignette. This is a
+ * filter over the live scene, not a replacement for it — the background
+ * and the visualizer keep playing, bent, instead of being swallowed.
+ * The bend is baked (the look is the filter's identity, tuned to the
+ * reference, not a control to babysit); the "Backdrop" dial sets how far
+ * the scene sinks toward the edges (100% = the full reference look).
+ * One tiny WebGL pass (a fullscreen quad, one texture upload per frame,
+ * zero per-pixel CPU reads); devices without WebGL draw the scene flat
+ * under the same vignette (the bend needs the GPU pass). Sampling beyond
+ * the frame's edges MIRRORS it, so the far corners the bulge reaches
+ * never smear — and the vignette owns them anyway. A solid disk of the
+ * backdrop's near-black sits under the ball so the LED face stays solid
+ * against the bright scene behind it.
  *
  * Geometry (pure canvas math — no GL for the dots, no per-pixel reads):
  *   · the ball is a lat/long grid: `rows` latitude circles, each carrying
@@ -66,7 +69,6 @@
  */
 import type { AudioFrame, DotSphereFilterConfig, RenderContext } from './types'
 import { beatAmount, clamp01, getWork, resetWork } from './filter-utils'
-import { getBackgroundImage } from './image-cache'
 
 /* ------------------------------ neon color LUT ------------------------------ */
 
@@ -122,11 +124,12 @@ const SQUSH_MIN = 0.24
 /** The backdrop color the vignette and the ball face sink into (#050109).
  *  Kept in one place so the GL pass, the CPU vignette and the disk agree. */
 const BACKDROP_RGB = { r: 5, g: 1, b: 9 }
-/** The baked backdrop treatment — the reference bends the picture toward
- *  the screen edges and sinks it into the dark there. Deliberately NOT
- *  dials: this is the look the filter promises, tuned once to the
- *  reference, so the picture always bends and fades without setup. */
+/** The baked backdrop bend — the reference curves the scene toward the
+ *  screen edges. Deliberately NOT a dial: this is the look the filter
+ *  promises, tuned once to the reference. */
 const BG_BEND = 0.6
+/** The baked edge fade at Backdrop 100% — how far the scene sinks into
+ *  the dark toward the screen edges (the dial scales it). */
 const BG_FADE = 0.85
 
 export function drawDotSphereFilter(
@@ -134,7 +137,6 @@ export function drawDotSphereFilter(
   cfg: DotSphereFilterConfig | undefined,
   frame: Pick<AudioFrame, 'bass' | 'freq' | 'styleTime'>,
   transparent: boolean,
-  artSrc?: string,
 ): void {
   if (!cfg?.enabled || transparent) return
   const { ctx, width: W, height: H } = rc
@@ -204,50 +206,29 @@ export function drawDotSphereFilter(
   const out = getWork('dotsphere:out', W, H)
   const octx = resetWork(out.getContext('2d')!)
 
-  // The bent picture backdrop — the artwork fills the frame behind the
-  // ball, curving away and fading toward the screen edges (the reference
-  // look). No art (or no WebGL) falls back gracefully below.
-  let artOn = false
-  if (artSrc) {
-    const img = getBackgroundImage(artSrc)
-    if (img) {
-      const g = getBgGL(W, H)
-      if (g) {
-        uploadBgTexture(g, artSrc, img)
-        if (g.texSrc === artSrc) {
-          // Cover-fit: the picture fills the screen, cropped not stretched.
-          const iw = img.naturalWidth || img.width
-          const ih = img.naturalHeight || img.height
-          const imgA = iw > 0 && ih > 0 ? iw / ih : W / H
-          const scrA = W / H
-          const fitX = imgA > scrA ? scrA / imgA : 1
-          const fitY = imgA > scrA ? 1 : imgA / scrA
-          drawBgGL(g, W, H, BG_BEND, BG_FADE, fitX, fitY)
-          octx.drawImage(g.canvas, 0, 0, W, H)
-          artOn = true
-        }
-      } else {
-        drawBentBgCPU(octx, img, W, H, BG_FADE)
-        artOn = true
-      }
-    }
+  // The bent backdrop — the SCENE ITSELF (background, visualizer, every
+  // layer drawn so far) fills the frame behind the ball, curving away and
+  // fading toward the screen edges (the reference look), so the background
+  // and the visualizer keep playing — bent — instead of being swallowed.
+  // The Backdrop dial scales how far the scene sinks into the dark.
+  const fadeEff = clamp01(BG_FADE * backdrop)
+  const g = getBgGL(W, H)
+  if (g) {
+    uploadFrame(g, base)
+    drawBgGL(g, W, H, BG_BEND, fadeEff)
+    octx.drawImage(g.canvas, 0, 0, W, H)
+  } else {
+    // WebGL-less devices: the scene flat under the same vignette (the
+    // bend needs the GPU pass — documented in the card copy).
+    drawBentBgCPU(octx, base, W, H, fadeEff)
   }
-  if (!artOn && backdrop > 0.001) {
-    // The classic dark LED space (hidden whenever the picture draws).
-    octx.globalAlpha = backdrop
-    octx.fillStyle = '#050109'
-    octx.fillRect(0, 0, W, H)
-    octx.globalAlpha = 1
-  }
-  if (artOn) {
-    // The solid ball face — a disk of the backdrop's near-black so the LED
-    // dots stay legible over the bright picture behind the ball.
-    octx.globalAlpha = 1
-    octx.beginPath()
-    octx.arc(cx, cy, rs, 0, TAU)
-    octx.fillStyle = '#050109'
-    octx.fill()
-  }
+  // The solid ball face — a disk of the backdrop's near-black so the LED
+  // dots stay legible over the bright scene behind the ball.
+  octx.globalAlpha = 1
+  octx.beginPath()
+  octx.arc(cx, cy, rs, 0, TAU)
+  octx.fillStyle = '#050109'
+  octx.fill()
 
   octx.globalCompositeOperation = 'lighter'
 
@@ -354,22 +335,23 @@ void main() {
 }
 `
 
-/* The fisheye bulge: a pixel at screen radius r samples the picture at
+/* The fisheye bulge: a pixel at screen radius r samples the SCENE at
  * f(r) = tan(r·A)/tan(A) — the identity at A=0, and for A>0 the tangent's
- * convexity keeps f(r) < r on (0,1), so the center is magnified, straight
- * lines curve and the picture compresses as it bends toward the screen
- * edges (f(1) = 1 pins the picture's own edge to the screen edge). Beyond
- * the screen's short side (r > 1, the corners) the sample radius is capped
- * at 2.0 so tan never crosses its pole, and the sample coordinates MIRROR
- * past the picture's edges — no clamped smear. The vignette then sinks
- * everything past ~30% of the half-short side into the backdrop dark. */
+ * convexity keeps f(r) < r on (0,1), so the center stays put, straight
+ * lines curve and the scene compresses as it bends toward the screen
+ * edges. Beyond the screen's short side (r > 1, the corners) the sample
+ * radius is capped at 2.0 so tan never crosses its pole, and the sample
+ * coordinates MIRROR past the frame's edges — no clamped smear. The
+ * vignette then sinks everything past ~30% of the half-short side into
+ * the backdrop dark. The texture is the finished frame so far (uploaded
+ * once per frame), so the background and the visualizer stay alive under
+ * the bulge. */
 const BG_FRAG = `
 precision highp float;
 varying vec2 vPos;
 uniform vec2 uRes;
 uniform float uBend;
 uniform float uFade;
-uniform vec2 uFit;
 uniform sampler2D uTex;
 
 void main() {
@@ -381,8 +363,7 @@ void main() {
   float A = uBend * 0.9;
   float rc = min(r, 2.0);
   float f = A > 0.001 ? tan(rc * A) / tan(A) : rc;
-  vec2 su = (uRes * 0.5 + dir * (f * hm)) / uRes;
-  vec2 uv = 0.5 + (su - 0.5) * uFit;
+  vec2 uv = (uRes * 0.5 + dir * (f * hm)) / uRes;
   vec2 m = 1.0 - abs(1.0 - mod(uv, 2.0));
   vec3 img = texture2D(uTex, m).rgb;
   float vig = smoothstep(0.30, 1.15, r) * uFade;
@@ -396,11 +377,8 @@ interface BgGL {
   gl: WebGLRenderingContext
   program: WebGLProgram
   tex: WebGLTexture
-  /** The art src currently uploaded — the texture refreshes only when the
-   *  artwork changes (never per frame). */
-  texSrc: string
   loc: Partial<
-    Record<'uRes' | 'uBend' | 'uFade' | 'uFit' | 'uTex', WebGLUniformLocation | null>
+    Record<'uRes' | 'uBend' | 'uFade' | 'uTex', WebGLUniformLocation | null>
   >
   w: number
   h: number
@@ -458,7 +436,7 @@ function getBgGL(w: number, h: number): BgGL | null {
     gl.enableVertexAttribArray(aPos)
     gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0)
 
-    // Artwork texture: LINEAR + CLAMP_TO_EDGE (NPOT-legal) — the shader's
+    // Scene texture: LINEAR + CLAMP_TO_EDGE (NPOT-legal) — the shader's
     // mirror wrap keeps every sample inside [0,1] anyway.
     const tex = gl.createTexture()
     gl.bindTexture(gl.TEXTURE_2D, tex)
@@ -474,12 +452,10 @@ function getBgGL(w: number, h: number): BgGL | null {
       gl,
       program,
       tex,
-      texSrc: '',
       loc: {
         uRes: gl.getUniformLocation(program, 'uRes'),
         uBend: gl.getUniformLocation(program, 'uBend'),
         uFade: gl.getUniformLocation(program, 'uFade'),
-        uFit: gl.getUniformLocation(program, 'uFit'),
         uTex: gl.getUniformLocation(program, 'uTex'),
       },
       w: 0,
@@ -491,17 +467,18 @@ function getBgGL(w: number, h: number): BgGL | null {
   }
 }
 
-function uploadBgTexture(g: BgGL, src: string, img: HTMLImageElement): void {
-  if (g.texSrc === src) return
+/** Upload the current scene into the texture — the frame changes every
+ *  frame, so this runs once per frame (one texture upload, no other GL
+ *  churn; the same cost shape as the Cubify pass). */
+function uploadFrame(g: BgGL, src: HTMLCanvasElement): void {
   const { gl } = g
   try {
     gl.bindTexture(gl.TEXTURE_2D, g.tex)
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
-    g.texSrc = src
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src)
   } catch {
-    // Broken/undecodable artwork — texSrc stays put, the backdrop skips
-    // this frame and the classic dark LED space shows instead.
+    // A failed upload keeps the previous frame's texture in place — the
+    // next frame tries again; nothing else in the pipeline is affected.
   }
 }
 
@@ -511,8 +488,6 @@ function drawBgGL(
   h: number,
   bend: number,
   fade: number,
-  fitX: number,
-  fitY: number,
 ): void {
   const { gl, loc } = g
   if (g.w !== w || g.h !== h) {
@@ -528,32 +503,25 @@ function drawBgGL(
   gl.uniform2f(loc.uRes!, w, h)
   gl.uniform1f(loc.uBend!, bend)
   gl.uniform1f(loc.uFade!, fade)
-  gl.uniform2f(loc.uFit!, fitX, fitY)
   if (loc.uTex) gl.uniform1i(loc.uTex, 0)
   gl.clearColor(0, 0, 0, 0)
   gl.clear(gl.COLOR_BUFFER_BIT)
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
 }
 
-/* --------------------- bent picture backdrop (CPU fallback) -------------------- */
+/* --------------------- bent scene backdrop (CPU fallback) --------------------- */
 
-/** WebGL-less devices: the picture cover-fitted flat under the same
- *  vignette (the bend needs the GPU pass — documented in the UI copy).
- *  Zero per-pixel reads: one drawImage + one radial gradient. */
+/** WebGL-less devices: the scene drawn flat under the same vignette (the
+ *  bend needs the GPU pass — documented in the card copy). Zero per-pixel
+ *  reads: one drawImage + one radial gradient. */
 function drawBentBgCPU(
   octx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  src: HTMLCanvasElement,
   W: number,
   H: number,
   fade: number,
 ): void {
-  const iw = img.naturalWidth || img.width
-  const ih = img.naturalHeight || img.height
-  if (iw < 1 || ih < 1) return
-  const s = Math.max(W / iw, H / ih)
-  const dw = iw * s
-  const dh = ih * s
-  octx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh)
+  octx.drawImage(src, 0, 0, W, H)
   if (fade > 0.001) {
     const hm = Math.min(W, H) / 2
     const g = octx.createRadialGradient(W / 2, H / 2, hm * 0.3, W / 2, H / 2, hm * 1.15)
