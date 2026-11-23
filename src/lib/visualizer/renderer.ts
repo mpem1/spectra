@@ -42,7 +42,7 @@ import { drawPolaroidFilter } from './polaroid-filter'
 import { drawPhosphorFilter } from './phosphor-filter'
 import { drawContourFilter } from './contour-filter'
 import { drawCubifyFilter } from './cubify-filter'
-import { drawDotSphereFilter } from './dot-sphere-filter'
+import { drawDotSphereStyle } from './dot-sphere-style'
 import { getWork, resetWork } from './filter-utils'
 
 /* --------------------------------- Utilities -------------------------------- */
@@ -173,14 +173,14 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
     if (config.pulseImage?.enabled && config.pulseImage.layer === 'back') {
       drawPulseImage(target, frame, config.pulseImage, config.visualizer.gradient, S)
     }
-    if (vizBehind) drawVisualizer(target, frame, config.visualizer, S)
+    if (vizBehind) drawVisualizer(target, frame, config.visualizer, S, transparent)
     // Album art layer (square cover + spinning vinyl/CD) — above the
     // visualizer, below the text overlays. Optional chaining keeps very old
     // saves (pre-disc) renderable even before the store merge runs.
     if (config.disc?.enabled) {
       drawDisc(target, frame, config.disc)
     }
-    if (!vizBehind) drawVisualizer(target, frame, config.visualizer, S)
+    if (!vizBehind) drawVisualizer(target, frame, config.visualizer, S, transparent)
     // Pulse image in front of the bars & vinyl (the default placement).
     if (config.pulseImage?.enabled && config.pulseImage.layer !== 'back') {
       drawPulseImage(target, frame, config.pulseImage, config.visualizer.gradient, S)
@@ -274,13 +274,6 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // Cubify): one global light direction bevels every averaged-color cell.
   // Before the dither, which stays the outermost poster layer.
   drawCubifyFilter(rc, config.cubifyFilter, frame, transparent)
-  // Dot sphere — the scene bends away and fades toward the screen edges
-  // while a 3D LED ball floats in the center: rows of glowing dots stream
-  // horizontally around it and wavy neon bands weave over the surface (the
-  // backdrop is the scene itself — the background and the visualizer keep
-  // playing, bent). Before the dither, which stays the outermost poster
-  // layer.
-  drawDotSphereFilter(rc, config.dotSphereFilter, frame, transparent)
   // Retro dither last — it re-quantizes the finished picture (glitches
   // included) into chunky Bayer dot patterns, so it always reads as the
   // outermost poster layer.
@@ -572,6 +565,7 @@ function drawVisualizer(
   frame: AudioFrame,
   cfg: VisualizerConfig,
   S: number,
+  transparent: boolean,
 ): void {
   const { ctx, width: W, height: H } = rc
   // Layer transparency — the Style tab's Transparency dial fades the ENTIRE
@@ -642,6 +636,11 @@ function drawVisualizer(
     }
     case 'sphere':
       drawSphere(rc, frame, cfg, S)
+      break
+    case 'dotsphere':
+      // The LED ball over its bent-picture backdrop. Not a strip: it skips
+      // the vertical-orientation branch (same as the image style below).
+      drawDotSphereStyle(rc, frame, cfg, transparent)
       break
     case 'imgviz':
       // The custom PNG style — centered artwork + inner spectrum mask, glow

@@ -33,7 +33,7 @@ export type GradientPresetId = 'sunset' | 'aurora' | 'ember' | 'neon' | 'mono'
 
 /* --------------------------------- Visualizer -------------------------------- */
 
-export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'perspective' | 'terrain' | 'sphere' | 'serato' | 'imgviz'
+export type VisualizerStyle = 'bars' | 'wave' | 'radial' | 'particles' | 'blob' | 'grid' | 'ribbon' | 'perspective' | 'terrain' | 'sphere' | 'dotsphere' | 'serato' | 'imgviz'
 export type MirrorMode = 'none' | 'mirror' | 'center'
 
 export interface VisualizerConfig {
@@ -147,6 +147,54 @@ export interface VisualizerConfig {
    *  its own frequency band's energy (the bass equator surges, the treble
    *  poles crackle). 0 = the smooth pulsing shell, dots glued to the surface. */
   sphereQuills: number
+  /** Dot Sphere style — ball radius as a multiple of the half-short side
+   *  (0.75 = the whole ball visible in the center like the reference;
+   *  above ~0.94 the poles crop past the frame edges) */
+  dotSphereSize: number
+  /** Dot Sphere style — the latitude circles of the dot grid (12..80) */
+  dotSphereRows: number
+  /** Dot Sphere style — the dot radius multiplier (0.4..2.2) */
+  dotSphereDotSize: number
+  /** Dot Sphere style — flow speed in radians/second: the spin that carries
+   *  the dots horizontally around the ball (negative reverses the direction) */
+  dotSphereFlow: number
+  /** Dot Sphere style — wave amount 0..1: how far the rows swing vertically
+   *  (the wavy band displacement, in row spacings) */
+  dotSphereWave: number
+  /** Dot Sphere style — WHOLE wave cycles around the ball's longitude (1..10,
+   *  the dial steps integers). Must be an integer: a wave that doesn't close
+   *  on itself tears at the longitude origin and the tear sweeps around the
+   *  ball as it rotates (the visible seam). The renderer rounds anyway, so
+   *  older fractional values heal too. */
+  dotSphereWaveScale: number
+  /** Dot Sphere style — wave speed: how fast the wave field travels
+   *  (rad/s of phase) */
+  dotSphereWaveSpeed: number
+  /** Dot Sphere style — band twist 0..3: wave phase shift from row to row
+   *  (the woven diagonal drift of the bands) */
+  dotSphereTwist: number
+  /** Dot Sphere style — music ripple 0..1: how much each latitude row's
+   *  brightness and dot size ride its own spectrum band (bottom rows =
+   *  low end) */
+  dotSphereRipple: number
+  /** Dot Sphere style — the soft halo radiating around every dot, 0..1 */
+  dotSphereGlow: number
+  /** Dot Sphere style — backdrop 0..1: how far the picture behind the ball
+   *  sinks into the dark toward the screen edges (100% = the full reference
+   *  look, lower keeps the scene brighter out to the edges; the bend itself
+   *  is baked to the reference) */
+  dotSphereBackdrop: number
+  /** Dot Sphere style — dot colors: 'neon' = the fixed pink/blue LED
+   *  palette (the reference look), 'picture' = sampled from the picture
+   *  behind the ball */
+  dotSphereColors: 'neon' | 'picture'
+  /** Dot Sphere style — react to beat: the wave swells and the dots flare
+   *  on the song's low end (driven by frame.bass, additive, resting exactly
+   *  at the dialed look between kicks) */
+  dotSphereBeat: boolean
+  /** Dot Sphere style — how hard the beat swell hits, 0..1 (only matters
+   *  when dotSphereBeat is on) */
+  dotSphereBeatStrength: number
   /** Serato style — seconds of the track visible across the strip (4..30).
    *  The turntable needle sits dead center and the whole-song waveform
    *  scrolls under it; this dial zooms the strip in and out. */
@@ -971,69 +1019,6 @@ export interface CubifyFilterConfig {
 }
 
 /**
- * Dot Sphere filter — the whole picture re-materializes as a 3D LED ball:
- * a latitude/longitude grid of glowing dots wrapped over a sphere in
- * perspective (round dots face-on, vertical ellipses rounding the limb)
- * that stream horizontally around the ball through a wave field fixed to
- * the viewer — bright wavy pink/blue bands weave over the surface while
- * the dots travel through them. 'neon' paints the reference LED palette
- * (no pixel reads at all); 'picture' samples the finished frame so the
- * dots carry the picture's own colors. Deterministic (no randomness —
- * same frame in, same pixels out), so exports match the preview
- * frame-exactly. Skipped on transparent backgrounds.
- */
-export interface DotSphereFilterConfig {
-  enabled: boolean
-  /** Sphere size — the radius as a multiple of the half-short side
-   *  (0.75 = the whole ball visible in the center like the reference;
-   *  above ~0.94 the poles crop past the frame edges) */
-  size: number
-  /** Dot rows — the latitude circles of the dot grid (12..80) */
-  rows: number
-  /** Dot size — the dot radius multiplier (0.4..2.2) */
-  dotSize: number
-  /** Flow speed in radians/second — the spin that carries the dots
-   *  horizontally around the ball (negative reverses the direction) */
-  flowSpeed: number
-  /** Wave amount 0..1 — how far the rows swing vertically (the wavy
-   *  band displacement, in row spacings) */
-  waveAmount: number
-  /** Wave scale — WHOLE wave cycles around the ball's longitude (1..10,
-   *  the dial steps integers). Must be an integer: a wave that doesn't
-   *  close on itself tears at the longitude origin and the tear sweeps
-   *  around the ball as it rotates (the visible seam). The renderer
-   *  rounds anyway, so old saves with fractional values heal too. */
-  waveScale: number
-  /** Wave speed — how fast the wave field travels (rad/s of phase) */
-  waveSpeed: number
-  /** Band twist 0..3 — wave phase shift from row to row (the woven
-   *  diagonal drift of the bands) */
-  bandTwist: number
-  /** Music ripple 0..1 — how much each latitude row's brightness and
-   *  dot size ride its own spectrum band (bottom rows = low end) */
-  ripple: number
-  /** Glow 0..1 — the soft halo radiating around every dot */
-  glow: number
-  /** Backdrop 0..1 — how far the scene (background picture, visualizer)
-   *  sinks into the dark toward the screen edges behind the ball (100% =
-   *  the full reference look, lower keeps the scene brighter out to the
-   *  edges; the bend itself is baked to the reference) */
-  backdrop: number
-  /** Dot colors — 'neon' = the fixed pink/blue LED palette (the
-   *  reference look), 'picture' = sampled from the finished frame */
-  colorMode: 'neon' | 'picture'
-  /** Mix 0..1 — how much of the frame the ball print takes over
-   *  (below 1 the untouched frame fades back over it) */
-  blend: number
-  /** React to beat — the wave swells and the dots flare on the song's
-   *  low end (driven by frame.bass, additive, resting exactly at the
-   *  dialed look between kicks) */
-  beatReactive: boolean
-  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
-  beatStrength: number
-}
-
-/**
  * Phosphor monitor filter — the lo-fi sci-fi video-tube look: the whole
  * picture is repainted as glowing vertical lines or columns of short
  * horizontal dashes (one sample per cell, tone → shade of the picked
@@ -1823,9 +1808,6 @@ export interface StudioConfig {
   /** Full-frame cubify post-pass (the picture resampled into glossy 3D
    *  cube tiles — the effect.app Cubify effect) */
   cubifyFilter: CubifyFilterConfig
-  /** Full-frame dot-sphere post-pass (the picture re-materialized as a
-   *  3D LED ball of streaming, waving dot rows) */
-  dotSphereFilter: DotSphereFilterConfig
   /** How the moving layers interact with the full-frame filter chain */
   layers: LayersConfig
   /** Imported font library — shared by the lyrics and the title card */
@@ -2110,6 +2092,22 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     terrainMirrorDrop: 0,
     sphereSpin: 0.35,
     sphereQuills: 0.6,
+    // The reference look: the whole ball visible in the center, the
+    // picture bending away and fading toward the screen edges around it.
+    dotSphereSize: 0.75,
+    dotSphereRows: 56,
+    dotSphereDotSize: 1,
+    dotSphereFlow: 0.6,
+    dotSphereWave: 0.6,
+    dotSphereWaveScale: 5,
+    dotSphereWaveSpeed: 0.9,
+    dotSphereTwist: 0.9,
+    dotSphereRipple: 0.35,
+    dotSphereGlow: 0.55,
+    dotSphereBackdrop: 1,
+    dotSphereColors: 'neon',
+    dotSphereBeat: false,
+    dotSphereBeatStrength: 0.5,
     seratoWindow: 12,
     seratoHeight: 0.62,
     seratoColors: 'rainbow',
@@ -2562,26 +2560,6 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     speedX: -0.34,
     speedY: 0.34,
     dispersion: 0.75,
-    blend: 1,
-    beatReactive: false,
-    beatStrength: 0.5,
-  },
-  dotSphereFilter: {
-    enabled: false,
-    // The reference look: the whole ball visible in the center, the
-    // picture bending away and fading toward the screen edges around it.
-    size: 0.75,
-    rows: 56,
-    dotSize: 1,
-    flowSpeed: 0.6,
-    waveAmount: 0.6,
-    waveScale: 5,
-    waveSpeed: 0.9,
-    bandTwist: 0.9,
-    ripple: 0.35,
-    glow: 0.55,
-    backdrop: 1,
-    colorMode: 'neon',
     blend: 1,
     beatReactive: false,
     beatStrength: 0.5,

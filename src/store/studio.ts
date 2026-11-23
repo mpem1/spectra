@@ -37,7 +37,6 @@ import {
   type PhosphorFilterConfig,
   type ContourFilterConfig,
   type CubifyFilterConfig,
-  type DotSphereFilterConfig,
 } from '@/lib/visualizer/types'
 import {
   exportMP4,
@@ -144,7 +143,6 @@ type StudioState = {
   patchContourFilter: (partial: Partial<ContourFilterConfig>) => void
   /** Patches config.cubifyFilter (the glossy cube-tile print) */
   patchCubifyFilter: (partial: Partial<CubifyFilterConfig>) => void
-  patchDotSphereFilter: (partial: Partial<DotSphereFilterConfig>) => void
   /** Patches config.layers (the layers-vs-filters options) */
   patchLayers: (partial: Partial<LayersConfig>) => void
   /** Adds an imported font file to the shared lyrics/title library */
@@ -338,11 +336,6 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, cubifyFilter: { ...s.config.cubifyFilter, ...partial } },
     })),
 
-  patchDotSphereFilter: (partial) =>
-    set((s) => ({
-      config: { ...s.config, dotSphereFilter: { ...s.config.dotSphereFilter, ...partial } },
-    })),
-
   patchLayers: (partial) =>
     set((s) => ({
       config: { ...s.config, layers: { ...s.config.layers, ...partial } },
@@ -405,8 +398,34 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
   setActiveTab: (activeTab) => set({ activeTab }),
   setAudioMeta: (audioMeta) => set({ audioMeta }),
   setProjectId: (projectId) => set({ projectId }),
-  setConfig: (config) =>
-    set({
+  setConfig: (config) => {
+    // The retired Dot Sphere FILTER graduates into the Dot Sphere STYLE:
+    // old saves that tuned the filter's dials carry them over (the same
+    // look re-renders when the user picks the style in the grid). The
+    // style itself is NOT auto-switched — the user picks it like any
+    // other style. The cast is deliberate: the field only exists in saves
+    // made before the filter moved to the Style tab.
+    const legacyDotSphere = (
+      config as StudioConfig & {
+        dotSphereFilter?: {
+          size: number
+          rows: number
+          dotSize: number
+          flowSpeed: number
+          waveAmount: number
+          waveScale: number
+          waveSpeed: number
+          bandTwist: number
+          ripple: number
+          glow: number
+          backdrop: number
+          colorMode: 'neon' | 'picture'
+          beatReactive: boolean
+          beatStrength: number
+        }
+      }
+    ).dotSphereFilter
+    return set({
       // Merge over the factory defaults so configs saved by older versions
       // (missing newer fields like background.imageSrc / shade) still load.
       config: {
@@ -422,6 +441,29 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
               ? 'perspective'
               : ((config.visualizer as VisualizerConfig | undefined)?.style ??
                 DEFAULT_STUDIO_CONFIG.visualizer.style),
+          // The retired Dot Sphere FILTER graduates into the Dot Sphere
+          // STYLE: old saves that tuned the filter's dials carry them over
+          // (the same look re-renders when the user picks the style). The
+          // style itself is NOT auto-switched — the user picks it in the
+          // grid like any other style.
+          ...(legacyDotSphere
+            ? {
+                dotSphereSize: legacyDotSphere.size,
+                dotSphereRows: legacyDotSphere.rows,
+                dotSphereDotSize: legacyDotSphere.dotSize,
+                dotSphereFlow: legacyDotSphere.flowSpeed,
+                dotSphereWave: legacyDotSphere.waveAmount,
+                dotSphereWaveScale: legacyDotSphere.waveScale,
+                dotSphereWaveSpeed: legacyDotSphere.waveSpeed,
+                dotSphereTwist: legacyDotSphere.bandTwist,
+                dotSphereRipple: legacyDotSphere.ripple,
+                dotSphereGlow: legacyDotSphere.glow,
+                dotSphereBackdrop: legacyDotSphere.backdrop,
+                dotSphereColors: legacyDotSphere.colorMode,
+                dotSphereBeat: legacyDotSphere.beatReactive,
+                dotSphereBeatStrength: legacyDotSphere.beatStrength,
+              }
+            : {}),
         },
         background: { ...DEFAULT_STUDIO_CONFIG.background, ...config.background },
         lyrics: { ...DEFAULT_STUDIO_CONFIG.lyrics, ...config.lyrics },
@@ -446,7 +488,6 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         phosphorFilter: { ...DEFAULT_STUDIO_CONFIG.phosphorFilter, ...config.phosphorFilter },
         contourFilter: { ...DEFAULT_STUDIO_CONFIG.contourFilter, ...config.contourFilter },
         cubifyFilter: { ...DEFAULT_STUDIO_CONFIG.cubifyFilter, ...config.cubifyFilter },
-        dotSphereFilter: { ...DEFAULT_STUDIO_CONFIG.dotSphereFilter, ...config.dotSphereFilter },
         // Layers-vs-filters options: new saves carry their own section; old
         // saves graduate the halftone's flip-gated "Layers stay colored".
         layers: resolveLayersConfig(config),
@@ -458,7 +499,8 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
             )
           : [],
       },
-    }),
+    })
+  },
 
   setLoop: (loop) => {
     set({ loop })

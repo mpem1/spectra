@@ -10,7 +10,6 @@ import { AnaglyphFilterSection } from '@/components/studio/anaglyph-filter-secti
 import { PhosphorFilterSection } from '@/components/studio/phosphor-section'
 import { ContourFilterSection } from '@/components/studio/contour-filter-section'
 import { CubifyFilterSection } from '@/components/studio/cubify-filter-section'
-import { DotSphereFilterSection } from '@/components/studio/dot-sphere-filter-section'
 import { DitherFilterSection } from '@/components/studio/dither-filter-section'
 import { LayersSection } from '@/components/studio/layers-section'
 
@@ -65,11 +64,6 @@ export function FiltersTab() {
       {/* Cubify — the picture rebuilt as big glossy 3D cubes (averaged
           colors with a beveled face under one light) */}
       <CubifyFilterSection />
-
-      {/* Dot sphere — the picture re-materialized as a 3D LED ball: rows
-          of glowing dots stream horizontally around a sphere while wavy
-          neon bands weave over the surface */}
-      <DotSphereFilterSection />
 
       {/* Retro dither — chunky Bayer dot patterns (glowing blue poster,
           1-bit B&W, retro color, or custom duotone) with a bright-dot bloom */}

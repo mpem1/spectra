@@ -1,27 +1,39 @@
 /**
- * Dot Sphere filter — the reference look: the picture bends away and fades
- * toward the screen edges while a 3D LED ball floats in the center, a
- * latitude/longitude grid of glowing dots streaming horizontally around it
- * through a wave field fixed to the viewer, which weaves the rows into
- * wavy neon bands.
+ * Dot Sphere STYLE — the reference look, living in the Style tab where it
+ * belongs: the background picture bends away and fades toward the screen
+ * edges while a 3D LED ball floats in the center, a latitude/longitude
+ * grid of glowing dots streaming horizontally around it through a wave
+ * field fixed to the viewer, which weaves the rows into wavy neon bands.
  *
- * The backdrop: the SCENE ITSELF — the background picture, the
- * visualizer and every layer drawn before this filter — fills the frame
- * behind the ball through a radial fisheye bulge: the center stays put,
- * straight lines curve and the picture compresses as it bends toward the
- * screen edges, then sinks into the dark through a vignette. This is a
- * filter over the live scene, not a replacement for it — the background
- * and the visualizer keep playing, bent, instead of being swallowed.
- * The bend is baked (the look is the filter's identity, tuned to the
- * reference, not a control to babysit); the "Backdrop" dial sets how far
- * the scene sinks toward the edges (100% = the full reference look).
- * One tiny WebGL pass (a fullscreen quad, one texture upload per frame,
- * zero per-pixel CPU reads); devices without WebGL draw the scene flat
- * under the same vignette (the bend needs the GPU pass). Sampling beyond
- * the frame's edges MIRRORS it, so the far corners the bulge reaches
- * never smear — and the vignette owns them anyway. A solid disk of the
- * backdrop's near-black sits under the ball so the LED face stays solid
- * against the bright scene behind it.
+ * Why a style (the history): this shipped as a full-frame filter first,
+ * and a filter that repaints the whole frame behind the ball is a style
+ * wearing a filter's name — nothing outside the ball survived it. Moved
+ * into the visualizer styles, it owns the frame honestly: it IS the
+ * visualizer, drawn over whatever background the user picked, alongside
+ * Sphere / Bars / Wave — one style selected at a time, every other style
+ * still one click away.
+ *
+ * The backdrop: the SCENE BEHIND THE BALL — the background picture and
+ * every layer drawn below the visualizer — fills the frame through a
+ * radial fisheye bulge: the center stays put, straight lines curve and
+ * the picture compresses as it bends toward the screen edges, then sinks
+ * into the dark through a vignette. The bend is baked (the look is the
+ * style's identity, tuned to the reference, not a control to babysit);
+ * the "Backdrop" dial sets how far the picture sinks toward the edges
+ * (100% = the full reference look). One tiny WebGL pass (a fullscreen
+ * quad, one texture upload per frame, zero per-pixel CPU reads); devices
+ * without WebGL draw the scene flat under the same vignette (the bend
+ * needs the GPU pass). Sampling beyond the frame's edges MIRRORS it, so
+ * the far corners the bulge reaches never smear — and the vignette owns
+ * them anyway. A solid disk of the backdrop's near-black sits under the
+ * ball so the LED face stays solid against the bright picture behind it.
+ *
+ * Layer contract: the bent backdrop is a FULL-FRAME pass (drawn with the
+ * layer transform temporarily reset — it is the world, not an object in
+ * it), while the ball itself draws INSIDE the Style tab's layer transform,
+ * so Position X/Y and Size still move and scale the ball exactly like any
+ * other style. The Transparency dial fades the whole print (backdrop and
+ * ball alike) back toward the flat scene behind it.
  *
  * Geometry (pure canvas math — no GL for the dots, no per-pixel reads):
  *   · the ball is a lat/long grid: `rows` latitude circles, each carrying
@@ -41,33 +53,29 @@
  * cycles around the longitude circle (the renderer rounds the dial), so
  * the field is exactly 2π-periodic — a fractional cycle would tear at the
  * longitude origin and the tear would sweep around the ball on every
- * rotation (the seam this filter shipped with).
+ * rotation (the seam this look originally shipped with).
  *
- * Colors: 'neon' mode paints the reference pink/blue LED palette from a
- * color LUT built once at load (zero per-frame pixel reads, zero string
- * allocations in the hot loop); 'picture' mode samples the finished frame
- * (one small downscaled getImageData — the phosphor pattern) so the dots
- * carry the picture's own colors — with the bent backdrop behind them the
- * dots pick up its palette for free.
- *
- * Composite: the print builds on its own offscreen canvas (backdrop →
- * bent picture → solid ball disk → additive dots) and lands on the frame
- * in the house blend order — print full, the untouched frame fades back
- * over it below 100% mix.
+ * Colors: 'neon' paints the reference pink/blue LED palette from a color
+ * LUT built once at load (zero per-frame pixel reads, zero string
+ * allocations in the hot loop); 'picture' samples the scene behind the
+ * ball (one small downscaled getImageData) so the dots carry the
+ * picture's own colors — with the bent backdrop behind them the dots pick
+ * up its palette for free.
  *
  * Music: each latitude row rides its own spectrum bin ("Music ripple" —
- * brightness + dot size), and the standard React-to-beat box makes the wave
- * swell and the dots flare on kicks (additive via the shared `beatAmount`
- * gate, resting exactly at the dialed look between kicks).
+ * brightness + dot size), and the React-to-beat box makes the wave swell
+ * and the dots flare on kicks (additive via the shared beat gate, resting
+ * exactly at the dialed look between kicks).
  *
  * Clock: the flow and waves follow the decorative style clock (wall clock
  * live so the ball keeps drifting while paused; song time in exports), the
  * app-wide contract for ambient motion — deterministic files, alive
  * previews. Deterministic: no Math.random, no time-hashed noise — same
- * frame in, same pixels out. Skipped on transparent backgrounds like every
- * full-frame filter.
+ * frame in, same pixels out. On transparent backgrounds the bent backdrop
+ * takes a rest (there is no picture to bend) and only the ball's dots
+ * render, so alpha recordings stay clean.
  */
-import type { AudioFrame, DotSphereFilterConfig, RenderContext } from './types'
+import type { AudioFrame, RenderContext, VisualizerConfig } from './types'
 import { beatAmount, clamp01, getWork, resetWork } from './filter-utils'
 
 /* ------------------------------ neon color LUT ------------------------------ */
@@ -110,7 +118,7 @@ const NEON_LUT: string[] = (() => {
   return lut
 })()
 
-/* --------------------------------- the filter -------------------------------- */
+/* --------------------------------- the style -------------------------------- */
 
 /** Camera distance in sphere radii — the strength of the 3D bulge (the
  *  face-on dots render this much bigger than the limb dots). */
@@ -124,49 +132,58 @@ const SQUSH_MIN = 0.24
 /** The backdrop color the vignette and the ball face sink into (#050109).
  *  Kept in one place so the GL pass, the CPU vignette and the disk agree. */
 const BACKDROP_RGB = { r: 5, g: 1, b: 9 }
-/** The baked backdrop bend — the reference curves the scene toward the
- *  screen edges. Deliberately NOT a dial: this is the look the filter
+/** The baked backdrop bend — the reference curves the picture toward the
+ *  screen edges. Deliberately NOT a dial: this is the look the style
  *  promises, tuned once to the reference. */
 const BG_BEND = 0.6
-/** The baked edge fade at Backdrop 100% — how far the scene sinks into
+/** The baked edge fade at Backdrop 100% — how far the picture sinks into
  *  the dark toward the screen edges (the dial scales it). */
 const BG_FADE = 0.85
 
-export function drawDotSphereFilter(
+export function drawDotSphereStyle(
   rc: RenderContext,
-  cfg: DotSphereFilterConfig | undefined,
   frame: Pick<AudioFrame, 'bass' | 'freq' | 'styleTime'>,
+  cfg: VisualizerConfig,
   transparent: boolean,
 ): void {
-  if (!cfg?.enabled || transparent) return
   const { ctx, width: W, height: H } = rc
   if (W < 16 || H < 16) return
-
-  const blend = clamp01(cfg.blend ?? 1)
-  if (blend <= 0.001) return
 
   const t = frame.styleTime
 
   // Beat — additive on kicks, resting at exactly 0 between them: the wave
   // swells a little and the dots flare. Nothing else reacts to the beat.
-  const beat = beatAmount(cfg, frame.bass)
-  const waveEff = clamp01((cfg.waveAmount ?? 0.6) + beat * 0.35)
+  const beat = beatAmount(
+    { beatReactive: cfg.dotSphereBeat, beatStrength: cfg.dotSphereBeatStrength },
+    frame.bass,
+  )
+  const waveEff = clamp01((cfg.dotSphereWave ?? 0.6) + beat * 0.35)
   const flare = beat * 0.4
 
-  const size = Math.max(0.3, cfg.size ?? 0.75)
-  const rows = Math.max(2, Math.round(cfg.rows ?? 56))
-  const dotSize = Math.max(0.05, cfg.dotSize ?? 1)
-  const flow = cfg.flowSpeed ?? 0.6
+  const size = Math.max(0.3, cfg.dotSphereSize ?? 0.75)
+  const rows = Math.max(2, Math.round(cfg.dotSphereRows ?? 56))
+  const dotSize = Math.max(0.05, cfg.dotSphereDotSize ?? 1)
+  const flow = cfg.dotSphereFlow ?? 0.6
   // The wave must close on itself around the ball: a fractional cycle
   // tears at the longitude origin and the tear sweeps around with the
   // rotation — the seam. Whole cycles only, old fractional saves heal.
-  const waveCycles = Math.max(1, Math.round(cfg.waveScale ?? 5))
-  const waveSpeed = cfg.waveSpeed ?? 0.9
-  const bandTwist = Math.max(0, cfg.bandTwist ?? 0.9)
-  const ripple = clamp01(cfg.ripple ?? 0.35)
-  const glow = clamp01(cfg.glow ?? 0.55)
-  const backdrop = clamp01(cfg.backdrop ?? 1)
-  const picture = cfg.colorMode === 'picture'
+  const waveCycles = Math.max(1, Math.round(cfg.dotSphereWaveScale ?? 5))
+  const waveSpeed = cfg.dotSphereWaveSpeed ?? 0.9
+  const bandTwist = Math.max(0, cfg.dotSphereTwist ?? 0.9)
+  const ripple = clamp01(cfg.dotSphereRipple ?? 0.35)
+  const glow = clamp01(cfg.dotSphereGlow ?? 0.55)
+  // The Style tab's shared Glow switch gates the halo entirely (the same
+  // role it plays for the Sphere style's atmosphere); the card's Glow dial
+  // sets how strong it is when the switch is on.
+  const haloAlpha = (cfg.glow ? glow : 0) * 0.2
+  const backdrop = clamp01(cfg.dotSphereBackdrop ?? 1)
+  // Picture mode needs a picture to sample; on a transparent background
+  // there is none, so the dots fall back to the neon palette (alpha
+  // recordings stay legible instead of fading to nothing).
+  const picture = !transparent && cfg.dotSphereColors === 'picture'
+  // Whole-layer alpha — the Style tab's Transparency dial scales every
+  // pass below (same contract as every other style draw).
+  const la = 1 - clamp01(cfg.transparency ?? 0)
 
   const cx = W / 2
   const cy = H / 2
@@ -176,61 +193,74 @@ export function drawDotSphereFilter(
   const rs = (R * PERSP) / Math.sqrt(PERSP * PERSP - 1)
   const rowSpacing = (2 * R) / rows
   const baseDot = rowSpacing * 0.25 * dotSize
-  const haloAlpha = glow * 0.2
   const scroll = flow * t
   const freq = frame.freq
   const binCount = freq?.length ?? 0
 
-  // The untouched frame is snapshotted FIRST: it doubles as the mix base
-  // and (in picture mode) the color source for the dots.
-  const base = getWork('dotsphere:base', W, H)
-  const bctx = resetWork(base.getContext('2d')!)
-  bctx.drawImage(ctx.canvas, 0, 0)
+  // The scene behind the ball — the background picture (and any layer
+  // drawn below the visualizer) — snapshotted BEFORE anything draws: it
+  // is the bent backdrop's texture and (in picture mode) the dot colors.
+  let base: HTMLCanvasElement | null = null
+  if (!transparent) {
+    base = getWork('dotsphere:base', W, H)
+    const bctx = resetWork(base.getContext('2d')!)
+    bctx.drawImage(ctx.canvas, 0, 0)
+  }
 
   let srcData: Uint8ClampedArray | null = null
   let sw = 0
   let sh = 0
-  if (picture) {
-    // One small downscaled read of the finished frame (the phosphor
-    // pattern): dot colors come from here — never a full-res readback.
+  if (picture && base) {
+    // One small downscaled read of the scene (the phosphor pattern): dot
+    // colors come from here — never a full-res readback.
     sw = Math.max(48, Math.min(320, Math.round(W / 3)))
     sh = Math.max(32, Math.round((sw * H) / W))
     const sm = getWork('dotsphere:sm', sw, sh)
     const smctx = resetWork(sm.getContext('2d', { willReadFrequently: true })!)
-    smctx.drawImage(ctx.canvas, 0, 0, sw, sh)
+    smctx.drawImage(base, 0, 0, sw, sh)
     srcData = smctx.getImageData(0, 0, sw, sh).data
   }
 
-  // The print builds on its own canvas so the additive ('lighter') dots sum
-  // against the backdrop instead of the picture.
-  const out = getWork('dotsphere:out', W, H)
-  const octx = resetWork(out.getContext('2d')!)
+  if (!transparent && base) {
+    // The bent backdrop — a FULL-FRAME pass: the layer transform is reset
+    // for this one draw (the bent picture is the world the ball floats
+    // in, not an object inside it), then restored so the ball itself
+    // keeps answering the Style tab's Position/Size dials. The Backdrop
+    // dial scales how far the picture sinks into the dark.
+    const fadeEff = clamp01(BG_FADE * backdrop)
+    const g = getBgGL(W, H)
+    ctx.save()
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.globalAlpha = la
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.shadowBlur = 0
+    if (g) {
+      uploadFrame(g, base)
+      drawBgGL(g, W, H, BG_BEND, fadeEff)
+      ctx.drawImage(g.canvas, 0, 0, W, H)
+    } else {
+      // WebGL-less devices: the scene flat under the same vignette (the
+      // bend needs the GPU pass — documented in the card copy).
+      drawBentBgCPU(ctx, base, W, H, fadeEff)
+    }
+    ctx.restore()
 
-  // The bent backdrop — the SCENE ITSELF (background, visualizer, every
-  // layer drawn so far) fills the frame behind the ball, curving away and
-  // fading toward the screen edges (the reference look), so the background
-  // and the visualizer keep playing — bent — instead of being swallowed.
-  // The Backdrop dial scales how far the scene sinks into the dark.
-  const fadeEff = clamp01(BG_FADE * backdrop)
-  const g = getBgGL(W, H)
-  if (g) {
-    uploadFrame(g, base)
-    drawBgGL(g, W, H, BG_BEND, fadeEff)
-    octx.drawImage(g.canvas, 0, 0, W, H)
-  } else {
-    // WebGL-less devices: the scene flat under the same vignette (the
-    // bend needs the GPU pass — documented in the card copy).
-    drawBentBgCPU(octx, base, W, H, fadeEff)
+    // The solid ball face — a disk of the backdrop's near-black so the LED
+    // dots stay legible over the bright picture behind the ball. Drawn in
+    // the layer transform, so it moves with the layer too.
+    ctx.globalAlpha = la
+    ctx.beginPath()
+    ctx.arc(cx, cy, rs, 0, TAU)
+    ctx.fillStyle = '#050109'
+    ctx.fill()
   }
-  // The solid ball face — a disk of the backdrop's near-black so the LED
-  // dots stay legible over the bright scene behind the ball.
-  octx.globalAlpha = 1
-  octx.beginPath()
-  octx.arc(cx, cy, rs, 0, TAU)
-  octx.fillStyle = '#050109'
-  octx.fill()
 
-  octx.globalCompositeOperation = 'lighter'
+  // The dots add up against the bent backdrop on a real scene (the glowy
+  // LED read). On a transparent background there is nothing to add onto —
+  // additive would stack the dense face into a blown-out white disk — so
+  // the dots land one by one at their own alpha and the ball reads as a
+  // clean dotted sphere in alpha recordings.
+  ctx.globalCompositeOperation = transparent ? 'source-over' : 'lighter'
 
   const cols = Math.max(8, Math.round(Math.PI * rows))
   const colStep = TAU / cols
@@ -276,7 +306,7 @@ export function drawDotSphereFilter(
       let style: string
       let alpha: number
       if (picture && srcData) {
-        // Sample the finished frame at the dot's own screen spot.
+        // Sample the scene behind the ball at the dot's own screen spot.
         const xi = Math.min(sw - 1, Math.max(0, Math.round((sx / W) * sw - 0.5)))
         const yi = Math.min(sh - 1, Math.max(0, Math.round((sy / H) * sh - 0.5)))
         const kk = (yi * sw + xi) * 4
@@ -293,35 +323,22 @@ export function drawDotSphereFilter(
         alpha = 1
       }
 
-      octx.fillStyle = style
+      ctx.fillStyle = style
       if (haloAlpha > 0.002) {
-        octx.globalAlpha = Math.min(1, alpha * haloAlpha)
-        octx.beginPath()
-        octx.ellipse(sx, sy, rx * 2.1, r * 2.1, 0, 0, TAU)
-        octx.fill()
+        ctx.globalAlpha = Math.min(1, alpha * haloAlpha * la)
+        ctx.beginPath()
+        ctx.ellipse(sx, sy, rx * 2.1, r * 2.1, 0, 0, TAU)
+        ctx.fill()
       }
-      octx.globalAlpha = alpha
-      octx.beginPath()
-      octx.ellipse(sx, sy, rx, r, 0, 0, TAU)
-      octx.fill()
+      ctx.globalAlpha = Math.min(1, alpha * la)
+      ctx.beginPath()
+      ctx.ellipse(sx, sy, rx, r, 0, 0, TAU)
+      ctx.fill()
     }
   }
 
-  octx.globalAlpha = 1
-  octx.globalCompositeOperation = 'source-over'
-
-  // House blend order: the print lands full, and below 100% mix the
-  // untouched frame fades back over it.
-  ctx.save()
-  ctx.globalAlpha = 1
+  ctx.globalAlpha = la
   ctx.globalCompositeOperation = 'source-over'
-  ctx.shadowBlur = 0
-  ctx.drawImage(out, 0, 0, W, H)
-  if (blend < 0.999) {
-    ctx.globalAlpha = 1 - blend
-    ctx.drawImage(base, 0, 0, W, H)
-  }
-  ctx.restore()
 }
 
 /* ------------------------ bent picture backdrop (WebGL) ------------------------ */
@@ -343,9 +360,8 @@ void main() {
  * radius is capped at 2.0 so tan never crosses its pole, and the sample
  * coordinates MIRROR past the frame's edges — no clamped smear. The
  * vignette then sinks everything past ~30% of the half-short side into
- * the backdrop dark. The texture is the finished frame so far (uploaded
- * once per frame), so the background and the visualizer stay alive under
- * the bulge. */
+ * the backdrop dark. The texture is the scene behind the ball (uploaded
+ * once per frame), so the background picture stays alive under the bulge. */
 const BG_FRAG = `
 precision highp float;
 varying vec2 vPos;

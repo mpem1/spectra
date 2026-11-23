@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { AudioWaveform, BarChart3, Disc3, Droplet, Grid3x3, ImagePlus, Loader2, Mountain, Move3d, Orbit, Radar, Sparkles, Trash2, Wand2, Waves } from 'lucide-react'
+import { AudioWaveform, BarChart3, Disc3, Droplet, Globe, Grid3x3, ImagePlus, Loader2, Mountain, Move3d, Orbit, Radar, Sparkles, Trash2, Wand2, Waves } from 'lucide-react'
 import { toast } from 'sonner'
 import type { VisualizerStyle } from '@/lib/visualizer/types'
 import { extractPaletteFromArt } from '@/lib/visualizer/palette'
@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { GradientEditor } from '@/components/studio/gradient-editor'
 import { BackgroundSection } from '@/components/studio/background-section'
 import { PolaroidFilterSection } from '@/components/studio/polaroid-filter-section'
+import { DotSphereStyleSection } from '@/components/studio/dot-sphere-style-section'
 import { VinylSection } from '@/components/studio/vinyl-section'
 import { WatermarkSection } from '@/components/studio/watermark-section'
 import { PulseImageSection } from '@/components/studio/pulse-image-section'
@@ -30,6 +31,7 @@ const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] =
   { id: 'perspective', label: 'Perspective', icon: Move3d },
   { id: 'terrain', label: 'Terrain', icon: Mountain },
   { id: 'sphere', label: 'Sphere', icon: Orbit },
+  { id: 'dotsphere', label: 'Dot Sphere', icon: Globe },
   { id: 'serato', label: 'Serato', icon: Disc3 },
   { id: 'imgviz', label: 'Image', icon: ImagePlus },
 ]
@@ -486,11 +488,17 @@ export function StyleTab() {
         </section>
       ) : null}
 
+      {/* Dot Sphere — the LED-ball style's own card, right under the style
+          grid (same home as the Image style's card above). */}
+      {visualizer.style === 'dotsphere' ? <DotSphereStyleSection /> : null}
+
       {/* Gradient — the perspective style keeps its own strict two-color
           split (Up / Down pickers above), so the palette editor would sit
           there doing nothing. Terrain DOES use the palette — it sweeps it
-          across the landscape's columns. */}
-      {visualizer.style !== 'perspective' ? (
+          across the landscape's columns. Dot Sphere paints from its own
+          LED palette / the picture behind the ball, so the palette editor
+          would sit there doing nothing too. */}
+      {visualizer.style !== 'perspective' && visualizer.style !== 'dotsphere' ? (
         <section className={sectionShell('violet', 'space-y-2')}>
           <div className="flex items-center justify-between">
             <SectionLabel accent="violet">GRADIENT</SectionLabel>
@@ -587,7 +595,7 @@ export function StyleTab() {
           </div>
         ) : null}
 
-        {visualizer.style !== 'serato' ? (
+        {visualizer.style !== 'serato' && visualizer.style !== 'dotsphere' ? (
           <>
             <SliderRow
               label="Bar count"
@@ -812,16 +820,18 @@ export function StyleTab() {
           </>
         ) : null}
 
-        <SliderRow
-          label="Sensitivity"
-          value={visualizer.sensitivity}
-          min={0.1}
-          max={3}
-          step={0.1}
-          onChange={(sensitivity) => patchVisualizer({ sensitivity })}
-          format={(v) => v.toFixed(1)}
-        />
-        {(visualizer.style !== 'ribbon' && visualizer.style !== 'terrain' && visualizer.style !== 'sphere') ? (
+        {visualizer.style !== 'dotsphere' ? (
+          <SliderRow
+            label="Sensitivity"
+            value={visualizer.sensitivity}
+            min={0.1}
+            max={3}
+            step={0.1}
+            onChange={(sensitivity) => patchVisualizer({ sensitivity })}
+            format={(v) => v.toFixed(1)}
+          />
+        ) : null}
+        {(visualizer.style !== 'ribbon' && visualizer.style !== 'terrain' && visualizer.style !== 'sphere' && visualizer.style !== 'dotsphere') ? (
           <SliderRow
             label="Roundness"
             value={visualizer.roundness}
@@ -835,6 +845,7 @@ export function StyleTab() {
         {(visualizer.style !== 'ribbon' &&
           visualizer.style !== 'terrain' &&
           visualizer.style !== 'sphere' &&
+          visualizer.style !== 'dotsphere' &&
           visualizer.style !== 'serato') ? (
           <SliderRow
             label="Gap"
@@ -847,13 +858,14 @@ export function StyleTab() {
           />
         ) : null}
 
-        {visualizer.style === 'sphere' || visualizer.style === 'serato' || visualizer.style === 'imgviz' ? (
+        {visualizer.style === 'sphere' || visualizer.style === 'dotsphere' || visualizer.style === 'serato' || visualizer.style === 'imgviz' ? (
           // The planet reads best as one clean orb — its mirrored twin just
           // doubled the dots into mush, so the sphere keeps no Mirror choice.
-          // The Serato strip is already symmetric around its needle, and the
-          // deck wave has no twin either. The image style is one freeform
-          // artwork — glow switch only. Every other style answers the full
-          // Mirror family below.
+          // The dot sphere is a ball of dots the same way (and carries its
+          // own Glow dial in its card). The Serato strip is already
+          // symmetric around its needle, and the deck wave has no twin
+          // either. The image style is one freeform artwork — glow switch
+          // only. Every other style answers the full Mirror family below.
           <div className="space-y-1.5 pt-1">
             <MicroLabel>Glow</MicroLabel>
             <div className="flex h-8 items-center justify-end">
