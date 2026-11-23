@@ -9,13 +9,14 @@ import { cn } from '@/lib/utils'
 
 /**
  * Dot Sphere card — the picture bends away and fades toward the screen
- * edges (Picture bend / Picture fade on your image-visualizer PNG or album
- * art) while a 3D LED ball floats in the center: a grid of glowing dots
- * streaming horizontally around it (they swell toward the viewer and
- * squeeze into vertical ellipses rounding the limb), wavy neon bands
- * weaving over the surface. Neon gives the classic pink/blue LED palette;
- * Picture rebuilds the actual image as dot colors. Deterministic, so every
- * export bakes the identical look; skipped on transparent backgrounds.
+ * edges behind a fully visible centered ball (your image-visualizer PNG,
+ * album art or Background picture), while a 3D LED ball floats in the
+ * center: a grid of glowing dots streaming horizontally around it (they
+ * swell toward the viewer and squeeze into vertical ellipses rounding the
+ * limb), wavy neon bands weaving over the surface. Neon gives the classic
+ * pink/blue LED palette; Picture rebuilds the actual image as dot colors.
+ * Deterministic, so every export bakes the identical look; skipped on
+ * transparent backgrounds.
  */
 export function DotSphereFilterSection() {
   const filter = useStudioStore((s) => s.config.dotSphereFilter)
@@ -74,25 +75,6 @@ export function DotSphereFilterSection() {
               ))}
             </div>
           </div>
-
-          <SliderRow
-            label="Picture bend"
-            value={filter.bgBend}
-            min={0}
-            max={1}
-            step={0.05}
-            onChange={set('bgBend')}
-            format={(v) => `${Math.round(v * 100)}%`}
-          />
-          <SliderRow
-            label="Picture fade"
-            value={filter.bgFade}
-            min={0}
-            max={1}
-            step={0.05}
-            onChange={set('bgFade')}
-            format={(v) => `${Math.round(v * 100)}%`}
-          />
 
           <SliderRow
             label="Sphere size"
@@ -212,10 +194,10 @@ export function DotSphereFilterSection() {
           <p className="text-[10px] leading-snug text-zinc-600">
             The dots stream around the ball with the song (flow speed above,
             negative reverses). Music ripple lets every row ride its own
-            frequency band. Picture bend and Picture fade shape your
-            image-visualizer PNG (or the album art) behind the ball — it
-            curves away toward the screen edges and sinks into the dark; the
-            wave closes on itself in whole cycles, so the rotation never
+            frequency band. Your picture (the image-visualizer PNG, the
+            album art or the Background tab's picture) always bends away
+            toward the screen edges and sinks into the dark behind the ball;
+            the wave closes on itself in whole cycles, so the rotation never
             shows a seam. Skipped on transparent backgrounds so alpha
             recordings stay clean.
           </p>

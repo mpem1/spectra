@@ -5,11 +5,13 @@
  * through a wave field fixed to the viewer, which weaves the rows into
  * wavy neon bands.
  *
- * The backdrop: the artwork (image-visualizer PNG, falling back to the
- * album art) fills the frame behind the ball through a radial fisheye
- * bulge ("Picture bend") — the center stays put, straight lines curve and
- * the picture compresses as it bends toward the screen edges — then sinks
- * into the dark through a vignette ("Picture fade"). One tiny WebGL pass
+ * The backdrop: the artwork (the image-visualizer PNG, falling back to
+ * the album art, then the Background tab's picture) fills the frame
+ * behind the ball through a radial fisheye bulge — the center stays put,
+ * straight lines curve and the picture compresses as it bends toward the
+ * screen edges — then sinks into the dark through a vignette. The bend
+ * and the fade are BAKED (no dials — the look is the filter's identity,
+ * tuned to the reference, not a control to babysit). One tiny WebGL pass
  * (a fullscreen quad, one texture, zero per-pixel CPU reads); devices
  * without WebGL draw the picture flat under the same vignette (the bend
  * needs the GPU pass). Sampling beyond the picture's edges MIRRORS it, so
@@ -120,6 +122,12 @@ const SQUSH_MIN = 0.24
 /** The backdrop color the vignette and the ball face sink into (#050109).
  *  Kept in one place so the GL pass, the CPU vignette and the disk agree. */
 const BACKDROP_RGB = { r: 5, g: 1, b: 9 }
+/** The baked backdrop treatment — the reference bends the picture toward
+ *  the screen edges and sinks it into the dark there. Deliberately NOT
+ *  dials: this is the look the filter promises, tuned once to the
+ *  reference, so the picture always bends and fades without setup. */
+const BG_BEND = 0.6
+const BG_FADE = 0.85
 
 export function drawDotSphereFilter(
   rc: RenderContext,
@@ -157,8 +165,6 @@ export function drawDotSphereFilter(
   const glow = clamp01(cfg.glow ?? 0.55)
   const backdrop = clamp01(cfg.backdrop ?? 1)
   const picture = cfg.colorMode === 'picture'
-  const bgBend = clamp01(cfg.bgBend ?? 0.55)
-  const bgFade = clamp01(cfg.bgFade ?? 0.65)
 
   const cx = W / 2
   const cy = H / 2
@@ -216,12 +222,12 @@ export function drawDotSphereFilter(
           const scrA = W / H
           const fitX = imgA > scrA ? scrA / imgA : 1
           const fitY = imgA > scrA ? 1 : imgA / scrA
-          drawBgGL(g, W, H, bgBend, bgFade, fitX, fitY)
+          drawBgGL(g, W, H, BG_BEND, BG_FADE, fitX, fitY)
           octx.drawImage(g.canvas, 0, 0, W, H)
           artOn = true
         }
       } else {
-        drawBentBgCPU(octx, img, W, H, bgFade)
+        drawBentBgCPU(octx, img, W, H, BG_FADE)
         artOn = true
       }
     }

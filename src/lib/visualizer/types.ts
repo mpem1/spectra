@@ -1020,16 +1020,6 @@ export interface DotSphereFilterConfig {
   /** Dot colors — 'neon' = the fixed pink/blue LED palette (the
    *  reference look), 'picture' = sampled from the finished frame */
   colorMode: 'neon' | 'picture'
-  /** Picture bend 0..1 — how strongly the artwork curves away toward
-   *  the screen edges behind the ball: a radial fisheye bulge that
-   *  magnifies the center and bends the picture toward the edges (the
-   *  reference's bent backdrop; 0 = the flat picture). Without artwork
-   *  loaded (image-visualizer PNG, falling back to the album art) the
-   *  ball keeps its dark LED space. */
-  bgBend: number
-  /** Picture fade 0..1 — the vignette that sinks the bent picture into
-   *  the dark toward the screen edges (the reference's faded border) */
-  bgFade: number
   /** Mix 0..1 — how much of the frame the ball print takes over
    *  (below 1 the untouched frame fades back over it) */
   blend: number
@@ -2590,8 +2580,6 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     glow: 0.55,
     backdrop: 1,
     colorMode: 'neon',
-    bgBend: 0.55,
-    bgFade: 0.65,
     blend: 1,
     beatReactive: false,
     beatStrength: 0.5,
