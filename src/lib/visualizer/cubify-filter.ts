@@ -32,9 +32,9 @@
  * app-wide contract for ambient motion — deterministic files, alive previews.
  *
  * Beat pop (opt-in): on a detected low-end hit the depth distortion punches
- * deeper and the dispersion flares, driven by frame.bass through the shared
- * additive `beatAmount` gate — resting EXACTLY at the dialed look between
- * kicks.
+ * deeper, driven by frame.bass through the shared additive `beatAmount`
+ * gate — resting EXACTLY at the dialed look between kicks. Dispersion is
+ * deliberately NOT beat-driven; it stays exactly where its dial sits.
  *
  * Deterministic: no Math.random, no time-hashed noise — same frame in, same
  * pixels out, so the live preview and offline exports agree frame-exactly.
@@ -460,11 +460,11 @@ export function drawCubifyFilter(
   const blend = clamp01(cfg.blend ?? 1)
   if (blend <= 0.001) return
 
-  // Beat pop — additive on kicks, resting at exactly 0 between them: the
-  // depth distortion punches deeper and the dispersion flares.
+  // Beat pop — additive on kicks, resting at exactly 0 between them: ONLY
+  // the depth distortion punches deeper. Dispersion deliberately does not
+  // react to the beat — it stays exactly where its dial sits.
   const beat = beatAmount(cfg, frame.bass)
   const depthEff = (cfg.depth ?? 1.8) + beat * 1.5
-  const dispEff = Math.min(1, (cfg.dispersion ?? 0.75) + beat * 0.35)
 
   const params: CubifyParams = {
     time: frame.styleTime,
@@ -477,7 +477,7 @@ export function drawCubifyFilter(
     offsetY: cfg.offsetY ?? 0,
     speedX: cfg.speedX ?? -0.34,
     speedY: cfg.speedY ?? 0.34,
-    dispersion: dispEff,
+    dispersion: clamp01(cfg.dispersion ?? 0.75),
   }
 
   const g = getGL(W, H)

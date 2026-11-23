@@ -898,9 +898,10 @@ export interface CubifyFilterConfig {
   /** Mix 0..1 — how much of the frame the cube print takes over (below 1
    *  the untouched frame fades back through) */
   blend: number
-  /** React to beat — the depth distortion punches deeper and the
-   *  dispersion flares on the song's low end (driven by frame.bass,
-   *  additive, resting exactly at the dialed look between kicks) */
+  /** React to beat — the depth distortion punches deeper on the song's
+   *  low end (driven by frame.bass, additive, resting exactly at the
+   *  dialed look between kicks); dispersion is NOT beat-driven and stays
+   *  exactly where its dial sits */
   beatReactive: boolean
   /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
   beatStrength: number
