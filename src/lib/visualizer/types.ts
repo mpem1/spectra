@@ -870,7 +870,7 @@ export interface DitherFilterConfig {
 export interface CubifyFilterConfig {
   enabled: boolean
   /** Cube size — the logarithmic grid scale, 0..8 (effect.app's dial, its
-   *  default 1.1 ≈ 6 cubes across the short side; the cell size is
+   *  default 0.6 ≈ 3.6 cubes across the short side; the cell size is
    *  exp(-scale) of the half-height) */
   scale: number
   /** Cube stretch -1..1 — squashes the grid horizontally (positive) or
@@ -2374,16 +2374,16 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
   },
   cubifyFilter: {
     enabled: false,
-    scale: 1.1,
-    stretch: 0,
+    scale: 0.6,
+    stretch: -0.21,
     depth: 1.8,
     hard: false,
-    angle: 0,
+    angle: 35,
     offsetX: 0,
     offsetY: 0,
-    speedX: 0.1,
-    speedY: 0,
-    dispersion: 0,
+    speedX: -0.34,
+    speedY: 0.34,
+    dispersion: 0.75,
     blend: 1,
     beatReactive: false,
     beatStrength: 0.5,

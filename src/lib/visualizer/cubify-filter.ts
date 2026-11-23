@@ -464,19 +464,19 @@ export function drawCubifyFilter(
   // depth distortion punches deeper and the dispersion flares.
   const beat = beatAmount(cfg, frame.bass)
   const depthEff = (cfg.depth ?? 1.8) + beat * 1.5
-  const dispEff = Math.min(1, (cfg.dispersion ?? 0) + beat * 0.35)
+  const dispEff = Math.min(1, (cfg.dispersion ?? 0.75) + beat * 0.35)
 
   const params: CubifyParams = {
     time: frame.styleTime,
-    scale: cfg.scale ?? 1.1,
-    stretch: cfg.stretch ?? 0,
+    scale: cfg.scale ?? 0.6,
+    stretch: cfg.stretch ?? -0.21,
     depth: depthEff,
     hard: !!cfg.hard,
-    angle: cfg.angle ?? 0,
+    angle: cfg.angle ?? 35,
     offsetX: cfg.offsetX ?? 0,
     offsetY: cfg.offsetY ?? 0,
-    speedX: cfg.speedX ?? 0,
-    speedY: cfg.speedY ?? 0,
+    speedX: cfg.speedX ?? -0.34,
+    speedY: cfg.speedY ?? 0.34,
     dispersion: dispEff,
   }
 
