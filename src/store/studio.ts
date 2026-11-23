@@ -37,6 +37,7 @@ import {
   type PhosphorFilterConfig,
   type ContourFilterConfig,
   type CubifyFilterConfig,
+  type DotSphereFilterConfig,
 } from '@/lib/visualizer/types'
 import {
   exportMP4,
@@ -143,6 +144,7 @@ type StudioState = {
   patchContourFilter: (partial: Partial<ContourFilterConfig>) => void
   /** Patches config.cubifyFilter (the glossy cube-tile print) */
   patchCubifyFilter: (partial: Partial<CubifyFilterConfig>) => void
+  patchDotSphereFilter: (partial: Partial<DotSphereFilterConfig>) => void
   /** Patches config.layers (the layers-vs-filters options) */
   patchLayers: (partial: Partial<LayersConfig>) => void
   /** Adds an imported font file to the shared lyrics/title library */
@@ -334,6 +336,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
   patchCubifyFilter: (partial) =>
     set((s) => ({
       config: { ...s.config, cubifyFilter: { ...s.config.cubifyFilter, ...partial } },
+    })),
+
+  patchDotSphereFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, dotSphereFilter: { ...s.config.dotSphereFilter, ...partial } },
     })),
 
   patchLayers: (partial) =>

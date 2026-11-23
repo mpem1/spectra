@@ -971,6 +971,64 @@ export interface CubifyFilterConfig {
 }
 
 /**
+ * Dot Sphere filter — the whole picture re-materializes as a 3D LED ball:
+ * a latitude/longitude grid of glowing dots wrapped over a sphere in
+ * perspective (round dots face-on, vertical ellipses rounding the limb)
+ * that stream horizontally around the ball through a wave field fixed to
+ * the viewer — bright wavy pink/blue bands weave over the surface while
+ * the dots travel through them. 'neon' paints the reference LED palette
+ * (no pixel reads at all); 'picture' samples the finished frame so the
+ * dots carry the picture's own colors. Deterministic (no randomness —
+ * same frame in, same pixels out), so exports match the preview
+ * frame-exactly. Skipped on transparent backgrounds.
+ */
+export interface DotSphereFilterConfig {
+  enabled: boolean
+  /** Sphere size — the radius as a multiple of the half-short side
+   *  (1.0 touches the frame edges, the 1.9 default crops the poles like
+   *  the reference ball filling the whole picture) */
+  size: number
+  /** Dot rows — the latitude circles of the dot grid (12..80) */
+  rows: number
+  /** Dot size — the dot radius multiplier (0.4..2.2) */
+  dotSize: number
+  /** Flow speed in radians/second — the spin that carries the dots
+   *  horizontally around the ball (negative reverses the direction) */
+  flowSpeed: number
+  /** Wave amount 0..1 — how far the rows swing vertically (the wavy
+   *  band displacement, in row spacings) */
+  waveAmount: number
+  /** Wave scale 1..10 — wave cycles around the ball's longitude
+   *  (higher = more, tighter waves across the face) */
+  waveScale: number
+  /** Wave speed — how fast the wave field travels (rad/s of phase) */
+  waveSpeed: number
+  /** Band twist 0..3 — wave phase shift from row to row (the woven
+   *  diagonal drift of the bands) */
+  bandTwist: number
+  /** Music ripple 0..1 — how much each latitude row's brightness and
+   *  dot size ride its own spectrum band (bottom rows = low end) */
+  ripple: number
+  /** Glow 0..1 — the soft halo radiating around every dot */
+  glow: number
+  /** Backdrop 0..1 — the dark space painted behind the ball (100% =
+   *  the full reference look, lower lets the picture shine through) */
+  backdrop: number
+  /** Dot colors — 'neon' = the fixed pink/blue LED palette (the
+   *  reference look), 'picture' = sampled from the finished frame */
+  colorMode: 'neon' | 'picture'
+  /** Mix 0..1 — how much of the frame the ball print takes over
+   *  (below 1 the untouched frame fades back over it) */
+  blend: number
+  /** React to beat — the wave swells and the dots flare on the song's
+   *  low end (driven by frame.bass, additive, resting exactly at the
+   *  dialed look between kicks) */
+  beatReactive: boolean
+  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
+}
+
+/**
  * Phosphor monitor filter — the lo-fi sci-fi video-tube look: the whole
  * picture is repainted as glowing vertical lines or columns of short
  * horizontal dashes (one sample per cell, tone → shade of the picked
@@ -1760,6 +1818,9 @@ export interface StudioConfig {
   /** Full-frame cubify post-pass (the picture resampled into glossy 3D
    *  cube tiles — the effect.app Cubify effect) */
   cubifyFilter: CubifyFilterConfig
+  /** Full-frame dot-sphere post-pass (the picture re-materialized as a
+   *  3D LED ball of streaming, waving dot rows) */
+  dotSphereFilter: DotSphereFilterConfig
   /** How the moving layers interact with the full-frame filter chain */
   layers: LayersConfig
   /** Imported font library — shared by the lyrics and the title card */
@@ -2496,6 +2557,24 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     speedX: -0.34,
     speedY: 0.34,
     dispersion: 0.75,
+    blend: 1,
+    beatReactive: false,
+    beatStrength: 0.5,
+  },
+  dotSphereFilter: {
+    enabled: false,
+    size: 1.9,
+    rows: 56,
+    dotSize: 1,
+    flowSpeed: 0.6,
+    waveAmount: 0.6,
+    waveScale: 5,
+    waveSpeed: 0.9,
+    bandTwist: 0.9,
+    ripple: 0.35,
+    glow: 0.55,
+    backdrop: 1,
+    colorMode: 'neon',
     blend: 1,
     beatReactive: false,
     beatStrength: 0.5,
