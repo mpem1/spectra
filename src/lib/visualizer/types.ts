@@ -985,8 +985,8 @@ export interface CubifyFilterConfig {
 export interface DotSphereFilterConfig {
   enabled: boolean
   /** Sphere size — the radius as a multiple of the half-short side
-   *  (1.0 touches the frame edges, the 1.9 default crops the poles like
-   *  the reference ball filling the whole picture) */
+   *  (0.75 = the whole ball visible in the center like the reference;
+   *  above ~0.94 the poles crop past the frame edges) */
   size: number
   /** Dot rows — the latitude circles of the dot grid (12..80) */
   rows: number
@@ -998,8 +998,11 @@ export interface DotSphereFilterConfig {
   /** Wave amount 0..1 — how far the rows swing vertically (the wavy
    *  band displacement, in row spacings) */
   waveAmount: number
-  /** Wave scale 1..10 — wave cycles around the ball's longitude
-   *  (higher = more, tighter waves across the face) */
+  /** Wave scale — WHOLE wave cycles around the ball's longitude (1..10,
+   *  the dial steps integers). Must be an integer: a wave that doesn't
+   *  close on itself tears at the longitude origin and the tear sweeps
+   *  around the ball as it rotates (the visible seam). The renderer
+   *  rounds anyway, so old saves with fractional values heal too. */
   waveScale: number
   /** Wave speed — how fast the wave field travels (rad/s of phase) */
   waveSpeed: number
@@ -1017,6 +1020,16 @@ export interface DotSphereFilterConfig {
   /** Dot colors — 'neon' = the fixed pink/blue LED palette (the
    *  reference look), 'picture' = sampled from the finished frame */
   colorMode: 'neon' | 'picture'
+  /** Picture bend 0..1 — how strongly the artwork curves away toward
+   *  the screen edges behind the ball: a radial fisheye bulge that
+   *  magnifies the center and bends the picture toward the edges (the
+   *  reference's bent backdrop; 0 = the flat picture). Without artwork
+   *  loaded (image-visualizer PNG, falling back to the album art) the
+   *  ball keeps its dark LED space. */
+  bgBend: number
+  /** Picture fade 0..1 — the vignette that sinks the bent picture into
+   *  the dark toward the screen edges (the reference's faded border) */
+  bgFade: number
   /** Mix 0..1 — how much of the frame the ball print takes over
    *  (below 1 the untouched frame fades back over it) */
   blend: number
@@ -2563,7 +2576,9 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
   },
   dotSphereFilter: {
     enabled: false,
-    size: 1.9,
+    // The reference look: the whole ball visible in the center, the
+    // picture bending away and fading toward the screen edges around it.
+    size: 0.75,
     rows: 56,
     dotSize: 1,
     flowSpeed: 0.6,
@@ -2575,6 +2590,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     glow: 0.55,
     backdrop: 1,
     colorMode: 'neon',
+    bgBend: 0.55,
+    bgFade: 0.65,
     blend: 1,
     beatReactive: false,
     beatStrength: 0.5,

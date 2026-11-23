@@ -8,13 +8,14 @@ import { MicroLabel, BeatPunchRow, SliderRow, sectionShell } from '@/components/
 import { cn } from '@/lib/utils'
 
 /**
- * Dot Sphere card — the whole picture re-materializes as a 3D LED ball: a
- * grid of glowing dots wrapped over a sphere, streaming horizontally around
- * it (they swell toward the viewer and squeeze into vertical ellipses
- * rounding the limb), while wavy neon bands weave over the surface. Neon
- * gives the classic pink/blue LED palette; Picture rebuilds the actual
- * image as dot colors. Deterministic, so every export bakes the identical
- * look; skipped on transparent backgrounds.
+ * Dot Sphere card — the picture bends away and fades toward the screen
+ * edges (Picture bend / Picture fade on your image-visualizer PNG or album
+ * art) while a 3D LED ball floats in the center: a grid of glowing dots
+ * streaming horizontally around it (they swell toward the viewer and
+ * squeeze into vertical ellipses rounding the limb), wavy neon bands
+ * weaving over the surface. Neon gives the classic pink/blue LED palette;
+ * Picture rebuilds the actual image as dot colors. Deterministic, so every
+ * export bakes the identical look; skipped on transparent backgrounds.
  */
 export function DotSphereFilterSection() {
   const filter = useStudioStore((s) => s.config.dotSphereFilter)
@@ -37,10 +38,12 @@ export function DotSphereFilterSection() {
         />
       </div>
       <p className="text-[11px] leading-snug text-zinc-600">
-        LED ball — the whole picture becomes a 3D sphere of glowing dots that
-        stream horizontally around it, squeezed at the edges like a real dot
-        ball, while wavy neon bands weave over the surface and the rows ride
-        the music.
+        LED ball floating in the center while the picture around it bends
+        away and fades toward the screen edges — and on the ball a grid of
+        glowing dots streams horizontally around it, squeezed at the edges
+        like a real dot ball, while wavy neon bands weave over the surface.
+        Neon gives the classic pink/blue LED palette; Picture rebuilds the
+        actual image as dot colors.
       </p>
 
       {filter.enabled ? (
@@ -71,6 +74,25 @@ export function DotSphereFilterSection() {
               ))}
             </div>
           </div>
+
+          <SliderRow
+            label="Picture bend"
+            value={filter.bgBend}
+            min={0}
+            max={1}
+            step={0.05}
+            onChange={set('bgBend')}
+            format={(v) => `${Math.round(v * 100)}%`}
+          />
+          <SliderRow
+            label="Picture fade"
+            value={filter.bgFade}
+            min={0}
+            max={1}
+            step={0.05}
+            onChange={set('bgFade')}
+            format={(v) => `${Math.round(v * 100)}%`}
+          />
 
           <SliderRow
             label="Sphere size"
@@ -122,9 +144,9 @@ export function DotSphereFilterSection() {
             value={filter.waveScale}
             min={1}
             max={10}
-            step={0.1}
-            onChange={set('waveScale')}
-            format={(v) => v.toFixed(1)}
+            step={1}
+            onChange={(v) => set('waveScale')(Math.round(v))}
+            format={(v) => `${Math.round(v)}`}
           />
           <SliderRow
             label="Wave speed"
@@ -190,9 +212,12 @@ export function DotSphereFilterSection() {
           <p className="text-[10px] leading-snug text-zinc-600">
             The dots stream around the ball with the song (flow speed above,
             negative reverses). Music ripple lets every row ride its own
-            frequency band; backdrop 0 lets the picture shine through behind
-            the ball. Skipped on transparent backgrounds so alpha recordings
-            stay clean.
+            frequency band. Picture bend and Picture fade shape your
+            image-visualizer PNG (or the album art) behind the ball — it
+            curves away toward the screen edges and sinks into the dark; the
+            wave closes on itself in whole cycles, so the rotation never
+            shows a seam. Skipped on transparent backgrounds so alpha
+            recordings stay clean.
           </p>
         </>
       ) : null}

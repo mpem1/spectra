@@ -446,6 +446,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         phosphorFilter: { ...DEFAULT_STUDIO_CONFIG.phosphorFilter, ...config.phosphorFilter },
         contourFilter: { ...DEFAULT_STUDIO_CONFIG.contourFilter, ...config.contourFilter },
         cubifyFilter: { ...DEFAULT_STUDIO_CONFIG.cubifyFilter, ...config.cubifyFilter },
+        dotSphereFilter: { ...DEFAULT_STUDIO_CONFIG.dotSphereFilter, ...config.dotSphereFilter },
         // Layers-vs-filters options: new saves carry their own section; old
         // saves graduate the halftone's flip-gated "Layers stay colored".
         layers: resolveLayersConfig(config),
