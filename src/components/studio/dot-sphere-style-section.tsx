@@ -7,14 +7,16 @@ import { cn } from '@/lib/utils'
 
 /**
  * Dot Sphere style card — shown under the style grid when the Dot Sphere
- * style is selected. The look: your background picture bends away and
- * fades toward the screen edges behind a 3D LED ball with a grid of
- * glowing dots streaming horizontally around it, squeezed at the edges
- * like a real dot ball, and wavy neon bands weaving over the surface.
- * Neon gives the classic pink/blue LED palette; Picture rebuilds the
- * background as dot colors. Deterministic, so every export bakes the
- * identical look; on transparent backgrounds only the ball's dots render
- * so alpha recordings stay clean.
+ * style is selected. The look: a 3D LED ball with a grid of glowing dots
+ * streaming horizontally around it floats in the center of the frame,
+ * over your background EXACTLY as you picked it — the picture or gradient
+ * is never bent, dimmed or repainted. Neon gives the classic pink/blue
+ * LED palette; Picture rebuilds the background as dot colors. The ball
+ * reacts to the music like the other visualizers: every row of dots
+ * rides its own frequency band and pushes outward with it, so the
+ * surface ripples like a waveform. Deterministic, so every export bakes
+ * the identical look; on transparent backgrounds only the ball's dots
+ * render so alpha recordings stay clean.
  */
 export function DotSphereStyleSection() {
   const viz = useStudioStore((s) => s.config.visualizer)
@@ -30,12 +32,13 @@ export function DotSphereStyleSection() {
         <MicroLabel className="text-violet-300/80">Dot Sphere</MicroLabel>
       </div>
       <p className="text-[11px] leading-snug text-zinc-600">
-        Your style owns the frame: the background picture bends away and
-        fades toward the screen edges while an LED ball floats in the
-        center — a grid of glowing dots streaming horizontally around it,
-        squeezed at the edges like a real dot ball, with wavy neon bands
-        weaving over the surface. Neon gives the classic pink/blue LED
-        palette; Picture rebuilds the background as dot colors.
+        A 3D LED ball floats in the center of the frame — a grid of glowing
+        dots streaming horizontally around it, squeezed at the edges like a
+        real dot ball, with wavy neon bands weaving over the surface. Your
+        background stays exactly as you picked it: the picture or gradient
+        is never bent, dimmed or repainted — the ball simply floats over
+        it. Neon gives the classic pink/blue LED palette; Picture rebuilds
+        the background as dot colors.
       </p>
 
       <div className="space-y-1.5">
@@ -155,15 +158,6 @@ export function DotSphereStyleSection() {
         onChange={set('dotSphereGlow')}
         format={(v) => `${Math.round(v * 100)}%`}
       />
-      <SliderRow
-        label="Backdrop"
-        value={viz.dotSphereBackdrop}
-        min={0}
-        max={1}
-        step={0.05}
-        onChange={set('dotSphereBackdrop')}
-        format={(v) => `${Math.round(v * 100)}%`}
-      />
       <BeatPunchRow
         on={viz.dotSphereBeat}
         strength={viz.dotSphereBeatStrength}
@@ -173,13 +167,13 @@ export function DotSphereStyleSection() {
       />
       <p className="text-[10px] leading-snug text-zinc-600">
         The dots stream around the ball with the song (flow speed above,
-        negative reverses). Music ripple lets every row ride its own
-        frequency band. Your background picture bends away toward the
-        screen edges and sinks into the dark behind the ball (Backdrop
-        sets how far it sinks); the wave closes on itself in whole cycles,
-        so the rotation never shows a seam. The ball answers the Layout
-        dials below like any style; on transparent backgrounds only the
-        ball&apos;s dots render so alpha recordings stay clean.
+        negative reverses). Music ripple makes the ball react like the
+        other visualizers: every row rides its own frequency band and
+        pushes outward with it — the surface ripples like a waveform, the
+        bass rows surging on the kick drum. The wave closes on itself in
+        whole cycles, so the rotation never shows a seam. The ball answers
+        the Layout dials below like any style; on transparent backgrounds
+        only the ball&apos;s dots render so alpha recordings stay clean.
       </p>
     </section>
   )

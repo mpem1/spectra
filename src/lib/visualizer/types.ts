@@ -173,17 +173,14 @@ export interface VisualizerConfig {
   /** Dot Sphere style — band twist 0..3: wave phase shift from row to row
    *  (the woven diagonal drift of the bands) */
   dotSphereTwist: number
-  /** Dot Sphere style — music ripple 0..1: how much each latitude row's
-   *  brightness and dot size ride its own spectrum band (bottom rows =
-   *  low end) */
+  /** Dot Sphere style — music ripple 0..1: how hard each latitude row
+   *  rides its own spectrum band — the band's energy pushes the row
+   *  outward along the ball's radius (the surface ripples like a
+   *  waveform, bottom rows = low end) and lifts the row's brightness and
+   *  dot size with it. 0 = the smooth dialed sphere, silent in music. */
   dotSphereRipple: number
   /** Dot Sphere style — the soft halo radiating around every dot, 0..1 */
   dotSphereGlow: number
-  /** Dot Sphere style — backdrop 0..1: how far the picture behind the ball
-   *  sinks into the dark toward the screen edges (100% = the full reference
-   *  look, lower keeps the scene brighter out to the edges; the bend itself
-   *  is baked to the reference) */
-  dotSphereBackdrop: number
   /** Dot Sphere style — dot colors: 'neon' = the fixed pink/blue LED
    *  palette (the reference look), 'picture' = sampled from the picture
    *  behind the ball */
@@ -2104,7 +2101,6 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     dotSphereTwist: 0.9,
     dotSphereRipple: 0.35,
     dotSphereGlow: 0.55,
-    dotSphereBackdrop: 1,
     dotSphereColors: 'neon',
     dotSphereBeat: false,
     dotSphereBeatStrength: 0.5,

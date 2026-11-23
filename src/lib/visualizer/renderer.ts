@@ -638,8 +638,9 @@ function drawVisualizer(
       drawSphere(rc, frame, cfg, S)
       break
     case 'dotsphere':
-      // The LED ball over its bent-picture backdrop. Not a strip: it skips
-      // the vertical-orientation branch (same as the image style below).
+      // The 3D LED ball floating over the user's untouched background. Not
+      // a strip: it skips the vertical-orientation branch (same as the
+      // image style below).
       drawDotSphereStyle(rc, frame, cfg, transparent)
       break
     case 'imgviz':

@@ -458,7 +458,6 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
                 dotSphereTwist: legacyDotSphere.bandTwist,
                 dotSphereRipple: legacyDotSphere.ripple,
                 dotSphereGlow: legacyDotSphere.glow,
-                dotSphereBackdrop: legacyDotSphere.backdrop,
                 dotSphereColors: legacyDotSphere.colorMode,
                 dotSphereBeat: legacyDotSphere.beatReactive,
                 dotSphereBeatStrength: legacyDotSphere.beatStrength,
