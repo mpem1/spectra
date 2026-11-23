@@ -2,6 +2,7 @@
 
 import { ScreenFilterSection } from '@/components/studio/screen-filter-section'
 import { VhsFilterSection } from '@/components/studio/vhs-filter-section'
+import { CamcorderFilterSection } from '@/components/studio/camcorder-filter-section'
 import { FilmFilterSection } from '@/components/studio/film-filter-section'
 import { HalftoneFilterSection } from '@/components/studio/halftone-filter-section'
 import { GlitchFilterSection } from '@/components/studio/glitch-filter-section'
@@ -34,6 +35,11 @@ export function FiltersTab() {
 
       {/* VHS tape — wobble + tracking noise + dropouts */}
       <VhsFilterSection />
+
+      {/* Camcorder — effect.app's Backrooms preset: the analog-tape
+          camcorder look (lo-fi resample, PAL chroma decode, wobble, crease,
+          tracking, jumps + the preset's yellow-green grade and haze) */}
+      <CamcorderFilterSection />
 
       {/* Film reel — scratches + dust & hair + flicker */}
       <FilmFilterSection />

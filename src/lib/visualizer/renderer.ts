@@ -27,6 +27,7 @@ import { drawWatermark } from './watermark'
 import { drawPulseImage } from './pulse-image'
 import { drawScreenFilter } from './screen-filter'
 import { drawVhsFilter } from './vhs-filter'
+import { drawCamcorderFilter } from './camcorder-filter'
 import { drawFilmFilter } from './film-filter'
 import { drawHalftoneFilter, flipGate } from './halftone-filter'
 import { drawGlitchFilter } from './glitch-filter'
@@ -223,6 +224,9 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // Optional chaining keeps very old saves renderable before the merge.
   drawScreenFilter(rc, config.screenFilter, frame, transparent)
   drawVhsFilter(rc, config.vhsFilter, frame, transparent)
+  // Camcorder — effect.app's Backrooms preset as the tape sibling: the same
+  // slot in the chain (right after VHS, before film damage grades the look).
+  drawCamcorderFilter(rc, config.camcorderFilter, frame, transparent)
   drawFilmFilter(rc, config.filmFilter, frame, transparent)
   drawHalftoneFilter(rc, config.halftoneFilter, frame, transparent)
   drawGlitchFilter(rc, config.glitchFilter, frame, transparent)

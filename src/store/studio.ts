@@ -22,6 +22,7 @@ import {
   type CustomFontConfig,
   type ScreenFilterConfig,
   type VhsFilterConfig,
+  type CamcorderFilterConfig,
   type FilmFilterConfig,
   type HalftoneFilterConfig,
   type GlitchFilterConfig,
@@ -117,6 +118,8 @@ type StudioState = {
   patchPulseImage: (partial: Partial<PulseImageConfig>) => void
   patchScreenFilter: (partial: Partial<ScreenFilterConfig>) => void
   patchVhsFilter: (partial: Partial<VhsFilterConfig>) => void
+  /** Patches config.camcorderFilter (the Backrooms camcorder print) */
+  patchCamcorderFilter: (partial: Partial<CamcorderFilterConfig>) => void
   patchFilmFilter: (partial: Partial<FilmFilterConfig>) => void
   patchHalftoneFilter: (partial: Partial<HalftoneFilterConfig>) => void
   patchGlitchFilter: (partial: Partial<GlitchFilterConfig>) => void
@@ -256,6 +259,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
   patchVhsFilter: (partial) =>
     set((s) => ({
       config: { ...s.config, vhsFilter: { ...s.config.vhsFilter, ...partial } },
+    })),
+
+  patchCamcorderFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, camcorderFilter: { ...s.config.camcorderFilter, ...partial } },
     })),
 
   patchFilmFilter: (partial) =>
@@ -416,6 +424,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         pulseImage: { ...DEFAULT_STUDIO_CONFIG.pulseImage, ...config.pulseImage },
         screenFilter: { ...DEFAULT_STUDIO_CONFIG.screenFilter, ...config.screenFilter },
         vhsFilter: { ...DEFAULT_STUDIO_CONFIG.vhsFilter, ...config.vhsFilter },
+        camcorderFilter: { ...DEFAULT_STUDIO_CONFIG.camcorderFilter, ...config.camcorderFilter },
         filmFilter: { ...DEFAULT_STUDIO_CONFIG.filmFilter, ...config.filmFilter },
         halftoneFilter: { ...DEFAULT_STUDIO_CONFIG.halftoneFilter, ...config.halftoneFilter },
         glitchFilter: { ...DEFAULT_STUDIO_CONFIG.glitchFilter, ...config.glitchFilter },

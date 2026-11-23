@@ -603,6 +603,69 @@ export interface VhsFilterConfig {
 }
 
 /**
+ * Camcorder filter — effect.app's "Backrooms" preset ported 1:1 (captured
+ * verbatim from the live editor) as the camcorder sibling of the VHS tape:
+ * the whole picture plays back through a lo-fi analog tape pipeline — a
+ * PAL-style YIQ chroma decoder on an internal low-resolution grid, tape
+ * wobble / crease tears / tracking noise / 29.97fps vertical jumps — then
+ * the preset's Oklab zone color grade (the yellow-green tape cast) and a
+ * soft gaussian haze over it all. Dials match the original effect's
+ * controls; the grade zone values are the preset's own, baked in. All noise
+ * is hash-based, so exports are frame-exact. Skipped on transparent
+ * backgrounds.
+ */
+export interface CamcorderFilterConfig {
+  enabled: boolean
+  /** Internal tape resolution — the lo-fi resample grid width, 128..1024
+   *  (the original "resolution" dial; its default 420 ≈ VHS tape) */
+  resolution: number
+  /** Distortion 0..2.5 — how far the tape bends the lines */
+  distortion: number
+  /** Color fringing 0..2 — the chroma carrier phase rotation (hue smear) */
+  colorFringing: number
+  /** Wobble 0..2 — the slow horizontal tape wave */
+  wobble: number
+  /** Tape crease 0..2 — the tearing wrinkle that slides down the tape */
+  tapeCrease: number
+  /** Tracking noise 0..2 — the head-switch smear at the frame's bottom */
+  trackingNoise: number
+  /** Vertical jump 0..2 — frame-quantized tape skips (29.97 fps) */
+  verticalJump: number
+  /** Sparkle 0..2 — bright glitter riding the tape crease */
+  sparkle: number
+  /** Flicker 0..2 — the slow AC-power brightness breathing */
+  flicker: number
+  /** Grain 0..2 — RGB tape grain */
+  grain: number
+  /** Saturation 0..2.5 — chroma gain after the tape decode */
+  saturation: number
+  /** Color shift 0..2 — the YIQ tint skew (the backrooms yellow-green) */
+  colorShift: number
+  /** Color blend 0..1 — how much of the decoded chroma lands (1 = full) */
+  colorBlend: number
+  /** Softness 0.4..2 — luma low-pass bandwidth (lower = softer tape) */
+  softness: number
+  /** Color delay 0..8 — chroma horizontal offset in tape pixels */
+  colorDelay: number
+  /** Sharpening 0..2 — edge crispness applied after the resample */
+  sharpening: number
+  /** Gaussian blur strength 0.3..50 — the haze kernel radius scale
+   *  (radius ≈ strength × 2.64 px per pass, exactly the original) */
+  blur: number
+  /** Blur mix 0..1 — how much of the blurred frame lands over the graded
+   *  one (the preset ships 0.05: a faint haze) */
+  blurMix: number
+  /** Grade strength 0..1 — the baked Backrooms color grade's master dial */
+  gradeStrength: number
+  /** React to beat — kicks jolt the tape: tracking noise, tape crease and
+   *  the vertical jump punch past their dials (additive, resting exactly at
+   *  the dialed look between beats) */
+  beatReactive: boolean
+  /** How hard the beat punch hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
+}
+
+/**
  * Film filter — old school film reel damage: persistent vertical emulsion
  * scratches (re-drawn every few seconds), dust specks & hairs, and
  * frame-by-frame exposure flicker. Deterministic via song time + hashing.
@@ -1659,6 +1722,9 @@ export interface StudioConfig {
   screenFilter: ScreenFilterConfig
   /** Full-frame tape post-pass (VHS wobble + tracking + dropouts) */
   vhsFilter: VhsFilterConfig
+  /** Full-frame camcorder post-pass (the effect.app Backrooms preset:
+   *  analog tape pipeline + baked zone grade + gaussian haze) */
+  camcorderFilter: CamcorderFilterConfig
   /** Full-frame film-damage post-pass (scratches + dust + flicker) */
   filmFilter: FilmFilterConfig
   /** Full-frame print post-pass (45° halftone dots on darker tones) */
@@ -2147,6 +2213,32 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     tracking: 0.5,
     trackingSpeed: 0.5,
     dust: 0.4,
+    beatReactive: false,
+    beatStrength: 0.5,
+  },
+  camcorderFilter: {
+    enabled: false,
+    // The Backrooms preset's own dial settings, captured from the live
+    // editor's uniform stream — these ARE the shipped look.
+    resolution: 420,
+    distortion: 0,
+    colorFringing: 0,
+    wobble: 0.59,
+    tapeCrease: 0.37,
+    trackingNoise: 2,
+    verticalJump: 0.01,
+    sparkle: 0.31,
+    flicker: 0.06,
+    grain: 0.75,
+    saturation: 1,
+    colorShift: 0.1,
+    colorBlend: 1,
+    softness: 0.4,
+    colorDelay: 4.8,
+    sharpening: 1.14,
+    blur: 3.87,
+    blurMix: 0.05,
+    gradeStrength: 1,
     beatReactive: false,
     beatStrength: 0.5,
   },
