@@ -2598,3 +2598,58 @@ between 3D glasses and Dither).
   horizontal overflow. Zero page errors after the fixes; all 8 shaders
   pre-compiled OK on the real driver; tsc shows zero new errors in touched
   files; lint 0 errors.
+
+## 2026-11-21 — Camcorder frame rate: the pipeline was paying full-res everything (this commit)
+
+The Camcorder (Backrooms tape) preview crawled at 1–2 fps in the software-GL
+sandbox and dragged on hi-dpi real machines. Profiling with a temporary
+per-frame probe split the story in two:
+
+- The captured 5-pass chain itself measured ~20–30 ms of GL calls — but
+  software rasterizers DEFER execution, and the real cost landed inside the
+  composite `drawImage(g.canvas)` (1871 ms at 1278×718). The passes were the
+  budget; the composite just collected it. (A bare cleared GL canvas
+  composites in 2 ms here — the mechanism was never the problem.)
+- The pipeline ran UNcapped at the full backing-store resolution (CSS ×
+  dpr≤2 ≈ 2800×1580 on a hi-dpi desktop), while the CPU fallback has always
+  capped at 420 px — and the VHS pass costs ~100 texture fetches per output
+  pixel (13 chroma taps + 5 luma taps through the 4-read grid resample,
+  plus sharpening), so pipeline pixels are the fps budget.
+
+Fixes, all ported from the Neon Split chain's playbook (plus one step
+further down the ladder because this chain is far heavier per pixel):
+  1. Adaptive internal-resolution ladder 1 → 0.75 → 0.5 → 0.33 → 0.25 for
+     the live preview only; exports always render at full scale (rung is
+     bypassed by `interactive`). Step down one rung when the per-frame cost
+     EMA passes 30 ms, climb back after 120 cheap frames (~2 s) — the
+     streak gate stops boundary oscillation from reallocating layers.
+  2. The ladder measures the WHOLE filter frame (pipeline + composite), not
+     drawGL alone — the deferred-execution discovery above meant timing the
+     passes under-reported by an order of magnitude and the ladder never
+     stepped.
+  3. UNPACK_FLIP_Y_WEBGL removed: the flip now happens in the bundle's own
+     source canvas (y-negative transform) and the frame uploads with
+     texSubImage2D into a persistent texture. The pixel-store flip forced
+     every canvas upload down the slow read-flip-reupload path (~16 ms
+     measured in the Neon Split chain) and defeated the GPU-GPU fast path.
+     Texture content is byte-identical, so the captured shaders' y
+     convention is untouched.
+  4. powerPreference 'high-performance' on the GL context (dual-GPU machines
+     were pinned to the integrated chip) — same rationale as Neon Split.
+  5. Attribute locations cached at link time (bindQuad ran
+     getAttribLocation ×2 per pass, five passes per frame).
+  6. GL bundle key carries the render path (`:preview` / `:export`) so an
+     export matching the preview's canvas size can't thrash one bundle's
+     layers between ladder-rung and full scale on alternating frames.
+  7. One private source canvas per bundle — a concurrent export at another
+     size can't churn a shared scratch canvas every frame.
+
+Verified (agent-browser, software GL worst case): 675×380 preview 2 → 24 fps
+(12×), 1278×718 preview 1 → 7 fps (7×), anchored Image-visualizer artwork at
+1278×718 → 17 fps. The anchored path renders right-side up (artwork crop
+lands through the new flip correctly) with the tape's edge artifacts hugging
+the picture's own edges. Visual parity by screenshot: same bar treatment,
+same grade tint, same colored streaks and head-switch band. Exports are
+code-path-identical to before (ladder bypassed). 390×844 mobile: no
+horizontal overflow. Zero page errors; tsc zero new errors in the touched
+file; lint 0 errors (27 pre-existing vendored-ffmpeg warnings).

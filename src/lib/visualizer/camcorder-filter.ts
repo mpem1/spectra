@@ -172,6 +172,10 @@ function resolveCamcorder(cfg: CamcorderFilterConfig, frame: Pick<AudioFrame, 't
 interface CamProg {
   program: WebGLProgram
   u: Record<string, WebGLUniformLocation | null>
+  /** Attribute locations, queried once at link time — bindQuad runs five
+   *  times per frame and getAttribLocation per pass is pure waste. */
+  aPos: number
+  aUV: number
 }
 
 interface CamLayer {
@@ -196,6 +200,19 @@ interface CamcorderGL {
   mix: CamProg
   w: number
   h: number
+  /** Live-preview ladder state (see SCALE_LADDER): measured-cost EMA,
+   *  cheap-frame streak, current rung. Lives on the bundle so a live
+   *  preview and an offline export adapt independently — exports never
+   *  touch it and always render at full scale. */
+  ema: number
+  cool: number
+  scaleIdx: number
+  /** This bundle's own source canvas: the frame (or artwork crop) is drawn
+   *  here pre-flipped and uploaded with texSubImage2D. One canvas per
+   *  bundle, so a concurrent export at a different size can't churn a
+   *  shared scratch canvas every frame (the Neon Split lesson). */
+  srcWork: HTMLCanvasElement
+  srcCtx: CanvasRenderingContext2D
 }
 
 /** GL bundles keyed by canvas size — the preview and an offline export can
@@ -210,6 +227,27 @@ let camGLFailAt = -1e9
 const CAM_GL_RETRY_MS = 3000
 /** One-time diagnostic: which path actually renders (logged once). */
 let camPathLogged = false
+
+/* ------------------------- interactive resolution ladder ------------------- */
+
+/** Live-preview internal-resolution ladder. The captured VHS pass costs on
+ *  the order of 100 texture fetches per output pixel (13 chroma taps and 5
+ *  luma taps through the 4-read grid resample, plus sharpening and grain),
+ *  so pipeline pixels are the fps budget. When the measured per-frame cost
+ *  averages past the step threshold, the pipeline drops one rung — the
+ *  tape's own lo-fi resample hides the softening, and the CPU fallback's
+ *  fixed 420px cap already proves the look survives well below full res —
+ *  and after a sustained cheap stretch it climbs back toward full
+ *  resolution. Exports bypass the ladder entirely (full scale, faithful
+ *  frames). Same policy as the Neon Split chain, one rung lower at the
+ *  bottom because this chain is far heavier per pixel. */
+const SCALE_LADDER = [1, 0.75, 0.5, 0.33, 0.25]
+/** Step DOWN when a frame's cost EMA passes this (≈33fps before the first
+ *  drop — waiting longer meant the app was already stuttering). */
+const STEP_DOWN_MS = 30
+/** Step back UP only after this many consecutive cheap frames (~2s). */
+const STEP_UP_MS = 12
+const STEP_UP_FRAMES = 120
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader | null {
   const sh = gl.createShader(type)
@@ -239,7 +277,12 @@ function buildProgram(gl: WebGL2RenderingContext, fragSrc: string, uNames: strin
   }
   const u: Record<string, WebGLUniformLocation | null> = {}
   for (const name of uNames) u[name] = gl.getUniformLocation(program, name)
-  return { program, u }
+  return {
+    program,
+    u,
+    aPos: gl.getAttribLocation(program, 'aPos'),
+    aUV: gl.getAttribLocation(program, 'aUV'),
+  }
 }
 
 /** The captured shaders' uniform names — every location is looked up but
@@ -320,8 +363,12 @@ function makeLayer(gl: WebGL2RenderingContext, w: number, h: number): CamLayer |
  *  null when WebGL2 is unavailable or the captured programs fail — the
  *  caller falls back to the CPU path. Failures are memoized for a few
  *  seconds so a broken driver cannot trigger per-frame context churn. */
-function getGL(w: number, h: number): CamcorderGL | null {
-  const key = `${w}x${h}`
+function getGL(w: number, h: number, interactive: boolean): CamcorderGL | null {
+  // The path rides the key: a live preview (ladder-scaled layers) and an
+  // offline export (always full scale) that happen to match in canvas size
+  // must never share a bundle — sharing would reallocate its textures on
+  // every alternating frame (the churn this cache exists to prevent).
+  const key = `${w}x${h}${interactive ? ':preview' : ':export'}`
   const hit = camGLCache.get(key)
   if (hit) return hit
   if (performance.now() - camGLFailAt < CAM_GL_RETRY_MS) return null
@@ -335,7 +382,14 @@ function getGL(w: number, h: number): CamcorderGL | null {
       stencil: false,
       antialias: false,
       premultipliedAlpha: false,
+      // The GL canvas is consumed by a same-task drawImage right after the
+      // passes render (before the browser composites), so the drawing
+      // buffer never needs to survive past the frame.
       preserveDrawingBuffer: false,
+      // The tape is the heaviest thing on the page when it's on; on
+      // dual-GPU machines the default pinned it to the integrated chip.
+      // Ask for the fast one — the browser still honors battery savers.
+      powerPreference: 'high-performance',
     }) as WebGL2RenderingContext | null
     if (!gl) {
       camGLFailAt = performance.now()
@@ -375,9 +429,14 @@ function getGL(w: number, h: number): CamcorderGL | null {
       gl.STATIC_DRAW,
     )
 
-    // Source texture — the finished frame uploads here each draw. Row 0 of
-    // the 2D canvas (its top) lands at v=1 so the y-up GL coordinates match
-    // the captured shaders' gl_FragCoord convention.
+    // Source texture — refreshed per frame with texSubImage2D from the
+    // bundle's own pre-flipped work canvas (see drawGL). NO
+    // UNPACK_FLIP_Y_WEBGL here: it forces every canvas upload down the
+    // slow read-flip-reupload path (measured at ~16 ms per frame in the
+    // Neon Split chain) and defeats the GPU-to-GPU fast path on real
+    // hardware. The flip happens in the work canvas' transform instead,
+    // so texture v=0 still holds the frame's bottom row and the captured
+    // shaders' gl_FragCoord convention is untouched.
     const srcTex = gl.createTexture()
     if (!srcTex) {
       camGLFailAt = performance.now()
@@ -388,8 +447,7 @@ function getGL(w: number, h: number): CamcorderGL | null {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]))
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]))
 
     const a = makeLayer(gl, w, h)
     const b = makeLayer(gl, w, h)
@@ -401,7 +459,37 @@ function getGL(w: number, h: number): CamcorderGL | null {
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 
-    const g: CamcorderGL = { canvas, gl, quad, srcTex, a, b, c, d, vhs, grade, blurH, blurV, mix, w: 0, h: 0 }
+    // This bundle's private source canvas + its 2D context — sized with the
+    // pipeline, drawn pre-flipped, uploaded unflipped (see drawGL).
+    const srcWork = document.createElement('canvas')
+    const srcCtx = srcWork.getContext('2d')
+    if (!srcCtx) {
+      camGLFailAt = performance.now()
+      return null
+    }
+
+    const g: CamcorderGL = {
+      canvas,
+      gl,
+      quad,
+      srcTex,
+      a,
+      b,
+      c,
+      d,
+      vhs,
+      grade,
+      blurH,
+      blurV,
+      mix,
+      w: 0,
+      h: 0,
+      ema: 0,
+      cool: 0,
+      scaleIdx: 0,
+      srcWork,
+      srcCtx,
+    }
     camGLCache.set(key, g)
     if (camGLCache.size > 3) {
       const oldestKey = camGLCache.keys().next().value as string
@@ -418,17 +506,15 @@ function getGL(w: number, h: number): CamcorderGL | null {
 
 function bindQuad(gl: WebGL2RenderingContext, prog: CamProg, quad: WebGLBuffer): void {
   gl.bindBuffer(gl.ARRAY_BUFFER, quad)
-  const aPos = gl.getAttribLocation(prog.program, 'aPos')
-  const aUV = gl.getAttribLocation(prog.program, 'aUV')
-  if (aPos >= 0) {
-    gl.enableVertexAttribArray(aPos)
-    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0)
+  if (prog.aPos >= 0) {
+    gl.enableVertexAttribArray(prog.aPos)
+    gl.vertexAttribPointer(prog.aPos, 2, gl.FLOAT, false, 16, 0)
   }
-  if (aUV >= 0) {
-    gl.enableVertexAttribArray(aUV)
+  if (prog.aUV >= 0) {
+    gl.enableVertexAttribArray(prog.aUV)
     // [x, y, u, v] interleaved — the UVs start after the two position
     // floats: byte offset 8, not 12.
-    gl.vertexAttribPointer(aUV, 2, gl.FLOAT, false, 16, 8)
+    gl.vertexAttribPointer(prog.aUV, 2, gl.FLOAT, false, 16, 8)
   }
 }
 
@@ -495,12 +581,14 @@ function anchorCrop(rc: RenderContext, a: AnchorRect): { x: number; y: number; w
 function drawGL(g: CamcorderGL, rc: RenderContext, p: CamcorderParams, anchor: AnchorRect | null): void {
   const { gl } = g
   const { width: W, height: H, ctx } = rc
-  // Anchored: the pipeline runs at the artwork's stable work size; the
-  // animated crop resamples into it and the print stretches back out —
-  // sub-percent scaling, invisible under the tape's own resample, and the
-  // offscreen layers never churn with the beat motion.
-  const PW = anchor ? anchor.workW : W
-  const PH = anchor ? anchor.workH : H
+  // Pipeline working size — the frame, or the artwork's stable box when
+  // anchored (the animated crop resamples into it, the print stretches back
+  // out). The live preview multiplies it by the ladder rung: when the GPU
+  // can't keep up the whole tape drops internal resolution instead of
+  // dropping frames (exports stay at rung 1 — full scale, faithful).
+  const scale = rc.interactive ? SCALE_LADDER[g.scaleIdx] : 1
+  const PW = Math.max(16, Math.round((anchor ? anchor.workW : W) * scale))
+  const PH = Math.max(16, Math.round((anchor ? anchor.workH : H) * scale))
   if (g.w !== PW || g.h !== PH) {
     g.canvas.width = PW
     g.canvas.height = PH
@@ -510,25 +598,40 @@ function drawGL(g: CamcorderGL, rc: RenderContext, p: CamcorderParams, anchor: A
       gl.bindTexture(gl.TEXTURE_2D, layer.tex)
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, PW, PH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
     }
+    // The source texture is a persistent allocation: reallocated only when
+    // the pipeline size actually changes, refreshed per frame with
+    // texSubImage2D (no driver-side storage churn per frame).
+    gl.bindTexture(gl.TEXTURE_2D, g.srcTex)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, PW, PH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
   }
 
-  // The finished frame IS the source texture. Anchored: the artwork's rect
-  // crop goes up instead of the whole frame — a smaller upload than the
-  // full canvas.
-  gl.activeTexture(gl.TEXTURE0)
-  gl.bindTexture(gl.TEXTURE_2D, g.srcTex)
-  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
+  // The finished frame IS the source texture — drawn into this bundle's own
+  // work canvas PRE-FLIPPED (a y-negative transform puts canvas row 0 at the
+  // bottom) and uploaded UNFLIPPED. UNPACK_FLIP_Y_WEBGL would push every
+  // upload down the slow read-flip-reupload path (~16 ms/frame measured in
+  // the Neon Split chain); flipping in the drawImage keeps the GPU-GPU fast
+  // path and leaves the captured shaders' y convention byte-identical.
+  // Anchored: the artwork's rect crop goes in instead of the whole frame —
+  // a smaller draw and a smaller upload than the full canvas.
+  const sctx = g.srcCtx
+  if (g.srcWork.width !== PW || g.srcWork.height !== PH) {
+    g.srcWork.width = PW
+    g.srcWork.height = PH
+  }
+  resetWork(sctx)
+  sctx.imageSmoothingEnabled = true
+  sctx.setTransform(1, 0, 0, -1, 0, PH)
+  sctx.clearRect(0, 0, PW, PH)
   if (anchor) {
     const crop = anchorCrop(rc, anchor)
-    const srcCanvas = getWork('camcorder:src', PW, PH)
-    const sctx = resetWork(srcCanvas.getContext('2d')!)
-    sctx.imageSmoothingEnabled = true
-    sctx.clearRect(0, 0, PW, PH)
     sctx.drawImage(ctx.canvas, crop.x, crop.y, crop.w, crop.h, 0, 0, PW, PH)
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, srcCanvas)
   } else {
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ctx.canvas)
+    sctx.drawImage(ctx.canvas, 0, 0, W, H, 0, 0, PW, PH)
   }
+
+  gl.activeTexture(gl.TEXTURE0)
+  gl.bindTexture(gl.TEXTURE_2D, g.srcTex)
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, g.srcWork)
 
   // Pass 1 — VHS pipeline → a
   runPass(g, g.vhs, g.a, PW, PH, p, () => {
@@ -1288,7 +1391,7 @@ export function drawCamcorderFilter(
   // frame IS the tape, exactly as before.
   const anchor = rc.imageVizRect && rc.imageVizRect.w >= 16 && rc.imageVizRect.h >= 16 ? rc.imageVizRect : null
 
-  const g = getGL(anchor ? anchor.workW : W, anchor ? anchor.workH : H)
+  const g = getGL(anchor ? anchor.workW : W, anchor ? anchor.workH : H, rc.interactive === true)
   if (!g) {
     if (!camPathLogged) {
       camPathLogged = true
@@ -1302,6 +1405,7 @@ export function drawCamcorderFilter(
     console.info('[camcorder] GPU path active (WebGL2, 5 captured programs)')
   }
 
+  const t0 = performance.now()
   drawGL(g, rc, params, anchor)
 
   ctx.save()
@@ -1316,4 +1420,35 @@ export function drawCamcorderFilter(
     ctx.drawImage(g.canvas, 0, 0, W, H)
   }
   ctx.restore()
+
+  // Measure the WHOLE filter frame — pipeline + composite — for the ladder.
+  // The GL passes are queued cheaply and their real execution lands when the
+  // composite drains the queue (software rasterizers defer aggressively —
+  // the passes alone measured ~20ms while the frame actually cost ~250ms),
+  // so timing drawGL alone would under-report by an order of magnitude and
+  // the ladder would never step.
+  const ms = performance.now() - t0
+
+  // The ladder reacts only to what it controls — this chain's own cost —
+  // and only in the live preview (exports always run at full scale). Step
+  // down one rung when the cost EMA says the GPU can't keep up; climb back
+  // one rung after a sustained cheap stretch (the cool-streak gate stops
+  // boundary oscillation from reallocating the layers).
+  if (rc.interactive) {
+    g.ema = g.ema > 0 ? g.ema * 0.85 + ms * 0.15 : ms
+    if (g.ema > STEP_DOWN_MS && g.scaleIdx < SCALE_LADDER.length - 1) {
+      g.scaleIdx++
+      g.ema = 0
+      g.cool = 0
+    } else if (g.ema < STEP_UP_MS) {
+      g.cool++
+      if (g.cool > STEP_UP_FRAMES && g.scaleIdx > 0) {
+        g.scaleIdx--
+        g.ema = 0
+        g.cool = 0
+      }
+    } else {
+      g.cool = 0
+    }
+  }
 }
