@@ -1728,11 +1728,24 @@ export interface TextureFilterConfig {
   /** Custom texture rotation in degrees (-180..180), pivoting on the
    *  (moved) frame center. */
   customRotate: number
-  /** Custom texture contrast 0..2 around mid-gray (100 = neutral): how
-   *  far the map's bright/dark parts reach into highlight/shadow —
-   *  higher = stronger and wider-spread lighting, lower = subtler;
-   *  0 = a perfectly flat sheet (no highlight, no shadow at all). */
+  /** Custom texture contrast 0..2 (100 = neutral): how far the map's
+   *  bright/dark parts reach into highlight/shadow — higher = stronger
+   *  and wider-spread lighting, lower = subtler; 0 = a perfectly flat
+   *  sheet (no highlight, no shadow at all). The deviations it stretches
+   *  are measured from the map's OWN average luminance, not mid-gray, so
+   *  it shapes the lighting without biasing the frame's overall tone. */
   customContrast: number
+  /** Custom texture highlight strength 0..2 (100 = neutral): a separate
+   *  multiplier on the WHITE half of the lighting pass. On an
+   *  overall-light upload the user drops this instead of killing the
+   *  whole pass — the shadows keep sculpting while the white stops
+   *  overpowering the picture. 0 = the pass adds no light anywhere. */
+  customHighlights: number
+  /** Custom texture shadow strength 0..2 (100 = neutral): the same
+   *  separate multiplier on the BLACK half of the lighting pass — the
+   *  darks can be deepened or erased independently of the highlights.
+   *  0 = the pass adds no shadow anywhere. */
+  customShadows: number
 }
 
 /**
@@ -2572,13 +2585,16 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     amount: 0.6,
     scale: 1,
     // The custom texture: no image until the user uploads one, one tile
-    // cover-fitting the frame, dead-center, unrotated, neutral contrast
+    // cover-fitting the frame, dead-center, unrotated, neutral contrast,
+    // highlights and shadows both at full strength
     customSrc: '',
     customSize: 1,
     customX: 0,
     customY: 0,
     customRotate: 0,
     customContrast: 1,
+    customHighlights: 1,
+    customShadows: 1,
   },
   polaroidFilter: {
     enabled: false,

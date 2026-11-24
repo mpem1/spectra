@@ -28,12 +28,19 @@
  * the Size / Move X / Move Y / Rotate transforms, its luminance sampled
  * 1:1 at full frame resolution, its BRIGHTER parts lift a small
  * screen-blend highlight into the frame and its DARKER parts sink a small
- * multiply-blend shadow (a Contrast dial stretches the deviation around
- * mid-gray; 0 = perfectly flat). The picture itself is never resampled —
- * the earlier contour-displacement attempts read as noise and a shifted
- * double-exposure and pixelated the frame, so the warp is gone: pixels
- * stay exactly where they are, only their brightness is nudged. See
- * customLightFor below.
+ * multiply-blend shadow. The neutral point is the map's OWN average
+ * luminance, not fixed mid-gray — light is RELATIVE — so an overall-light
+ * upload (a bright photo, white artwork) lights from its own average
+ * instead of washing the whole frame white, and a uniform image of ANY
+ * gray level lights nothing at all. Four dials shape the pass: Contrast
+ * stretches the deviations (0 = perfectly flat), Highlights and Shadows
+ * dial the white and the black SEPARATELY (the user's "white still
+ * overpowers the image on lighter pictures" fix — drop Highlights and
+ * keep the sculpting), Amount fades the whole pass. The picture itself
+ * is never resampled — the earlier contour-displacement attempts read as
+ * noise and a shifted double-exposure and pixelated the frame, so the
+ * warp is gone: pixels stay exactly where they are, only their brightness
+ * is nudged. See customLightFor below.
  *
  * Structure: every material's height field is generated ONCE per (type,
  * size, scale bucket) at HALF resolution (the surfaces are organic; the
@@ -285,15 +292,39 @@ function generateField(type: TextureFilterType, tw: number, th: number, k: numbe
  *  with the frame — the highlights and shadows follow the map's own
  *  shapes at native resolution with nothing between them and the
  *  picture. One tile cover-fits the frame at Size 1,
- *  resolution-independent. Contrast is a straight multiplier on the
- *  map's deviation from mid-gray applied at sample time (0 = a perfectly
- *  flat sheet — no highlight, no shadow), so it never forces a rebuild.
- *  Cached per (image, quantized size/position/rotation); a miss is one
- *  full-res drawImage + read, a couple of milliseconds on slider drops.
- *  Returns null while the image is still decoding (the pass skips that
- *  frame — the live preview repaints every frame, so the texture appears
- *  the moment it lands). */
-const customCache = new Map<string, Uint8Array>()
+ *  resolution-independent.
+ *
+ *  NEUTRAL = THE MAP'S OWN MEAN, not mid-gray. The pass measures the
+ *  field's average luminance once at build time and the sample loop
+ *  reads deviations from THAT: bright is brighter than the map's own
+ *  average, dark is darker than it. The fixed-mid-gray version washed
+ *  overall-light uploads toward white (every pixel sat far above 0.5 →
+ *  the whole frame screened up — the user's "the white still overpowers
+ *  the image when overall lighter images are used"); measured against
+ *  its own average, a light photo highlights only its brightest parts
+ *  and shadows its dimmer ones, and a uniform sheet of ANY gray level
+ *  (plain white, plain gray) lights nothing — a flat sheet of light is
+ *  not a lighting map. The mean is measured on the RAW field (before
+ *  any dial), cached with it, and honors Size/Move/Rotate for free —
+ *  cover-fit crops and tile shifts change which pixels are visible and
+ *  each cached field carries the mean of exactly those pixels.
+ *
+ *  Contrast is a straight multiplier on the deviation applied at sample
+ *  time (0 = a perfectly flat sheet — no highlight, no shadow), and so
+ *  are the Highlights / Shadows strengths — none of them force a
+ *  rebuild. Cached per (image, quantized size/position/rotation); a
+ *  miss is one full-res drawImage + read, a couple of milliseconds on
+ *  slider drops. Returns null while the image is still decoding (the
+ *  pass skips that frame — the live preview repaints every frame, so
+ *  the texture appears the moment it lands). */
+interface CustomLightMap {
+  /** Per-frame-pixel luminance 0..255, aligned 1:1 with the frame. */
+  lum: Uint8Array
+  /** The field's own mean luminance 0..1 — the pass's neutral point. */
+  mean: number
+}
+
+const customCache = new Map<string, CustomLightMap>()
 
 /** Content fingerprint for the cache key. The key must NOT distinguish
  *  uploads by dimensions alone: two different pictures of the same
@@ -318,7 +349,7 @@ function customTokenFor(src: string): string {
   return t
 }
 
-function customLightFor(cfg: TextureFilterConfig, W: number, H: number): Uint8Array | null {
+function customLightFor(cfg: TextureFilterConfig, W: number, H: number): CustomLightMap | null {
   const src = cfg.customSrc ?? ''
   if (!src) return null
   const img = getBackgroundImage(src)
@@ -360,12 +391,18 @@ function customLightFor(cfg: TextureFilterConfig, W: number, H: number): Uint8Ar
   const d = g.getImageData(0, 0, W, H).data
   const n = W * H
   const lum = new Uint8Array(n)
+  // Raw mean over the same pass that stores the luminances — the pass's
+  // neutral point ("bright" = brighter than the map's own average).
+  let sum = 0
   for (let i = 0, k = 0; k < n; i += 4, k++) {
-    lum[k] = (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) | 0
+    const l = (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) | 0
+    lum[k] = l
+    sum += l
   }
+  const map: CustomLightMap = { lum, mean: sum / (n * 255) }
   if (customCache.size > 4) customCache.clear()
-  customCache.set(key, lum)
-  return lum
+  customCache.set(key, map)
+  return map
 }
 
 /* -------------------------------- grain tiles ------------------------------- */
@@ -474,37 +511,49 @@ export function drawTextureFilter(
     // lift a small highlight into the frame, its darker parts sink a
     // small shadow, and every pixel is adjusted IN PLACE: no resampling
     // (nothing can pixelate the picture), no offset double-exposure, no
-    // warp noise — exactly the lighting pass the user asked for.
-    const lum = customLightFor(cfg, W, H)
-    if (!lum) return // custom image missing / still decoding — untouched frame
-    // Contrast multiplies the map's deviation around mid-gray at sample
-    // time (0 = a flat sheet: no highlight, no shadow anywhere) — a
-    // plain multiply, so it never forces a light-map rebuild.
+    // warp noise — exactly the lighting pass the user asked for. The
+    // neutral point is the map's OWN average luminance (see
+    // customLightFor): light is relative, so an overall-light upload
+    // highlights only its brightest parts instead of washing the whole
+    // frame white, and a uniform sheet lights nothing at all.
+    const light = customLightFor(cfg, W, H)
+    if (!light) return // custom image missing / still decoding — untouched frame
+    const { lum, mean } = light
+    // Three sample-time multipliers — plain multiplies on the deviation
+    // and its two directions, so none of them force a light-map rebuild:
+    // Contrast stretches the deviations around the map's own mean (0 = a
+    // flat sheet: no highlight, no shadow anywhere); Highlights and
+    // Shadows dial the white and the black SEPARATELY — on a light-toned
+    // upload the user drops Highlights and keeps the sculpting instead
+    // of the whole pass drowning the picture in white.
     const ck = Math.min(2, Math.max(0, cfg.customContrast ?? 1))
-    // The highlight/shadow ceiling: a full black-or-white map region at
-    // amount 1 moves the picture ~40% of the way toward white/black —
-    // the small, tasteful lighting pass the user described; Amount and
-    // Contrast scale it from there.
+    const hx = Math.min(2, Math.max(0, cfg.customHighlights ?? 1))
+    const sx = Math.min(2, Math.max(0, cfg.customShadows ?? 1))
+    // The highlight/shadow ceiling: a map region at the FULL relative
+    // deviation (0.5 away from the map's own average) at amount 1 moves
+    // the picture ~40% of the way toward white/black — the small,
+    // tasteful lighting pass the user described; Amount, Contrast and
+    // the two strength dials scale it from there.
     const STR = 0.4
     for (let y = 0; y < H; y++) {
       const lrow = y * W
       let i = y * W * 4
       for (let x = 0; x < W; x++, i += 4) {
-        // The map's contrasted deviation from mid-gray, dialed by
-        // amount: positive = highlight (screen blend — light added, it
-        // cannot blow past white), negative = shadow (multiply blend —
-        // darkness absorbed, it cannot sink below black).
-        let dv = (lum[lrow + x] / 255 - 0.5) * ck
+        // The map's contrasted deviation from ITS OWN average, dialed
+        // by amount: positive = highlight (screen blend — light added,
+        // it cannot blow past white), negative = shadow (multiply blend
+        // — darkness absorbed, it cannot sink below black).
+        let dv = (lum[lrow + x] / 255 - mean) * ck
         if (dv > 0.5) dv = 0.5
         else if (dv < -0.5) dv = -0.5
         dv *= amount
         if (dv > 0) {
-          const w = dv * 2 * STR
+          const w = dv * 2 * STR * hx
           od[i] = src[i] + (255 - src[i]) * w
           od[i + 1] = src[i + 1] + (255 - src[i + 1]) * w
           od[i + 2] = src[i + 2] + (255 - src[i + 2]) * w
         } else if (dv < 0) {
-          const m = 1 + dv * 2 * STR // dv negative → m < 1
+          const m = 1 + dv * 2 * STR * sx // dv negative → m < 1
           od[i] = src[i] * m
           od[i + 1] = src[i + 1] * m
           od[i + 2] = src[i + 2] * m

@@ -63,7 +63,8 @@ export function makePortable(config: StudioConfig): {
   const polaroidDrop = !!config.polaroidFilter?.photoSrc || !!config.polaroidFilter?.mosaicSrc
   // The Texture filter's custom bump image is media pixels too — a data URL
   // would blow the URL budget; recipients fall back to no custom texture
-  // (its Size / Move / Rotate / Contrast dials still travel verbatim).
+  // (its Size / Move / Rotate / Contrast / Highlights / Shadows dials still
+  // travel verbatim).
   const texDrop = !!config.textureFilter?.customSrc
   const fontsDrop = (config.fonts?.length ?? 0) > 0
   if (!bgDrop && !videoDrop && !discDrop && !wmDrop && !pulseDrop && !vizDrop && !polaroidDrop && !texDrop && !fontsDrop) {
