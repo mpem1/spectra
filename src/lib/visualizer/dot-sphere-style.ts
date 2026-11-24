@@ -37,11 +37,18 @@
  * rotation (the seam this look originally shipped with).
  *
  * Colors: 'neon' paints the reference pink/blue LED palette from a color
- * LUT built once at load; 'palette' sweeps the user's OWN gradient palette
- * across the dot hues (a second LUT, rebuilt only when the palette edits);
+ * LUT built once at load; 'palette' paints the user's OWN gradient across
+ * the ball BY POSITION — the GRADIENT editor's Shape decides where each
+ * palette color lands (linear: a sweep across the ball at the editor's
+ * Angle; radial: stop 1 at the core, last stop at the rim) and Cycle
+ * colors ping-pongs the whole paint through the palette over time (the
+ * same phase + reflection fold as sampleGradient, so colors never leave
+ * the palette). The paint field is fixed to the viewer — the same
+ * convention as the neon hue wave — so the dots stream THROUGH their
+ * colors as the ball rotates (a second LUT rebuilt only when the palette
+ * edits; the hot loop stays on table lookups, zero per-dot strings);
  * 'picture' samples the scene behind the ball (one small downscaled
- * getImageData) so the dots carry the picture's own colors. Every path
- * keeps the hot loop on table lookups — zero per-dot string allocation.
+ * getImageData) so the dots carry the picture's own colors.
  *
  * The ball's FACE — the solid disk the dots sit on — is a dial: 'dark'
  * keeps the near-black LED space (and rests entirely on transparent
@@ -80,7 +87,7 @@
 import type { AudioFrame, ColorStop, RenderContext, VisualizerConfig } from './types'
 import { beatAmount, clamp01, getWork, resetWork } from './filter-utils'
 import { getBackgroundImage } from './image-cache'
-import { parseColor, sampleGradient } from './gradients'
+import { cyclePhase, parseColor, reflect01, sampleGradient } from './gradients'
 
 /* ------------------------------ neon color LUT ------------------------------ */
 
@@ -301,13 +308,12 @@ export function drawDotSphereStyle(
   // there is none, so the dots fall back to the neon palette (alpha
   // recordings stay legible instead of fading to nothing).
   const picture = !transparent && cfg.dotSphereColors === 'picture'
-  // 'palette' mode: the dots ride the user's own gradient palette. Falls
+  // 'palette' mode: the dots paint the user's own gradient palette. Falls
   // back to neon when the palette has no stops (an edge that can only
   // happen before the store's defaults land).
-  const lut =
-    !picture && cfg.dotSphereColors === 'palette' && cfg.gradient?.stops?.length
-      ? paletteLutFor(cfg.gradient.stops)
-      : NEON_LUT
+  const gradStops = cfg.gradient?.stops
+  const palettePaint = !picture && cfg.dotSphereColors === 'palette' && !!gradStops?.length
+  const lut = palettePaint && gradStops ? paletteLutFor(gradStops) : NEON_LUT
   // The ball's face: 'dark' = the near-black LED space, 'color' = any
   // picked color, 'image' = the user's picture cover-fitted inside the
   // circular face. Dark rests on transparent backgrounds; the other two
@@ -332,6 +338,28 @@ export function drawDotSphereStyle(
   const scroll = flow * t
   const freq = frame.freq
   const binCount = freq?.length ?? 0
+  // The palette paint's geometry and clock (palette mode) — the GRADIENT
+  // editor's Shape / Angle / Cycle controls, which style the ball exactly
+  // like they style a fill elsewhere: LINEAR sweeps across the ball's own
+  // bounding box at the editor's angle (the same direction math as
+  // gradientLine), RADIAL radiates from the ball's core to its rim (stop 1
+  // at the core, last stop at the rim — the editor's own description), and
+  // Cycle colors ping-pongs the whole paint through the palette over time
+  // (the same phase + reflection fold as sampleGradient). The paint field
+  // is fixed to the viewer, like the neon hue wave: the dots stream
+  // THROUGH their colors as the ball rotates.
+  const palRadial = cfg.gradient?.shape === 'radial'
+  const palCycle = !!cfg.gradient?.cycleColors
+  const palPhase = palCycle ? cyclePhase(t, cfg.gradient?.cycleSpeed ?? 0.25) : 0
+  let palDirX = 0
+  let palDirY = -1
+  let palLen = 2 * R
+  if (!palRadial) {
+    const rad = ((cfg.gradient?.angle ?? 48) * Math.PI) / 180
+    palDirX = Math.sin(rad)
+    palDirY = -Math.cos(rad)
+    palLen = 2 * R * (Math.abs(palDirX) + Math.abs(palDirY))
+  }
 
   let srcData: Uint8ClampedArray | null = null
   let sw = 0
@@ -458,7 +486,22 @@ export function drawDotSphereStyle(
           1,
           0.1 + 0.9 * (0.16 + 0.84 * crest) * (0.38 + 0.62 * cosW) + flare + rippleLum,
         )
-        const hi = Math.round((0.5 + 0.5 * w2) * (LUT_HUES - 1))
+        // Palette mode paints by POSITION — where the dot sits on the ball
+        // under the editor's Shape/Angle, folded by the Cycle phase — so
+        // the whole GRADIENT section styles the ball, not just its stop
+        // colors. Neon keeps its weave: the hue rides the slow diagonal
+        // wave between the two poles.
+        let hi: number
+        if (palettePaint) {
+          let p = palRadial
+            ? Math.sqrt((sx - cx) * (sx - cx) + (sy - cy) * (sy - cy)) / R
+            : ((sx - cx) * palDirX + (sy - cy) * palDirY) / palLen + 0.5
+          p = p < 0 ? 0 : p > 1 ? 1 : p
+          if (palCycle) p = reflect01(p + palPhase)
+          hi = Math.round(p * (LUT_HUES - 1))
+        } else {
+          hi = Math.round((0.5 + 0.5 * w2) * (LUT_HUES - 1))
+        }
         const li = Math.round(lum * (LUT_LUMS - 1))
         style = lut[hi * LUT_LUMS + li]
         alpha = 1

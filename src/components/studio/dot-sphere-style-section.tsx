@@ -91,7 +91,7 @@ export function DotSphereStyleSection() {
           {viz.dotSphereColors === 'neon'
             ? 'The classic LED look — hot pink and electric blue.'
             : viz.dotSphereColors === 'palette'
-              ? 'The dots sweep your GRADIENT palette below — edit it there.'
+              ? 'The dots paint your GRADIENT palette below — its Shape and Angle lay the colors across the ball, and Cycle colors sweeps them over time.'
               : 'The dots pick up the colors of the picture behind the ball.'}
         </p>
       </div>

@@ -190,7 +190,7 @@ function addPaletteStops(
   const phase = cycle ? cyclePhase(time, cycleSpeed) : 0
   for (const stop of normalized) {
     const pos01 = stop.position / 100
-    gradient.addColorStop(pos01, sampleStops(normalized, cycle ? reflect(pos01 + phase) : pos01))
+    gradient.addColorStop(pos01, sampleStops(normalized, cycle ? reflect01(pos01 + phase) : pos01))
   }
 }
 
@@ -261,7 +261,7 @@ export function sampleGradient(
   const normalized = normalizeStops(stops)
   if (normalized.length === 0) return '#ffffff'
   const clamped = clamp(t, 0, 1)
-  const pos01 = cycle ? reflect(clamped + cyclePhase(time, cycleSpeed)) : clamped
+  const pos01 = cycle ? reflect01(clamped + cyclePhase(time, cycleSpeed)) : clamped
   return sampleStops(normalized, pos01)
 }
 
@@ -278,8 +278,13 @@ export function cyclePhase(time: number, cycleSpeed: number): number {
   return 0.5 - 0.5 * Math.cos(time * speed * Math.PI * 2)
 }
 
-/** Fold x ∈ [0..2] into [0..1] by reflection (triangle wave) — continuous. */
-function reflect(x: number): number {
+/**
+ * Fold x ∈ [0..2] into [0..1] by reflection (triangle wave) — continuous.
+ * The palette ping-pong fold: sampleGradient and the dot sphere's
+ * positional palette paint share it, so both sweep the palette the same
+ * way (colors NEVER leave the palette and the motion has no seams).
+ */
+export function reflect01(x: number): number {
   return x <= 1 ? x : 2 - x
 }
 
