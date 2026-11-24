@@ -305,10 +305,11 @@ export function DotSphereStyleSection() {
       <p className="text-[10px] leading-snug text-zinc-600">
         The dots stream around the ball with the song (flow speed above,
         negative reverses). Music ripple makes the ball react like the
-        other visualizers: every row rides its own frequency band and
-        pushes outward with it — the surface ripples like a waveform, the
-        bass rows surging on the kick drum — scaled by the Sensitivity
-        dial below. The wave closes on itself in whole cycles, so the
+        other visualizers, and the Sensitivity dial below drives the WHOLE
+        reaction, not one axis: each row rides its own frequency band and
+        pushes the surface outward in traveling bulges, the wavy bands
+        swing harder while the music plays, and the whole ball breathes
+        with the bass. The wave closes on itself in whole cycles, so the
         rotation never shows a seam. The ball answers the Layout dials
         below like any style; on transparent backgrounds only the
         ball&apos;s dots render (unless you picked a color or picture

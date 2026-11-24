@@ -174,10 +174,12 @@ export interface VisualizerConfig {
    *  (the woven diagonal drift of the bands) */
   dotSphereTwist: number
   /** Dot Sphere style — music ripple 0..1: how hard each latitude row
-   *  rides its own spectrum band — the band's energy pushes the row
-   *  outward along the ball's radius (the surface ripples like a
-   *  waveform, bottom rows = low end) and lifts the row's brightness and
-   *  dot size with it. 0 = the smooth dialed sphere, silent in music. */
+   *  rides its own spectrum band — the band's energy pushes the surface
+   *  outward along the ball's radius in traveling bulges (the surface
+   *  ripples like a waveform, bottom rows = low end), deepens the row's
+   *  own wave-band swing, and breathes the whole ball with the bass —
+   *  all scaled by the shared Sensitivity dial. 0 = the smooth dialed
+   *  sphere, silent in music. */
   dotSphereRipple: number
   /** Dot Sphere style — the soft halo radiating around every dot, 0..1 */
   dotSphereGlow: number

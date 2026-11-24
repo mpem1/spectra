@@ -55,14 +55,21 @@
  * color's luminance (the near-black LED space only gains a gentle sheen).
  * The picture face is the user's own artwork and stays untouched.
  *
- * Music: the ball reacts like the other visualizers — every latitude row
- * rides its own spectrum bin ("Music ripple": bottom rows = low end)
- * SCALED BY THE SHARED SENSITIVITY DIAL, and the band's energy PUSHES the
- * row outward along the ball's radius, so the surface ripples like a
- * waveform — the same reactivity the Sphere style's quills give — on top
- * of the per-row brightness and dot-size lift. The React-to-beat box adds
- * the shared gated beat punch: the wave swells and the dots flare on
- * kicks, resting exactly at the dialed look between kicks.
+ * Music: the ball reacts like the other visualizers, and the shared
+ * Sensitivity dial drives the WHOLE reaction, not one axis: every
+ * latitude row rides its own spectrum bin ("Music ripple": bottom rows =
+ * low end) and its band's energy PUSHES the surface outward along the
+ * radius — concentrated at the wave crests, so the bulge rolls around
+ * the ball like a traveling waveform (the same language as the Sphere
+ * style's quills); the row's energy also DEEPENS its own wave-band
+ * swing, so the wavy bands pump harder while the music plays; and the
+ * whole ball — face and dots together — BREATHES with the bass the way
+ * the Sphere style's shell does (1 + bass*0.16 at full drive). Per-row
+ * brightness and dot-size lift ride the same energy. All of it is gated
+ * by Music ripple (0 = the ball rests silent at the dialed look). The
+ * React-to-beat box adds the shared gated beat punch: the wave swells
+ * and the dots flare on kicks, resting exactly at the dialed look
+ * between kicks.
  *
  * Clock: the flow and waves follow the decorative style clock (wall clock
  * live so the ball keeps drifting while paused; song time in exports), the
@@ -160,6 +167,13 @@ const SQUSH_MIN = 0.24
  *  ball's radius (as a fraction of R) at Music ripple 100% — the surface
  *  waveform. The Ripple dial scales it. */
 const RIPPLE_DEPTH = 0.22
+/** Whole-ball bass-breathing ceiling — the same the Sphere style's shell
+ *  reaches (`1 + bass * 0.16`) at full drive. */
+const BREATH_MAX = 0.16
+/** How much of a row's own band energy pours into its wave-band swing
+ *  (in row spacings at Music ripple 100%) — the bands pump with the
+ *  music. The Ripple dial scales it. */
+const AUDIO_WAVE_SWING = 1.6
 /** The default LED face color (the near-black the ball shipped with). */
 const FACE_DEFAULT = '#050109'
 
@@ -267,10 +281,17 @@ export function drawDotSphereStyle(
   const bandTwist = Math.max(0, cfg.dotSphereTwist ?? 0.9)
   const ripple = clamp01(cfg.dotSphereRipple ?? 0.35)
   // The shared Style-tab Sensitivity dial — the same role it plays for the
-  // Sphere style's quills and every other visualizer: it scales how hard
-  // the spectrum bands drive the shape (the radial ripple) and the
-  // motion/brightness lift.
+  // Sphere style and every other visualizer: it scales the WHOLE audio
+  // reaction, not one axis — the radial ripple, the bass breathing and
+  // the wave-band pump all ride it.
   const sens = Math.min(3, Math.max(0, cfg.sensitivity ?? 1))
+  // Whole-ball breathing with the low end — the same reactivity the
+  // Sphere style's shell gives (BREATH_MAX at full drive). Scaled by the
+  // shared Sensitivity dial like every band, gated by Music ripple (0 =
+  // the ball rests silent at the dialed look). Rides the whole ball:
+  // the face disk and the dot shell pulse together.
+  const breath = Math.min(BREATH_MAX, clamp01(frame.bass * sens) * ripple * 0.45)
+  const ballScale = 1 + breath
   const glow = clamp01(cfg.dotSphereGlow ?? 0.55)
   // The Style tab's shared Glow switch gates the halo entirely (the same
   // role it plays for the Sphere style's atmosphere); the card's Glow dial
@@ -303,8 +324,9 @@ export function drawDotSphereStyle(
   const cy = H / 2
   const R = (Math.min(W, H) / 2) * size
   // The ball's silhouette on screen: the tangent circle seen from the
-  // camera projects to R · D/√(D²−1) — the solid face fills exactly this.
-  const rs = (R * PERSP) / Math.sqrt(PERSP * PERSP - 1)
+  // camera projects to R · D/√(D²−1) — the solid face fills exactly this
+  // (scaled by the bass breathing, so face and dots pulse together).
+  const rs = ((R * PERSP) / Math.sqrt(PERSP * PERSP - 1)) * ballScale
   const rowSpacing = (2 * R) / rows
   const baseDot = rowSpacing * 0.25 * dotSize
   const scroll = flow * t
@@ -384,11 +406,10 @@ export function drawDotSphereStyle(
     const rippleV = bin >= 0 ? clamp01(freq![bin] * sens) : 0
     const rippleK = 1 + 0.3 * rippleV * ripple
     const rippleLum = rippleV * ripple * 0.45
-    // The band's energy PUSHES the row outward along the ball's radius —
-    // the surface ripples like a waveform (low rows surge on the kick
-    // drum), the same reactivity the Sphere style's quills give. Rests at
-    // the dialed sphere in silence.
-    const surf = R + rippleV * ripple * R * RIPPLE_DEPTH
+    // The row's own band energy also DEEPENS its wave-band swing — the
+    // wavy bands pump harder while the music plays (the bass rows swing
+    // hardest) and rest at the dialed amount in silence.
+    const rowWaveAmp = waveAmp + rippleV * ripple * rowSpacing * AUDIO_WAVE_SWING
 
     for (let j = 0; j < cols; j++) {
       const theta0 = j * colStep // unscrolled longitude — the wave field is fixed to the viewer
@@ -405,9 +426,18 @@ export function drawDotSphereStyle(
       const w2 = Math.sin(theta0 * 2.0 + phi * 3.2 - t * waveSpeed * 0.6 + 2.4)
       const crest = 0.5 + 0.5 * w1
 
+      // The band's energy PUSHES the surface outward along the ball's
+      // radius — concentrated at the wave crests, so the bulge rolls
+      // around the ball like a traveling waveform (low rows surge on the
+      // kick drum) — and the whole ball rides the bass breathing. The
+      // same reactivity language as the Sphere style's quills + shell.
+      // Rests at the dialed sphere in silence.
+      const surf =
+        R * ballScale + rippleV * ripple * R * RIPPLE_DEPTH * (0.35 + 0.65 * crest)
+
       const persp = PERSP / (PERSP - sinPhi * cosW)
       const sx = cx + sinPhi * sinW * surf * persp
-      const sy = cy - yUp * surf * persp + waveAmp * w1
+      const sy = cy - yUp * surf * persp + rowWaveAmp * w1
 
       const r = baseDot * persp * (0.78 + 0.4 * crest) * rippleK
       const rx = Math.max(r * SQUSH_MIN, r * cosW)
