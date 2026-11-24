@@ -1661,6 +1661,52 @@ export interface ExposureFilterConfig {
   light: number
 }
 
+/** The eight materials the Texture filter can print the picture onto.
+ *  'grain' is the only one that animates (film-grain flicker at 24 fps);
+ *  the rest are static physical surfaces. */
+export type TextureFilterType =
+  | 'grain'
+  | 'paper'
+  | 'canvas'
+  | 'concrete'
+  | 'glass'
+  | 'foil'
+  | 'rust'
+  | 'dirt'
+
+/**
+ * Texture filter — the finished picture printed onto a physical material
+ * (the user's ask: "a section called texture where we can add different
+ * textures, i think its called displacement, where we can see the flaws and
+ * texture through the image"). Every material is a procedural surface with
+ * a HEIGHT field: the height's slope DISPLACES the picture (pixels sample
+ * around their neighbors, so the surface's flaws warp the image — the
+ * literal displacement mapping), shades it like a lit relief (light from
+ * the upper left) and blends the material's own tone over it. `amount` is
+ * the master dial — 0 = the untouched picture, 1 = the full printed look —
+ * and scales displacement, shading and albedo together, so the material
+ * always fades in as ONE coherent surface. `scale` sizes the material's
+ * features (fibers, pits, wrinkles) relative to the frame, resolution-
+ * independent (720p reference). Deterministic: the fields come from integer
+ * lattice hashing (same config → same texture every frame, preview and
+ * export agree frame-exactly; grain re-picks its noise tile on the 24 fps
+ * film-frame clock, the same cadence the Film filter's dust runs on).
+ * Skipped on transparent backgrounds like every full-frame filter, so
+ * alpha recordings stay clean.
+ */
+export interface TextureFilterConfig {
+  enabled: boolean
+  /** Which material prints the picture. Old saves without this field
+   *  load as 'paper' (the most legible displacement demo). */
+  type: TextureFilterType
+  /** Texture strength 0..1 — how strongly the material shows through:
+   *  displacement, relief shading and the material's tone fade in together. */
+  amount: number
+  /** Texture scale 0.4..3 — the material's feature size relative to the
+   *  frame (lower = finer grain, higher = bigger wrinkles/pits). */
+  scale: number
+}
+
 /**
  * Polaroid filter — the wall of instant prints: the whole page becomes a
  * scattered field of white-frame polaroid cards (the classic 88×107 mm
@@ -1810,6 +1856,9 @@ export interface StudioConfig {
   /** Full-frame instant-film stock grade (the effect.app "Instant Film"
    *  effect — renamed Exposure in Spectra) */
   exposureFilter: ExposureFilterConfig
+  /** Full-frame texture stage (the picture printed onto a physical
+   *  material — displacement + relief shading + material tone) */
+  textureFilter: TextureFilterConfig
   /** Full-frame polaroid-wall post-pass (the page becomes scattered instant
    *  prints, the picture showing through every photo window) */
   polaroidFilter: PolaroidFilterConfig
@@ -2486,6 +2535,14 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     stock: 'polaroid-600',
     color: 1,
     light: 1,
+  },
+  textureFilter: {
+    enabled: false,
+    // 'paper' first — the most legible displacement demo — at a strong
+    // but not overwhelming amount, features at the reference size
+    type: 'paper',
+    amount: 0.6,
+    scale: 1,
   },
   polaroidFilter: {
     enabled: false,

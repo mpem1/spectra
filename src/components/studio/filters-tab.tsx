@@ -4,6 +4,7 @@ import { ScreenFilterSection } from '@/components/studio/screen-filter-section'
 import { VhsFilterSection } from '@/components/studio/vhs-filter-section'
 import { CamcorderFilterSection } from '@/components/studio/camcorder-filter-section'
 import { FilmFilterSection } from '@/components/studio/film-filter-section'
+import { TextureFilterSection } from '@/components/studio/texture-filter-section'
 import { HalftoneFilterSection } from '@/components/studio/halftone-filter-section'
 import { GlitchFilterSection } from '@/components/studio/glitch-filter-section'
 import { AnaglyphFilterSection } from '@/components/studio/anaglyph-filter-section'
@@ -43,6 +44,11 @@ export function FiltersTab() {
 
       {/* Film reel — scratches + dust & hair + flicker */}
       <FilmFilterSection />
+
+      {/* Texture — the picture printed onto a physical material (grain,
+          paper, canvas, concrete, glass, foil, rust, dirt): the surface's
+          flaws displace the picture so the texture reads through it */}
+      <TextureFilterSection />
 
       {/* Halftone print — 45° dots on darker tones only */}
       <HalftoneFilterSection />

@@ -37,6 +37,7 @@ import { drawColorGradeFilter } from './color-grade'
 import { drawGradientMapFilter } from './gradient-map-filter'
 import { drawHalationFilter } from './halation-filter'
 import { drawExposureFilter } from './exposure-filter'
+import { drawTextureFilter } from './texture-filter'
 import { drawDitherFilter } from './dither-filter'
 import { drawPolaroidFilter } from './polaroid-filter'
 import { drawPhosphorFilter } from './phosphor-filter'
@@ -261,6 +262,15 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // color stage so the glow lands on the finished tones, before the
   // re-materialized poster layers (phosphor / contour / dither).
   drawHalationFilter(rc, config.halationFilter, frame, transparent)
+  // Texture — the finished picture printed onto a physical material (film
+  // grain, paper, canvas, concrete, glass, crumpled foil, rust, dirt): the
+  // surface's bumps DISPLACE the picture (the flaws warp it), shade it like
+  // a lit relief and blend the material's tone over it, so the texture
+  // reads through the image. After the color stages (the material keeps its
+  // own tone over graded pictures) and before the re-materialized poster
+  // layers (phosphor / contour / cubify / dither), which stay the outermost
+  // looks.
+  drawTextureFilter(rc, config.textureFilter, frame, transparent)
   // Lo-fi phosphor monitor — repoints the finished picture into columns of
   // glowing dashes on a dark tube. Before the dither, which stays the
   // outermost poster layer.

@@ -32,6 +32,7 @@ import {
   type GradientMapFilterConfig,
   type HalationFilterConfig,
   type ExposureFilterConfig,
+  type TextureFilterConfig,
   type PolaroidFilterConfig,
   type DitherFilterConfig,
   type PhosphorFilterConfig,
@@ -134,6 +135,8 @@ type StudioState = {
   patchHalationFilter: (partial: Partial<HalationFilterConfig>) => void
   /** Patches config.exposureFilter (the instant-film stock grade) */
   patchExposureFilter: (partial: Partial<ExposureFilterConfig>) => void
+  /** Patches config.textureFilter (the material-texture displacement stage) */
+  patchTextureFilter: (partial: Partial<TextureFilterConfig>) => void
   /** Patches config.polaroidFilter (the polaroid-print wall) */
   patchPolaroidFilter: (partial: Partial<PolaroidFilterConfig>) => void
   patchDitherFilter: (partial: Partial<DitherFilterConfig>) => void
@@ -311,6 +314,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, exposureFilter: { ...s.config.exposureFilter, ...partial } },
     })),
 
+  patchTextureFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, textureFilter: { ...s.config.textureFilter, ...partial } },
+    })),
+
   patchPolaroidFilter: (partial) =>
     set((s) => ({
       config: { ...s.config, polaroidFilter: { ...s.config.polaroidFilter, ...partial } },
@@ -482,6 +490,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         gradientMapFilter: { ...DEFAULT_STUDIO_CONFIG.gradientMapFilter, ...config.gradientMapFilter },
         halationFilter: { ...DEFAULT_STUDIO_CONFIG.halationFilter, ...config.halationFilter },
         exposureFilter: { ...DEFAULT_STUDIO_CONFIG.exposureFilter, ...config.exposureFilter },
+        textureFilter: { ...DEFAULT_STUDIO_CONFIG.textureFilter, ...config.textureFilter },
         polaroidFilter: { ...DEFAULT_STUDIO_CONFIG.polaroidFilter, ...config.polaroidFilter },
         ditherFilter: { ...DEFAULT_STUDIO_CONFIG.ditherFilter, ...config.ditherFilter },
         phosphorFilter: { ...DEFAULT_STUDIO_CONFIG.phosphorFilter, ...config.phosphorFilter },
