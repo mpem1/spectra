@@ -1728,12 +1728,14 @@ export interface TextureFilterConfig {
   /** Custom texture rotation in degrees (-180..180), pivoting on the
    *  (moved) frame center. */
   customRotate: number
-  /** Custom texture contrast 0..2 (100 = neutral): how far the map's
-   *  bright/dark parts reach into highlight/shadow — higher = stronger
-   *  and wider-spread lighting, lower = subtler; 0 = a perfectly flat
-   *  sheet (no highlight, no shadow at all). The deviations it stretches
-   *  are measured from the map's OWN average luminance, not mid-gray, so
-   *  it shapes the lighting without biasing the frame's overall tone. */
+  /** Custom texture contrast 0..2 (100 = the linear response): shapes the
+   *  lighting response CURVE around the map's own average — how selective
+   *  the lighting is. Higher stretches the deviations so more of the
+   *  map's mid-tones light up (wider, punchier spread); lower pulls them
+   *  toward zero so only the strongest bright/dark features light; 0 = a
+   *  perfectly flat sheet (no highlight, no shadow at all). It moves the
+   *  SHAPE of the response, not its amplitude — Amount is the strength
+   *  dial, so the two do different jobs. */
   customContrast: number
   /** Custom texture highlight strength 0..2 (100 = neutral): a separate
    *  multiplier on the WHITE half of the lighting pass. On an
@@ -1741,11 +1743,30 @@ export interface TextureFilterConfig {
    *  whole pass — the shadows keep sculpting while the white stops
    *  overpowering the picture. 0 = the pass adds no light anywhere. */
   customHighlights: number
+  /** Custom texture highlight color, #rrggbb (default white): the light
+   *  the pass blends toward on the map's bright parts — warm tungsten,
+   *  cool daylight, any tint. White keeps the pass neutral. */
+  customHighlightColor: string
   /** Custom texture shadow strength 0..2 (100 = neutral): the same
    *  separate multiplier on the BLACK half of the lighting pass — the
    *  darks can be deepened or erased independently of the highlights.
    *  0 = the pass adds no shadow anywhere. */
   customShadows: number
+  /** Custom texture shadow color, #rrggbb (default black): the tone the
+   *  pass sinks toward on the map's dark parts — blue night shade, sepia
+   *  grime, any tint. Black keeps the pass neutral. */
+  customShadowColor: string
+  /** Custom texture WARP — off by default (the lighting pass keeps the
+   *  picture pixel-crisp). On, the map's bright/dark CONTOURS also
+   *  displace the picture: bright areas bulge it outward like a raised
+   *  bump, dark areas dent it inward, sampled smoothly so no per-texel
+   *  noise or blocks — the optional physical-surface read on top of the
+   *  lighting. */
+  customWarp: boolean
+  /** Custom texture warp strength 0..1 — how far the contours drag the
+   *  picture at their steepest (0 = no warp even with the switch on;
+   *  1 = a full material-grade bend). Rides the Amount master dial. */
+  customWarpStrength: number
 }
 
 /**
@@ -2585,8 +2606,9 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     amount: 0.6,
     scale: 1,
     // The custom texture: no image until the user uploads one, one tile
-    // cover-fitting the frame, dead-center, unrotated, neutral contrast,
-    // highlights and shadows both at full strength
+    // cover-fitting the frame, dead-center, unrotated, linear contrast,
+    // highlights and shadows both at full strength and neutral colors,
+    // warp off (the picture stays pixel-crisp until asked to bend)
     customSrc: '',
     customSize: 1,
     customX: 0,
@@ -2594,7 +2616,11 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     customRotate: 0,
     customContrast: 1,
     customHighlights: 1,
+    customHighlightColor: '#ffffff',
     customShadows: 1,
+    customShadowColor: '#000000',
+    customWarp: false,
+    customWarpStrength: 0.35,
   },
   polaroidFilter: {
     enabled: false,

@@ -7,7 +7,8 @@ import type { TextureFilterType } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { MicroLabel, SliderRow, sectionShell } from '@/components/studio/controls'
+import { ColorPickerButton } from '@/components/studio/color-picker'
+import { MicroLabel, SliderRow, ToggleRow, sectionShell } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 
 /** The material picker's chips — label + a two-word tell, compact like
@@ -35,10 +36,14 @@ const TEXTURES: { id: TextureFilterType; label: string; sub: string }[] = [
  * instead of sitting flat on top of it; the image's own colors stay its
  * own. The custom texture is gentler: a LIGHTING map that adds small
  * highlights where the uploaded picture is brighter than its own average
- * and small shadows where it is darker — the video is never warped or
- * resampled. Amount is the master dial; Scale sizes the procedural
- * materials' features; the custom texture gets its own Size / Move X /
- * Move Y / Rotate / Contrast / Highlights / Shadows dials.
+ * and small shadows where it is darker — both tintable (highlight and
+ * shadow color dials, strengths dialed separately, Contrast shapes the
+ * response curve while Amount is the strength) — and an opt-in Warp
+ * switch that bends the picture along the map's contours. The video is
+ * never warped unless Warp is on. Amount is the master dial; Scale
+ * sizes the procedural materials' features; the custom texture gets its
+ * own Size / Move X / Move Y / Rotate / Contrast / Highlights / Shadows
+ * / colors / Warp dials.
  */
 export function TextureFilterSection() {
   const filter = useStudioStore((s) => s.config.textureFilter)
@@ -127,7 +132,7 @@ export function TextureFilterSection() {
                           : filter.type === 'rust'
                             ? 'Corroded metal: oxidation blooms that buckle the picture around every patch.'
                             : filter.type === 'custom'
-                              ? 'Your own picture as a lighting map — brighter-than-average parts add soft highlights, darker-than-average parts add soft shadows, measured against the picture itself so light uploads never wash the video white. No warping, no noise — the picture stays crisp. It tiles, so moving it never runs out of texture.'
+                              ? 'Your own picture as a lighting map — brighter-than-average parts add soft highlights, darker-than-average parts add soft shadows, measured against the picture itself so light uploads never wash the video white. Both are tintable, and an optional Warp bends the picture along the map\'s contours. No noise — the picture stays crisp until you warp it.'
                               : 'Old grime: settled blotches and crisp specks that dent and scratch the picture.'}
             </p>
           </div>
@@ -224,33 +229,76 @@ export function TextureFilterSection() {
                 onChange={(customRotate) => patchTextureFilter({ customRotate })}
                 format={(v) => `${Math.round(v)}°`}
               />
-              <SliderRow
-                label="Contrast"
-                value={filter.customContrast}
-                min={0}
-                max={2}
-                step={0.05}
-                onChange={(customContrast) => patchTextureFilter({ customContrast })}
-                format={(v) => (v <= 0.025 ? 'Flat' : `${Math.round(v * 100)}%`)}
-              />
-              <SliderRow
-                label="Highlights"
-                value={filter.customHighlights}
-                min={0}
-                max={2}
-                step={0.05}
-                onChange={(customHighlights) => patchTextureFilter({ customHighlights })}
-                format={(v) => (v <= 0.025 ? 'None' : `${Math.round(v * 100)}%`)}
-              />
-              <SliderRow
-                label="Shadows"
-                value={filter.customShadows}
-                min={0}
-                max={2}
-                step={0.05}
-                onChange={(customShadows) => patchTextureFilter({ customShadows })}
-                format={(v) => (v <= 0.025 ? 'None' : `${Math.round(v * 100)}%`)}
-              />
+              <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5">
+                <MicroLabel className="text-zinc-400">Lighting</MicroLabel>
+                <SliderRow
+                  label="Contrast"
+                  value={filter.customContrast}
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  onChange={(customContrast) => patchTextureFilter({ customContrast })}
+                  format={(v) => (v <= 0.025 ? 'Flat' : `${Math.round(v * 100)}%`)}
+                />
+                <SliderRow
+                  label="Highlights"
+                  value={filter.customHighlights}
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  onChange={(customHighlights) => patchTextureFilter({ customHighlights })}
+                  format={(v) => (v <= 0.025 ? 'None' : `${Math.round(v * 100)}%`)}
+                />
+                <div className="flex h-5 items-center justify-between">
+                  <MicroLabel>Highlight color</MicroLabel>
+                  <ColorPickerButton
+                    value={filter.customHighlightColor}
+                    onChange={(customHighlightColor) => patchTextureFilter({ customHighlightColor })}
+                    ariaLabel="Highlight color"
+                  />
+                </div>
+                <SliderRow
+                  label="Shadows"
+                  value={filter.customShadows}
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  onChange={(customShadows) => patchTextureFilter({ customShadows })}
+                  format={(v) => (v <= 0.025 ? 'None' : `${Math.round(v * 100)}%`)}
+                />
+                <div className="flex h-5 items-center justify-between">
+                  <MicroLabel>Shadow color</MicroLabel>
+                  <ColorPickerButton
+                    value={filter.customShadowColor}
+                    onChange={(customShadowColor) => patchTextureFilter({ customShadowColor })}
+                    ariaLabel="Shadow color"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5">
+                <ToggleRow
+                  label="Warp"
+                  checked={filter.customWarp}
+                  onCheckedChange={(customWarp) => patchTextureFilter({ customWarp })}
+                />
+                <p className="text-[10px] leading-snug text-zinc-600">
+                  Also bends the picture along the map&apos;s contours — bright
+                  areas bulge out, dark areas dent in. Off keeps the picture
+                  pixel-crisp (lighting only).
+                </p>
+                {filter.customWarp ? (
+                  <SliderRow
+                    label="Warp strength"
+                    value={filter.customWarpStrength}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    onChange={(customWarpStrength) => patchTextureFilter({ customWarpStrength })}
+                    format={(v) => (v <= 0.025 ? 'Off' : `${Math.round(v * 100)}%`)}
+                  />
+                ) : null}
+              </div>
             </>
           ) : null}
 

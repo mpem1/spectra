@@ -32,15 +32,15 @@
  * luminance, not fixed mid-gray — light is RELATIVE — so an overall-light
  * upload (a bright photo, white artwork) lights from its own average
  * instead of washing the whole frame white, and a uniform image of ANY
- * gray level lights nothing at all. Four dials shape the pass: Contrast
- * stretches the deviations (0 = perfectly flat), Highlights and Shadows
- * dial the white and the black SEPARATELY (the user's "white still
- * overpowers the image on lighter pictures" fix — drop Highlights and
- * keep the sculpting), Amount fades the whole pass. The picture itself
- * is never resampled — the earlier contour-displacement attempts read as
- * noise and a shifted double-exposure and pixelated the frame, so the
- * warp is gone: pixels stay exactly where they are, only their brightness
- * is nudged. See customLightFor below.
+ * gray level lights nothing at all. The pass is fully tintable: the
+ * highlight and shadow COLORS are user dials (defaults white/black keep
+ * it neutral), the two strengths dial the white and the black
+ * separately, Contrast shapes the response CURVE (Amount stays the
+ * amplitude) so the two do different jobs, and an opt-in WARP switch
+ * lets the map's contours also displace the picture (bright bulges out,
+ * dark dents in, wide-footprint gradients + smooth bilinear sampling —
+ * no per-texel noise, no offset ghost, no blocks). The picture itself is
+ * never resampled while the warp is off. See customLightFor below.
  *
  * Structure: every material's height field is generated ONCE per (type,
  * size, scale bucket) at HALF resolution (the surfaces are organic; the
@@ -279,12 +279,12 @@ function generateField(type: TextureFilterType, tw: number, th: number, k: numbe
 
 /** The custom texture's LIGHT map, built from the user's own image — and
  *  the pass is a lighting overlay, not a displacement: the map's brighter
- *  parts lift a small screen-blend HIGHLIGHT into the frame, its darker
- *  parts sink a small multiply-blend SHADOW. (The earlier contour-warp
- *  passes displaced the picture; the user's verdict: it read as noise and
- *  a shifted double-exposure, and the resampling pixelated the frame —
- *  so the picture is never resampled here. Every pixel is adjusted in
- *  place; only its brightness moves.)
+ *  parts lift a small HIGHLIGHT into the frame (toward the highlight
+ *  color), its darker parts sink a small SHADOW (toward the shadow
+ *  color). (The earlier contour-warp passes displaced the picture
+ *  unconditionally; the user's verdict: it read as noise and a shifted
+ *  double-exposure, and the resampling pixelated the frame — so lighting
+ *  is the default and the warp is an opt-in switch.)
  *
  *  The image is drawn TILE-REPEATED at FULL frame resolution under the
  *  Size / Move / Rotate transform (tiling, so nudging never runs out of
@@ -309,19 +309,31 @@ function generateField(type: TextureFilterType, tw: number, th: number, k: numbe
  *  cover-fit crops and tile shifts change which pixels are visible and
  *  each cached field carries the mean of exactly those pixels.
  *
- *  Contrast is a straight multiplier on the deviation applied at sample
- *  time (0 = a perfectly flat sheet — no highlight, no shadow), and so
- *  are the Highlights / Shadows strengths — none of them force a
- *  rebuild. Cached per (image, quantized size/position/rotation); a
- *  miss is one full-res drawImage + read, a couple of milliseconds on
- *  slider drops. Returns null while the image is still decoding (the
- *  pass skips that frame — the live preview repaints every frame, so
- *  the texture appears the moment it lands). */
+ *  Contrast is a response-CURVE shaper on the deviation (the amplitude
+ *  dial is Amount — the user reported the old linear multiplier felt
+ *  identical to Amount, so Contrast now stretches the curve around the
+ *  mean: higher lights more of the mid-tones, lower only the extremes,
+ *  0 = flat), and so are the Highlights / Shadows strengths and both
+ *  colors — none of them force a rebuild. Cached per (image, quantized
+ *  size/position/rotation); a miss is one full-res drawImage + read plus
+ *  one half-res blur + gradient pass, a couple of milliseconds on slider
+ *  drops. Returns null while the image is still decoding (the pass skips
+ *  that frame — the live preview repaints every frame, so the texture
+ *  appears the moment it lands). */
 interface CustomLightMap {
   /** Per-frame-pixel luminance 0..255, aligned 1:1 with the frame. */
   lum: Uint8Array
   /** The field's own mean luminance 0..1 — the pass's neutral point. */
   mean: number
+  /** Half-res X/Y contours of the map for the opt-in warp — the height
+   *  RISE over a wide blurred footprint, pre-normalized so soft photos
+   *  bend as visibly as hard-edged graphics. Built on every map build so
+   *  the warp switch and its strength slider never force a rebuild. */
+  gw: Float32Array
+  gh: Float32Array
+  /** Half-res field dimensions (tw × th texels). */
+  tw: number
+  th: number
 }
 
 const customCache = new Map<string, CustomLightMap>()
@@ -347,6 +359,56 @@ function customTokenFor(src: string): string {
     customImgToken.set(src, t)
   }
   return t
+}
+
+/** #rrggbb → channel triple, parsed once per hex (the dials are read
+ *  every frame; the memo keeps that free). Falls back to `fb` when the
+ *  string is missing or malformed. */
+const hexCache = new Map<string, [number, number, number]>()
+
+function hexRgb(hex: string | undefined, fb: [number, number, number]): [number, number, number] {
+  const h = (hex ?? '').trim()
+  const hit = hexCache.get(h)
+  if (hit) return hit
+  const m = /^#?([0-9a-fA-F]{6})/.exec(h)
+  const out: [number, number, number] = m
+    ? [(parseInt(m[1], 16) >> 16) & 255, (parseInt(m[1], 16) >> 8) & 255, parseInt(m[1], 16) & 255]
+    : fb
+  if (hexCache.size > 32) hexCache.clear()
+  hexCache.set(h, out)
+  return out
+}
+
+/** Separable box blur with clamped edges (sliding-window sum, O(n) in
+ *  the radius) — smooths the map's height so the warp's contours come
+ *  from broad SHAPES, not per-texel edges (the original warp failure:
+ *  1-texel gradients turned every photo into violent noise). */
+function boxBlur(src: Float32Array, w: number, h: number, r: number): Float32Array {
+  const tmp = new Float32Array(w * h)
+  const out = new Float32Array(w * h)
+  const win = 2 * r + 1
+  for (let y = 0; y < h; y++) {
+    const row = y * w
+    let acc = src[row] * (r + 1)
+    for (let k = 1; k <= r; k++) acc += src[row + Math.min(w - 1, k)]
+    for (let x = 0; x < w; x++) {
+      tmp[row + x] = acc / win
+      const add = src[row + Math.min(w - 1, x + r + 1)]
+      const sub = src[row + Math.max(0, x - r)]
+      acc += add - sub
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    let acc = tmp[x] * (r + 1)
+    for (let k = 1; k <= r; k++) acc += tmp[Math.min(h - 1, k) * w + x]
+    for (let y = 0; y < h; y++) {
+      out[y * w + x] = acc / win
+      const add = tmp[Math.min(h - 1, y + r + 1) * w + x]
+      const sub = tmp[Math.max(0, y - r) * w + x]
+      acc += add - sub
+    }
+  }
+  return out
 }
 
 function customLightFor(cfg: TextureFilterConfig, W: number, H: number): CustomLightMap | null {
@@ -399,7 +461,54 @@ function customLightFor(cfg: TextureFilterConfig, W: number, H: number): CustomL
     lum[k] = l
     sum += l
   }
-  const map: CustomLightMap = { lum, mean: sum / (n * 255) }
+  // The opt-in warp's contours: half-res height, box-blurred (broad
+  // shapes, not texel edges), then the height RISE over a wide footprint
+  // stored as the per-texel X/Y gradients, normalized so a smooth photo
+  // bends as visibly as a hard-edged graphic (mean |rise| lifted to
+  // 0.24, the normalization clamped 1..6 — mostly-flat maps stay flat,
+  // hard graphics stay at full strength). Built on EVERY map build so
+  // flipping the warp switch or dragging its strength never rebuilds.
+  const tw = Math.max(2, W >> 1)
+  const th = Math.max(2, H >> 1)
+  const hs = new Float32Array(tw * th)
+  for (let ty = 0; ty < th; ty++) {
+    const y0 = ty << 1
+    const y1 = Math.min(H - 1, y0 + 1)
+    for (let tx = 0; tx < tw; tx++) {
+      const x0 = tx << 1
+      const x1 = Math.min(W - 1, x0 + 1)
+      hs[ty * tw + tx] =
+        (lum[y0 * W + x0] + lum[y0 * W + x1] + lum[y1 * W + x0] + lum[y1 * W + x1]) / (4 * 255)
+    }
+  }
+  // Footprint ≈ 28 frame px at 720p (radius in half-res texels, each of
+  // which spans 2 frame px), scaling with the frame like the materials.
+  const r = Math.max(1, Math.round((14 * Math.min(W, H)) / 720))
+  const blur = boxBlur(hs, tw, th, r)
+  const gw = new Float32Array(tw * th)
+  const gh = new Float32Array(tw * th)
+  let absSum = 0
+  for (let ty = 0; ty < th; ty++) {
+    const row = ty * tw
+    const xr = Math.min(tw - 1, r)
+    for (let tx = 0; tx < tw; tx++) {
+      const xl = tx < r ? 0 : tx - r
+      const xrr = tx + xr > tw - 1 ? tw - 1 : tx + xr
+      const yr = ty < r ? 0 : ty - r
+      const yrr = ty + r > th - 1 ? th - 1 : ty + r
+      const rx = blur[row + xrr] - blur[row + xl]
+      const ry = blur[yrr * tw + tx] - blur[yr * tw + tx]
+      gw[row + tx] = rx
+      gh[row + tx] = ry
+      absSum += Math.abs(rx) + Math.abs(ry)
+    }
+  }
+  const norm = Math.min(6, Math.max(1, 0.24 / Math.max(absSum / (tw * th * 2), 1e-4)))
+  for (let k = 0; k < gw.length; k++) {
+    gw[k] *= norm
+    gh[k] *= norm
+  }
+  const map: CustomLightMap = { lum, mean: sum / (n * 255), gw, gh, tw, th }
   if (customCache.size > 4) customCache.clear()
   customCache.set(key, map)
   return map
@@ -508,61 +617,145 @@ export function drawTextureFilter(
     }
   } else if (type === 'custom') {
     // The uploaded picture as a LIGHT map — the map's brighter parts
-    // lift a small highlight into the frame, its darker parts sink a
-    // small shadow, and every pixel is adjusted IN PLACE: no resampling
-    // (nothing can pixelate the picture), no offset double-exposure, no
-    // warp noise — exactly the lighting pass the user asked for. The
-    // neutral point is the map's OWN average luminance (see
-    // customLightFor): light is relative, so an overall-light upload
-    // highlights only its brightest parts instead of washing the whole
-    // frame white, and a uniform sheet lights nothing at all.
+    // lift a small highlight into the frame (toward the highlight
+    // COLOR), its darker parts sink a small shadow (toward the shadow
+    // COLOR), and the neutral point is the map's OWN average luminance
+    // (see customLightFor): light is relative, so an overall-light
+    // upload highlights only its brightest parts instead of washing the
+    // whole frame white, and a uniform sheet lights nothing at all. An
+    // opt-in warp switch additionally lets the map's contours displace
+    // the picture (bright bulges out, dark dents in — the material-
+    // grade bend, sampled smoothly).
     const light = customLightFor(cfg, W, H)
     if (!light) return // custom image missing / still decoding — untouched frame
-    const { lum, mean } = light
-    // Three sample-time multipliers — plain multiplies on the deviation
-    // and its two directions, so none of them force a light-map rebuild:
-    // Contrast stretches the deviations around the map's own mean (0 = a
-    // flat sheet: no highlight, no shadow anywhere); Highlights and
-    // Shadows dial the white and the black SEPARATELY — on a light-toned
-    // upload the user drops Highlights and keeps the sculpting instead
-    // of the whole pass drowning the picture in white.
+    const { lum, mean, gw, gh, tw, th } = light
+    // Sample-time dials — plain reads on the deviation and its two
+    // directions, so none of them force a light-map rebuild:
+    // Contrast shapes the response CURVE (see curve() below — amplitude
+    // is Amount's job, the user reported the old linear multiplier felt
+    // identical to it); Highlights and Shadows dial the white and the
+    // black SEPARATELY (on a light-toned upload the user drops
+    // Highlights and keeps the sculpting); the two colors tint each
+    // half — defaults white/black reproduce the neutral pass exactly.
     const ck = Math.min(2, Math.max(0, cfg.customContrast ?? 1))
     const hx = Math.min(2, Math.max(0, cfg.customHighlights ?? 1))
     const sx = Math.min(2, Math.max(0, cfg.customShadows ?? 1))
+    const hc = hexRgb(cfg.customHighlightColor, [255, 255, 255])
+    const sc = hexRgb(cfg.customShadowColor, [0, 0, 0])
+    // The response curve: |dev|/0.5 raised to 1/contrast, anchored at
+    // the full-scale ±0.5. Contrast 1 = linear (exactly the deviation);
+    // 2 stretches the mid-range so more of the map lights up; 0.5
+    // compresses it so only the strongest features light; 0 = a flat
+    // sheet. It moves the SHAPE of the response, not its size.
+    const curve = (dev: number): number => {
+      if (ck <= 0.001) return 0
+      const a = dev < 0 ? -dev : dev
+      let s = Math.pow(a * 2, 1 / ck) * 0.5
+      if (s > 0.5) s = 0.5
+      return dev < 0 ? -s : s
+    }
     // The highlight/shadow ceiling: a map region at the FULL relative
     // deviation (0.5 away from the map's own average) at amount 1 moves
-    // the picture ~40% of the way toward white/black — the small,
-    // tasteful lighting pass the user described; Amount, Contrast and
-    // the two strength dials scale it from there.
+    // the picture ~40% of the way toward the highlight/shadow color —
+    // the small, tasteful lighting pass the user described; Amount,
+    // Contrast and the strength dials shape it from there.
     const STR = 0.4
-    for (let y = 0; y < H; y++) {
-      const lrow = y * W
-      let i = y * W * 4
-      for (let x = 0; x < W; x++, i += 4) {
-        // The map's contrasted deviation from ITS OWN average, dialed
-        // by amount: positive = highlight (screen blend — light added,
-        // it cannot blow past white), negative = shadow (multiply blend
-        // — darkness absorbed, it cannot sink below black).
-        let dv = (lum[lrow + x] / 255 - mean) * ck
-        if (dv > 0.5) dv = 0.5
-        else if (dv < -0.5) dv = -0.5
-        dv *= amount
-        if (dv > 0) {
-          const w = dv * 2 * STR * hx
-          od[i] = src[i] + (255 - src[i]) * w
-          od[i + 1] = src[i + 1] + (255 - src[i + 1]) * w
-          od[i + 2] = src[i + 2] + (255 - src[i + 2]) * w
-        } else if (dv < 0) {
-          const m = 1 + dv * 2 * STR * sx // dv negative → m < 1
-          od[i] = src[i] * m
-          od[i + 1] = src[i + 1] * m
-          od[i + 2] = src[i + 2] * m
-        } else {
-          od[i] = src[i]
-          od[i + 1] = src[i + 1]
-          od[i + 2] = src[i + 2]
+    // The optional warp: the contours drag the picture toward the map's
+    // high ground (bright bulges out, dark dents in — the same toward-
+    // the-bump convention as the procedural materials), 44 reference px
+    // at the strength ceiling scaled by the frame and the Amount master.
+    const warpAmp =
+      cfg.customWarp ? 44 * Math.min(1, Math.max(0, cfg.customWarpStrength ?? 0.35)) * (minWH / 720) * amount : 0
+    const warp = warpAmp > 0.01
+    if (warp) {
+      // Warped path: per pixel, the half-res contour drag (nearest
+      // texel, like the materials) pulls a bilinear sample of the
+      // picture, and the lighting pass tints it at the map's own
+      // position — the surface lights the picture printed on it.
+      for (let y = 0; y < H; y++) {
+        const lrow = y * W
+        const ty = Math.min(th - 1, y >> 1)
+        const gRow = ty * tw
+        let i = y * W * 4
+        for (let x = 0; x < W; x++, i += 4) {
+          const tx = Math.min(tw - 1, x >> 1)
+          let dx = gw[gRow + tx] * warpAmp
+          let dy = gh[gRow + tx] * warpAmp
+          if (dx > warpAmp) dx = warpAmp
+          else if (dx < -warpAmp) dx = -warpAmp
+          if (dy > warpAmp) dy = warpAmp
+          else if (dy < -warpAmp) dy = -warpAmp
+          let sxf = x + dx
+          let syf = y + dy
+          if (sxf < 0) sxf = 0
+          else if (sxf > W - 1) sxf = W - 1
+          if (syf < 0) syf = 0
+          else if (syf > H - 1) syf = H - 1
+          const x0 = sxf | 0
+          const y0 = syf | 0
+          const fxr = sxf - x0
+          const fyr = syf - y0
+          const x1 = x0 + 1 < W ? x0 + 1 : x0
+          const y1 = y0 + 1 < H ? y0 + 1 : y0
+          const r00 = (y0 * W + x0) << 2
+          const r01 = (y0 * W + x1) << 2
+          const r10 = (y1 * W + x0) << 2
+          const r11 = (y1 * W + x1) << 2
+          const w00 = (1 - fxr) * (1 - fyr)
+          const w01 = fxr * (1 - fyr)
+          const w10 = (1 - fxr) * fyr
+          const w11 = fxr * fyr
+          let sr = src[r00] * w00 + src[r01] * w01 + src[r10] * w10 + src[r11] * w11
+          let sg = src[r00 + 1] * w00 + src[r01 + 1] * w01 + src[r10 + 1] * w10 + src[r11 + 1] * w11
+          let sb = src[r00 + 2] * w00 + src[r01 + 2] * w01 + src[r10 + 2] * w10 + src[r11 + 2] * w11
+          // The map's contrasted deviation from ITS OWN average, curved
+          // and dialed by amount: positive = highlight (blend toward
+          // the highlight color — light added), negative = shadow
+          // (blend toward the shadow color — darkness absorbed).
+          const dv = curve(lum[lrow + x] / 255 - mean) * amount
+          if (dv > 0) {
+            const w = dv * 2 * STR * hx
+            sr += (hc[0] - sr) * w
+            sg += (hc[1] - sg) * w
+            sb += (hc[2] - sb) * w
+          } else if (dv < 0) {
+            const k = -dv * 2 * STR * sx
+            sr += (sc[0] - sr) * k
+            sg += (sc[1] - sg) * k
+            sb += (sc[2] - sb) * k
+          }
+          od[i] = sr
+          od[i + 1] = sg
+          od[i + 2] = sb
+          od[i + 3] = 255
         }
-        od[i + 3] = 255
+      }
+    } else {
+      // Crisp path — the shipped lighting pass: every pixel adjusted IN
+      // PLACE, no resampling (nothing can pixelate the picture), no
+      // offset double-exposure, no warp noise.
+      for (let y = 0; y < H; y++) {
+        const lrow = y * W
+        let i = y * W * 4
+        for (let x = 0; x < W; x++, i += 4) {
+          const dv = curve(lum[lrow + x] / 255 - mean) * amount
+          if (dv > 0) {
+            const w = dv * 2 * STR * hx
+            od[i] = src[i] + (hc[0] - src[i]) * w
+            od[i + 1] = src[i + 1] + (hc[1] - src[i + 1]) * w
+            od[i + 2] = src[i + 2] + (hc[2] - src[i + 2]) * w
+          } else if (dv < 0) {
+            const k = -dv * 2 * STR * sx
+            od[i] = src[i] + (sc[0] - src[i]) * k
+            od[i + 1] = src[i + 1] + (sc[1] - src[i + 1]) * k
+            od[i + 2] = src[i + 2] + (sc[2] - src[i + 2]) * k
+          } else {
+            od[i] = src[i]
+            od[i + 1] = src[i + 1]
+            od[i + 2] = src[i + 2]
+          }
+          od[i + 3] = 255
+        }
       }
     }
   } else {
