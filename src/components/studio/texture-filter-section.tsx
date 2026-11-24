@@ -124,7 +124,7 @@ export function TextureFilterSection() {
                           : filter.type === 'rust'
                             ? 'Corroded metal: oxidation blooms that buckle the picture around every patch.'
                             : filter.type === 'custom'
-                              ? 'Your own picture as the displacement map — bright areas push the picture one way, dark areas pull the other, so the frame warps around your image. It tiles, so moving it never runs out of texture.'
+                              ? 'Your own picture as the displacement map — its light and dark shapes become contours the picture bends around: bright areas bulge out, dark areas dent in. It tiles, so moving it never runs out of texture.'
                               : 'Old grime: settled blotches and crisp specks that dent and scratch the picture.'}
             </p>
           </div>
@@ -179,7 +179,7 @@ export function TextureFilterSection() {
                   <ImagePlus className="size-4" aria-hidden />
                   <span className="text-xs font-medium">Upload a texture image</span>
                   <span className="text-[10px] text-zinc-600">
-                    its bright spots push, dark spots pull
+                    its bright spots bulge, dark spots dent
                   </span>
                 </button>
               )}
