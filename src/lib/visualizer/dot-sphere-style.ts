@@ -37,19 +37,27 @@
  * rotation (the seam this look originally shipped with).
  *
  * Colors: 'neon' paints the reference pink/blue LED palette from a color
- * LUT built once at load (zero per-frame pixel reads, zero string
- * allocations in the hot loop); 'picture' samples the scene behind the
- * ball (one small downscaled getImageData) so the dots carry the
- * picture's own colors.
+ * LUT built once at load; 'palette' sweeps the user's OWN gradient palette
+ * across the dot hues (a second LUT, rebuilt only when the palette edits);
+ * 'picture' samples the scene behind the ball (one small downscaled
+ * getImageData) so the dots carry the picture's own colors. Every path
+ * keeps the hot loop on table lookups — zero per-dot string allocation.
+ *
+ * The ball's FACE — the solid disk the dots sit on — is a dial: 'dark'
+ * keeps the near-black LED space (and rests entirely on transparent
+ * backgrounds so alpha recordings stay clean), 'color' paints any picked
+ * color, 'image' cover-fits the user's picture inside the circular face
+ * (rounded exactly like the orb, never stretched). Color and image faces
+ * are explicit choices, so they render on transparent backgrounds too.
  *
  * Music: the ball reacts like the other visualizers — every latitude row
- * rides its own spectrum bin ("Music ripple": bottom rows = low end) and
- * the band's energy PUSHES the row outward along the ball's radius, so
- * the surface ripples like a waveform — the same reactivity the Sphere
- * style's quills give — on top of the per-row brightness and dot-size
- * lift. The React-to-beat box adds the shared gated beat punch: the wave
- * swells and the dots flare on kicks, resting exactly at the dialed look
- * between kicks.
+ * rides its own spectrum bin ("Music ripple": bottom rows = low end)
+ * SCALED BY THE SHARED SENSITIVITY DIAL, and the band's energy PUSHES the
+ * row outward along the ball's radius, so the surface ripples like a
+ * waveform — the same reactivity the Sphere style's quills give — on top
+ * of the per-row brightness and dot-size lift. The React-to-beat box adds
+ * the shared gated beat punch: the wave swells and the dots flare on
+ * kicks, resting exactly at the dialed look between kicks.
  *
  * Clock: the flow and waves follow the decorative style clock (wall clock
  * live so the ball keeps drifting while paused; song time in exports), the
@@ -57,8 +65,10 @@
  * previews. Deterministic: no Math.random, no time-hashed noise — same
  * frame in, same pixels out.
  */
-import type { AudioFrame, RenderContext, VisualizerConfig } from './types'
+import type { AudioFrame, ColorStop, RenderContext, VisualizerConfig } from './types'
 import { beatAmount, clamp01, getWork, resetWork } from './filter-utils'
+import { getBackgroundImage } from './image-cache'
+import { parseColor, sampleGradient } from './gradients'
 
 /* ------------------------------ neon color LUT ------------------------------ */
 
@@ -73,15 +83,12 @@ const LUT_HUES = 9
 const LUT_LUMS = 13
 const TAU = Math.PI * 2
 
-/** Fill styles indexed [hue 0..8][lum 0..12] — built once at load, so the
- *  hot loop never allocates a color string in neon mode. */
-const NEON_LUT: string[] = (() => {
+/** Fill styles indexed [hue 0..8][lum 0..12] — built once, so the
+ *  hot loop never allocates a color string in neon/palette mode. */
+function buildLut(hueColors: { r: number; g: number; b: number }[]): string[] {
   const lut: string[] = []
   for (let h = 0; h < LUT_HUES; h++) {
-    const t = h / (LUT_HUES - 1)
-    const br = NEON_BLUE.r + (NEON_PINK.r - NEON_BLUE.r) * t
-    const bg = NEON_BLUE.g + (NEON_PINK.g - NEON_BLUE.g) * t
-    const bb = NEON_BLUE.b + (NEON_PINK.b - NEON_BLUE.b) * t
+    const { r: br, g: bg, b: bb } = hueColors[h]
     for (let l = 0; l < LUT_LUMS; l++) {
       const lum = l / (LUT_LUMS - 1)
       const k = 0.14 + 0.94 * lum
@@ -98,7 +105,40 @@ const NEON_LUT: string[] = (() => {
     }
   }
   return lut
-})()
+}
+
+const NEON_LUT: string[] = buildLut(
+  Array.from({ length: LUT_HUES }, (_, h) => {
+    const t = h / (LUT_HUES - 1)
+    return {
+      r: NEON_BLUE.r + (NEON_PINK.r - NEON_BLUE.r) * t,
+      g: NEON_BLUE.g + (NEON_PINK.g - NEON_BLUE.g) * t,
+      b: NEON_BLUE.b + (NEON_PINK.b - NEON_BLUE.b) * t,
+    }
+  }),
+)
+
+/* --------------------------- palette color LUT --------------------------- */
+
+/* The user's own gradient palette swept across the dot hues. Rebuilt only
+ * when the palette edits (a signature on the stop list), so the hot loop
+ * stays on table lookups. Static sweep: the cycleColors ping-pong is not
+ * baked into the LUT (it would rebuild every frame). */
+let palLut: string[] | null = null
+let palSig = ''
+function paletteLutFor(stops: ColorStop[]): string[] {
+  const sig = stops.map((s) => `${s.color}@${s.position}`).join('|')
+  if (palLut && sig === palSig) return palLut
+  const lut = buildLut(
+    Array.from({ length: LUT_HUES }, (_, h) => {
+      const c = parseColor(sampleGradient(stops, h / (LUT_HUES - 1), 0, false, 0))
+      return { r: c?.r ?? 255, g: c?.g ?? 255, b: c?.b ?? 255 }
+    }),
+  )
+  palLut = lut
+  palSig = sig
+  return lut
+}
 
 /* --------------------------------- the style -------------------------------- */
 
@@ -115,6 +155,8 @@ const SQUSH_MIN = 0.24
  *  ball's radius (as a fraction of R) at Music ripple 100% — the surface
  *  waveform. The Ripple dial scales it. */
 const RIPPLE_DEPTH = 0.22
+/** The default LED face color (the near-black the ball shipped with). */
+const FACE_DEFAULT = '#050109'
 
 export function drawDotSphereStyle(
   rc: RenderContext,
@@ -147,6 +189,11 @@ export function drawDotSphereStyle(
   const waveSpeed = cfg.dotSphereWaveSpeed ?? 0.9
   const bandTwist = Math.max(0, cfg.dotSphereTwist ?? 0.9)
   const ripple = clamp01(cfg.dotSphereRipple ?? 0.35)
+  // The shared Style-tab Sensitivity dial — the same role it plays for the
+  // Sphere style's quills and every other visualizer: it scales how hard
+  // the spectrum bands drive the shape (the radial ripple) and the
+  // motion/brightness lift.
+  const sens = Math.min(3, Math.max(0, cfg.sensitivity ?? 1))
   const glow = clamp01(cfg.dotSphereGlow ?? 0.55)
   // The Style tab's shared Glow switch gates the halo entirely (the same
   // role it plays for the Sphere style's atmosphere); the card's Glow dial
@@ -156,6 +203,21 @@ export function drawDotSphereStyle(
   // there is none, so the dots fall back to the neon palette (alpha
   // recordings stay legible instead of fading to nothing).
   const picture = !transparent && cfg.dotSphereColors === 'picture'
+  // 'palette' mode: the dots ride the user's own gradient palette. Falls
+  // back to neon when the palette has no stops (an edge that can only
+  // happen before the store's defaults land).
+  const lut =
+    !picture && cfg.dotSphereColors === 'palette' && cfg.gradient?.stops?.length
+      ? paletteLutFor(cfg.gradient.stops)
+      : NEON_LUT
+  // The ball's face: 'dark' = the near-black LED space, 'color' = any
+  // picked color, 'image' = the user's picture cover-fitted inside the
+  // circular face. Dark rests on transparent backgrounds; the other two
+  // are explicit choices and render even there.
+  const face = cfg.dotSphereFace ?? 'dark'
+  const faceColor = cfg.dotSphereFaceColor || FACE_DEFAULT
+  const faceSrc = cfg.dotSphereFaceSrc || ''
+  const faceImg = face === 'image' && faceSrc ? getBackgroundImage(faceSrc) : null
   // Whole-layer alpha — the Style tab's Transparency dial scales every
   // pass below (same contract as every other style draw).
   const la = 1 - clamp01(cfg.transparency ?? 0)
@@ -191,17 +253,27 @@ export function drawDotSphereStyle(
     srcData = smctx.getImageData(0, 0, sw, sh).data
   }
 
-  if (!transparent) {
-    // The solid ball face — a disk of near-black so the LED dots stay
-    // legible over the bright picture behind the ball. The user's
-    // background itself is NOT touched: whatever they picked (picture,
-    // gradient, color) stays exactly as drawn below this style. Drawn in
-    // the layer transform, so it moves with the layer.
+  if (!transparent || face !== 'dark') {
+    // The solid ball face — the LED backdrop the dots sit on, keeping them
+    // legible over whatever the user placed behind the ball. Drawn in the
+    // layer transform, so it moves with the layer.
+    ctx.save()
     ctx.globalAlpha = la
     ctx.beginPath()
     ctx.arc(cx, cy, rs, 0, TAU)
-    ctx.fillStyle = '#050109'
+    ctx.fillStyle = face === 'dark' ? FACE_DEFAULT : faceColor
     ctx.fill()
+    if (faceImg) {
+      // The picture rounds with the orb: clipped to the face circle and
+      // cover-fitted (cropped, never stretched). While it decodes the
+      // picked face color shows through.
+      ctx.clip()
+      const s = Math.max((rs * 2) / faceImg.naturalWidth, (rs * 2) / faceImg.naturalHeight)
+      const w = faceImg.naturalWidth * s
+      const h = faceImg.naturalHeight * s
+      ctx.drawImage(faceImg, cx - w / 2, cy - h / 2, w, h)
+    }
+    ctx.restore()
   }
 
   // The dots add up against the ball face on a real scene (the glowy LED
@@ -222,9 +294,10 @@ export function drawDotSphereStyle(
     if (sinPhi < 0.05) continue // pole pinch — nothing legible lands there
     const yUp = Math.cos(phi)
     const rowPhase = phi * bandTwist
-    // Each row rides its own spectrum bin — bottom rows get the low end.
+    // Each row rides its own spectrum bin — bottom rows get the low end —
+    // scaled by the shared Sensitivity dial like every other style.
     const bin = binCount > 0 ? Math.min(binCount - 1, Math.floor((1 - v) * binCount)) : -1
-    const rippleV = bin >= 0 ? clamp01(freq![bin]) : 0
+    const rippleV = bin >= 0 ? clamp01(freq![bin] * sens) : 0
     const rippleK = 1 + 0.3 * rippleV * ripple
     const rippleLum = rippleV * ripple * 0.45
     // The band's energy PUSHES the row outward along the ball's radius —
@@ -273,7 +346,7 @@ export function drawDotSphereStyle(
         )
         const hi = Math.round((0.5 + 0.5 * w2) * (LUT_HUES - 1))
         const li = Math.round(lum * (LUT_LUMS - 1))
-        style = NEON_LUT[hi * LUT_LUMS + li]
+        style = lut[hi * LUT_LUMS + li]
         alpha = 1
       }
 

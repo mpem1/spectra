@@ -494,11 +494,8 @@ export function StyleTab() {
 
       {/* Gradient — the perspective style keeps its own strict two-color
           split (Up / Down pickers above), so the palette editor would sit
-          there doing nothing. Terrain DOES use the palette — it sweeps it
-          across the landscape's columns. Dot Sphere paints from its own
-          LED palette / the picture behind the ball, so the palette editor
-          would sit there doing nothing too. */}
-      {visualizer.style !== 'perspective' && visualizer.style !== 'dotsphere' ? (
+          there doing nothing there. */}
+      {visualizer.style !== 'perspective' ? (
         <section className={sectionShell('violet', 'space-y-2')}>
           <div className="flex items-center justify-between">
             <SectionLabel accent="violet">GRADIENT</SectionLabel>
@@ -820,17 +817,15 @@ export function StyleTab() {
           </>
         ) : null}
 
-        {visualizer.style !== 'dotsphere' ? (
-          <SliderRow
-            label="Sensitivity"
-            value={visualizer.sensitivity}
-            min={0.1}
-            max={3}
-            step={0.1}
-            onChange={(sensitivity) => patchVisualizer({ sensitivity })}
-            format={(v) => v.toFixed(1)}
-          />
-        ) : null}
+        <SliderRow
+          label="Sensitivity"
+          value={visualizer.sensitivity}
+          min={0.1}
+          max={3}
+          step={0.1}
+          onChange={(sensitivity) => patchVisualizer({ sensitivity })}
+          format={(v) => v.toFixed(1)}
+        />
         {(visualizer.style !== 'ribbon' && visualizer.style !== 'terrain' && visualizer.style !== 'sphere' && visualizer.style !== 'dotsphere') ? (
           <SliderRow
             label="Roundness"

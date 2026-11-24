@@ -301,6 +301,18 @@ async function prepareExportAssets(
       onNotice?.('Image visualizer artwork could not be loaded — the style shows its placeholder.')
     }
   }
+  // Dot Sphere's face picture — the ball's face prints on frame 0 too.
+  if (
+    config.visualizer.style === 'dotsphere' &&
+    config.visualizer.dotSphereFace === 'image' &&
+    config.visualizer.dotSphereFaceSrc
+  ) {
+    try {
+      await loadBackgroundImage(config.visualizer.dotSphereFaceSrc)
+    } catch {
+      onNotice?.('Dot Sphere face picture could not be loaded — the ball shows its face color.')
+    }
+  }
   // Polaroid wall's own images — frame 0 prints the per-card photo on every
   // card / reveals the wall image across the page / draws the 'image'
   // backdrop, so every one must be decoded before the first frame.

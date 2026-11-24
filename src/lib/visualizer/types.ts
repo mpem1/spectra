@@ -182,9 +182,21 @@ export interface VisualizerConfig {
   /** Dot Sphere style — the soft halo radiating around every dot, 0..1 */
   dotSphereGlow: number
   /** Dot Sphere style — dot colors: 'neon' = the fixed pink/blue LED
-   *  palette (the reference look), 'picture' = sampled from the picture
-   *  behind the ball */
-  dotSphereColors: 'neon' | 'picture'
+   *  palette (the reference look), 'palette' = the user's own gradient
+   *  palette swept across the dot hues, 'picture' = sampled from the
+   *  picture behind the ball */
+  dotSphereColors: 'neon' | 'picture' | 'palette'
+  /** Dot Sphere style — the ball's solid face the dots sit on:
+   *  'dark' = the near-black LED space (rests on transparent backgrounds),
+   *  'color' = any picked color, 'image' = the user's picture cover-fitted
+   *  inside the circular face (rounded like the orb, never stretched) */
+  dotSphereFace: 'dark' | 'color' | 'image'
+  /** Dot Sphere style — the face color when dotSphereFace is 'color'
+   *  (also the fallback under a face image that is still decoding) */
+  dotSphereFaceColor: string
+  /** Dot Sphere style — the face image (data URL) when dotSphereFace is
+   *  'image'; rendered clipped to the orb's circle */
+  dotSphereFaceSrc: string
   /** Dot Sphere style — react to beat: the wave swells and the dots flare
    *  on the song's low end (driven by frame.bass, additive, resting exactly
    *  at the dialed look between kicks) */
@@ -2102,6 +2114,9 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     dotSphereRipple: 0.35,
     dotSphereGlow: 0.55,
     dotSphereColors: 'neon',
+    dotSphereFace: 'dark',
+    dotSphereFaceColor: '#050109',
+    dotSphereFaceSrc: '',
     dotSphereBeat: false,
     dotSphereBeatStrength: 0.5,
     seratoWindow: 12,
