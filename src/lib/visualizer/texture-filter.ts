@@ -2,32 +2,39 @@
  * Texture — the finished picture printed onto a physical material. The
  * user's ask: "under filters can we add a section called texture where we
  * can add different textures i think its called displacement where we can
- * see the flaws and texture through the image". Eight procedural surfaces:
- * film grain, paper, canvas weave, concrete, frosted glass, crumpled foil,
- * rust and dirt. Each one is a HEIGHT field (the surface's bumps): the
- * slope of that field
- *   1. DISPLACES the picture — every pixel samples a few pixels away,
- *      toward the bump, so the surface's flaws warp the image (literal
- *      displacement mapping — the texture reads THROUGH the image),
- *   2. SHADES it like a lit relief (light from the upper left, so bumps
- *      catch a highlight on their lit flank and sink into shadow on the
- *      far side), and
- *   3. blends the material's own tone over it (warm paper fibers, orange
- *      rust patches, dark grime…).
- * `amount` scales all three together, so the material fades in as ONE
- * coherent surface; `scale` sizes the features (fibers, pits, wrinkles)
- * relative to the frame, resolution-independent (720p reference).
+ * see the flaws and texture through the image" — and, after the first cut
+ * shifted brightness with the dial: "why do they darken or lighten the
+ * image based on the amount? it should change the whole image based on
+ * the texture being used". Eight procedural surfaces: film grain, paper,
+ * canvas weave, concrete, frosted glass, crumpled foil, rust and dirt.
+ * Each one is a HEIGHT field (the surface's bumps) whose slope
+ * DISPLACES the picture — every pixel samples a chunk of the frame away,
+ * toward the bump, so the surface's flaws warp the WHOLE image (literal
+ * displacement mapping — the texture reads THROUGH the image) — and the
+ * slopes catch a MEAN-ZERO lit relief (light from the upper left: a
+ * bump's lit flank brightens exactly as much as its far flank sinks, so
+ * local highlights and shadows sell the physical surface while the
+ * image's AVERAGE brightness never moves). The material's own tone blend
+ * is gone on purpose: the old multiply/soft-light albedo pass WAS the
+ * darkening/lightening the user reported (rust mulched the frame toward
+ * orange-brown, dirt sank toward grime) — a texture should BEND the
+ * picture, not tint it. `amount` is now the displacement dial: the
+ * picture warps harder as it rises, its colors stay its own. `scale`
+ * sizes the features (fibers, pits, wrinkles) relative to the frame,
+ * resolution-independent (720p reference).
  *
- * Structure: every material's height + albedo field is generated ONCE per
- * (type, size, scale bucket) at HALF resolution (the surfaces are organic;
- * the apply loop bilinear-upsamples) and cached, so per-frame work is one
- * pass over the pixels: a nearest-gradient read, one bilinear source
- * sample and one bilinear material sample each — the same cost class as
- * the Gradient Map pass. Grain is cheaper still: no displacement, no
- * shading — it reads one of eight pre-built 256×256 monochrome noise
- * tiles through a bilinear wrap and blends overlay-style, re-picking the
- * tile on the 24 fps film-frame clock (the Film filter's dust cadence) so
- * the grain flickers like real film instead of sitting as a fixed pattern.
+ * Structure: every material's height field is generated ONCE per (type,
+ * size, scale bucket) at HALF resolution (the surfaces are organic; the
+ * apply loop bilinear-upsamples) and cached, so per-frame work is one
+ * pass over the pixels: a nearest gradient read plus one bilinear source
+ * sample — cheaper than the old pass, which also read a material albedo
+ * per pixel. Grain is its own cheaper thing: no displacement, no shading
+ * — it reads one of eight pre-built 256×256 monochrome noise tiles
+ * through a bilinear wrap and blends overlay-style (gray 128 is neutral,
+ * so the wash pushes and pulls local tone without shifting the average),
+ * re-picking the tile on the 24 fps film-frame clock (the Film filter's
+ * dust cadence) so the grain flickers like real film instead of sitting
+ * as a fixed pattern.
  *
  * Determinism: every "random" value comes from integer lattice hashing
  * (hash01 — the filter-utils contract), so the same config produces the
@@ -89,29 +96,29 @@ function smooth01(x: number): number {
 /* ------------------------------ material specs ------------------------------ */
 
 interface TexSpec {
-  /** Displacement amplitude (720-reference px, full amount) — how far a
-   *  full-slope bump pushes the picture. */
+  /** Displacement amplitude — how far a FULL-SLOPE bump (gradient 1.0)
+   *  pushes the picture, in 720-reference px at full amount. Real slopes
+   *  on these fields run 0.05–0.5 per texel, so the effective warp is a
+   *  few px on gentle undulations and 10–30 px on fiber/crease/pit
+   *  edges — the whole image bends. */
   disp: number
-  /** Relief-shading strength (1 = flat surface; slopes swing ± this). */
+  /** Relief-shading strength at full amount — the slopes' lit flanks
+   *  brighten and far flanks sink around this much. Mean-zero across the
+   *  surface, so the image's average brightness never shifts. */
   shade: number
-  /** How much of the material's own tone blends over the displaced
-   *  picture (0 = shading only, 1 = full material color). */
-  albMix: number
-  /** Blend mode for the material tone over the picture. */
-  blend: 'multiply' | 'soft'
   /** Base feature size on the 720p reference canvas (px). */
   feature: number
 }
 
 const SPECS: Record<TextureFilterType, TexSpec> = {
-  grain: { disp: 0, shade: 0, albMix: 0.6, blend: 'soft', feature: 1.2 },
-  paper: { disp: 3.0, shade: 0.5, albMix: 0.5, blend: 'multiply', feature: 7 },
-  canvas: { disp: 2.3, shade: 0.62, albMix: 0.55, blend: 'multiply', feature: 6 },
-  concrete: { disp: 3.4, shade: 0.75, albMix: 0.42, blend: 'multiply', feature: 11 },
-  glass: { disp: 6.5, shade: 0.55, albMix: 0.4, blend: 'soft', feature: 9 },
-  foil: { disp: 8.0, shade: 1.05, albMix: 0.32, blend: 'multiply', feature: 13 },
-  rust: { disp: 2.0, shade: 0.45, albMix: 0.85, blend: 'multiply', feature: 14 },
-  dirt: { disp: 1.5, shade: 0.5, albMix: 0.8, blend: 'multiply', feature: 10 },
+  grain: { disp: 0, shade: 0, feature: 1.2 },
+  paper: { disp: 32, shade: 0.5, feature: 7 },
+  canvas: { disp: 22, shade: 0.55, feature: 6 },
+  concrete: { disp: 30, shade: 0.5, feature: 11 },
+  glass: { disp: 52, shade: 0.5, feature: 9 },
+  foil: { disp: 52, shade: 0.55, feature: 13 },
+  rust: { disp: 26, shade: 0.4, feature: 14 },
+  dirt: { disp: 22, shade: 0.45, feature: 10 },
 }
 
 const TEX_SEEDS: Record<TextureFilterType, number> = {
@@ -127,13 +134,13 @@ const TEX_SEEDS: Record<TextureFilterType, number> = {
 
 /* --------------------------- material field cache --------------------------- */
 
-/** A generated material surface: the height field (0..1 bumps) and the
- *  material's albedo (rgb), both at HALF the canvas resolution — the
- *  surfaces are organic, so the apply loop bilinear-upsamples with no
- *  visible loss and generation stays 4× cheaper. */
+/** A generated material surface: the height field (0..1 bumps) at HALF
+ *  the canvas resolution — the surfaces are organic, so the apply loop
+ *  bilinear-upsamples with no visible loss and generation stays 4×
+ *  cheaper. (The old albedo field is gone — the material no longer tints
+ *  the picture, it only warps it.) */
 interface TexField {
   h: Float32Array
-  alb: Uint8ClampedArray
   tw: number
   th: number
 }
@@ -152,7 +159,9 @@ function fieldFor(type: TextureFilterType, W: number, H: number, scale: number):
   const minWH = Math.min(W, H)
   // Feature size in canvas px at this scale (720p reference — features
   // grow with the frame so a 1080p export shows the same physical paper).
-  const cell = (SPECS[type].feature * minWH) / 720 / q
+  // Scale MULTIPLIES: 3.0× = three-times-bigger wrinkles (the Grain tile
+  // read already worked that way), 0.4× = fine grain.
+  const cell = ((SPECS[type].feature * minWH) / 720) * q
   const field = generateField(type, tw, th, 2 / cell)
   if (fieldCache.size > 20) fieldCache.clear()
   fieldCache.set(key, field)
@@ -160,30 +169,22 @@ function fieldFor(type: TextureFilterType, W: number, H: number, scale: number):
 }
 
 /** One material's recipe — u/v are texture units (one feature ≈ 1 unit).
- *  Each fills the height (the bumps displacement + shading ride) and the
- *  material's albedo rgb. */
+ *  Each fills the height field (the bumps the displacement and the
+ *  relief shading ride on). */
 function generateField(type: TextureFilterType, tw: number, th: number, k: number): TexField {
   const h = new Float32Array(tw * th)
-  const alb = new Uint8ClampedArray(tw * th * 3)
   const s = TEX_SEEDS[type]
   for (let y = 0; y < th; y++) {
     const v = y * k
     for (let x = 0; x < tw; x++) {
       const u = x * k
       let hv = 0.5
-      let r = 235
-      let g = 231
-      let b = 221
       switch (type) {
         case 'paper': {
           // Soft laid-paper undulation + short horizontal fibers.
           const body = fbm(u * 0.45, v * 0.45, s, 3)
           const fibers = fbm(u * 0.6, v * 3.0, s + 41, 2)
           hv = 0.62 * body + 0.38 * fibers
-          const tone = 9 * (fibers - 0.5) + 7 * (body - 0.5)
-          r = 238 + tone
-          g = 234 + tone
-          b = 222 + tone
           break
         }
         case 'canvas': {
@@ -194,10 +195,6 @@ function generateField(type: TextureFilterType, tw: number, th: number, k: numbe
           const thread = 0.5 * wx + 0.5 * wy
           const fuzz = fbm(u * 1.4, v * 1.4, s + 9, 2)
           hv = 0.68 * thread + 0.32 * fuzz
-          const tone = 13 * (thread - 0.5) + 5 * (fuzz - 0.5)
-          r = 230 + tone
-          g = 223 + tone
-          b = 206 + tone
           break
         }
         case 'concrete': {
@@ -206,10 +203,6 @@ function generateField(type: TextureFilterType, tw: number, th: number, k: numbe
           const pit = lattice(Math.floor(u * 1.9), Math.floor(v * 1.9), s + 5)
           const pitH = pit < 0.05 ? (-0.42 * (0.05 - pit)) / 0.05 : 0
           hv = Math.min(1, Math.max(0, 0.55 + (body - 0.5) * 0.9 + pitH))
-          const tone = 15 * (body - 0.5)
-          r = 177 + tone
-          g = 177 + tone
-          b = 179 + tone
           break
         }
         case 'glass': {
@@ -217,10 +210,6 @@ function generateField(type: TextureFilterType, tw: number, th: number, k: numbe
           const smear = fbm(u * 0.08, v * 0.55, s, 3)
           const fine = fbm(u * 1.3, v * 1.3, s + 13, 2)
           hv = 0.72 * smear + 0.28 * fine
-          const tone = 5 * (smear - 0.5)
-          r = 243 + tone
-          g = 246 + tone
-          b = 250 + tone
           break
         }
         case 'foil': {
@@ -230,48 +219,32 @@ function generateField(type: TextureFilterType, tw: number, th: number, k: numbe
           const ridge = 1 - Math.abs(2 * crumple - 1)
           const micro = fbm(u * 2.2, v * 2.2, s + 21, 2)
           hv = Math.min(1, Math.pow(ridge, 1.6) * 0.88 + micro * 0.12)
-          const tone = 9 * (hv - 0.5)
-          r = 220 + tone
-          g = 224 + tone
-          b = 230 + tone
           break
         }
         case 'rust': {
-          // Oxidation patches blooming over bare steel — the albedo blends
-          // from the steel tone into orange-brown rust inside the patches.
+          // Oxidation blooms over bare steel — raised blotchy patches
+          // with a grainy interior.
           const blotch = fbm(u * 0.24, v * 0.24, s, 4)
           const patch = smooth01((blotch - 0.46) / 0.18)
           const grainy = fbm(u * 1.5, v * 1.5, s + 31, 2)
           hv = Math.min(1, patch * (0.42 + 0.58 * grainy))
-          const rn = 26 * (grainy - 0.5)
-          r = 198 + (158 + rn - 198) * patch
-          g = 198 + (88 + rn * 0.6 - 198) * patch
-          b = 194 + (46 + rn * 0.4 - 194) * patch
           break
         }
         case 'dirt': {
-          // Dark grime settling into blotches, plus crisp specks.
+          // Grime settling into blotches, plus crisp specks.
           const blotch = fbm(u * 0.28, v * 0.28, s, 4)
           const grime = smooth01((blotch - 0.44) / 0.22)
           const speck = lattice(Math.floor(u * 2.7), Math.floor(v * 2.7), s + 7)
           hv = Math.min(1, grime * grime * 0.9 + (speck < 0.05 ? 0.75 : 0))
-          const tone = 10 * (blotch - 0.5)
-          r = 74 + tone
-          g = 66 + tone
-          b = 57 + tone
           break
         }
         default:
           break // 'grain' renders from its own tile set, never a field
       }
-      const kk = y * tw + x
-      h[kk] = hv
-      alb[kk * 3] = r
-      alb[kk * 3 + 1] = g
-      alb[kk * 3 + 2] = b
+      h[y * tw + x] = hv
     }
   }
-  return { h, alb, tw, th }
+  return { h, tw, th }
 }
 
 /* -------------------------------- grain tiles ------------------------------- */
@@ -333,11 +306,13 @@ export function drawTextureFilter(
   const src = wctx.getImageData(0, 0, W, H).data
   const out = pooledImage(`${W}x${H}`, W, H)
   const od = out.data
-  const ia = 1 - amount
 
   if (type === 'grain') {
     // Film grain — no displacement, no shading: one bilinear wrap read of
     // the frame's noise tile per pixel, overlay-blended at the amount.
+    // Overlay with a tile centered on gray 128 is mean-neutral: shadows
+    // and highlights push and pull locally, the frame's average holds.
+    const ia = 1 - amount
     const seed = frameSeed(frame.styleTime, 24)
     const tile = grainTiles()[seed % 8]
     // Grain texel size rides the Scale dial and the frame size, so the
@@ -374,28 +349,30 @@ export function drawTextureFilter(
       }
     }
   } else {
-    // Material surfaces — displacement + relief shading + material tone.
+    // Material surfaces — displacement IS the effect. The picture is
+    // sampled dispAmp·slope pixels away from each pixel, toward the
+    // bump: fibers, wrinkles, pits, smears and creases drag the whole
+    // image around them while its colors stay its own.
     const field = fieldFor(type, W, H, scale)
-    const { h, alb, tw, th } = field
-    // Displacement amplitude in canvas px: the spec's reference px scaled
-    // to the frame, by the amount, with the slope→px gain folded in.
-    const dispAmp = spec.disp * (minWH / 720) * amount * 1.6
-    const shadeK = spec.shade
-    // Albedo blend strength rides the amount too — the material fades in
-    // as one surface, never tone-ahead-of-warp.
-    const albMix = spec.albMix * amount
-    const soft = spec.blend === 'soft'
+    const { h, tw, th } = field
+    // Displacement amplitude in canvas px: the spec's full-slope px
+    // scaled to the frame and the amount. Amount 0 → 0 → the exact
+    // source picture; amount 1 → the spec's full warp.
+    const dispAmp = spec.disp * (minWH / 720) * amount
+    // Relief shading rides the amount too and is MEAN-ZERO: the slope
+    // terms average ~0 across the surface, so a bump's bright flank is
+    // paid for by its far side sinking — local highlights and shadows
+    // without moving the image's average brightness (the old tone blend
+    // darkened it — gone).
+    const shadeK = spec.shade * amount * 2.4
     for (let y = 0; y < H; y++) {
       // Per-row texture indices (half-res, clamped into the field).
       const ty = Math.min(th - 1, y >> 1)
       const ty1 = Math.min(th - 1, ty + 1)
       const tyP = ty > 0 ? ty - 1 : 0
-      const tY1 = ty1 * tw
       const hRow = ty * tw
       const hRowN = ty1 * tw
       const hRowP = tyP * tw
-      const tfy = (y >> 1) - ty + (y & 1) * 0.5
-      const wyA = 1 - tfy
       let i = y * W * 4
       for (let x = 0; x < W; x++, i += 4) {
         const tx = Math.min(tw - 1, x >> 1)
@@ -408,11 +385,12 @@ export function drawTextureFilter(
         else if (gx < -1) gx = -1
         if (gy > 1) gy = 1
         else if (gy < -1) gy = -1
+
+        // The displacement — sample the picture from dispAmp·slope
+        // pixels away, toward the bump (clamped to the frame — bumps
+        // near the edge just pull the picture, no wrap).
         const dx = gx * dispAmp
         const dy = gy * dispAmp
-
-        // Bilinear source sample at the displaced spot (clamped to the
-        // frame — bumps near the edge just pull the picture, no wrap).
         let sxf = x + dx
         let syf = y + dy
         if (sxf < 0) sxf = 0
@@ -437,74 +415,15 @@ export function drawTextureFilter(
         const sg = src[r00 + 1] * w00 + src[r01 + 1] * w01 + src[r10 + 1] * w10 + src[r11 + 1] * w11
         const sb = src[r00 + 2] * w00 + src[r01 + 2] * w01 + src[r10 + 2] * w10 + src[r11 + 2] * w11
 
-        // Relief shading — light from the upper left: a bump's left flank
-        // (rising toward the light) brightens, its far side sinks.
-        let shd = 1 + shadeK * (dx * 0.55 + dy * 0.7)
-        if (shd < 0.3) shd = 0.3
-        else if (shd > 1.8) shd = 1.8
+        // Relief shading — light from the upper left: a bump's left
+        // flank (rising toward the light) brightens, its far side sinks.
+        let shd = 1 + shadeK * (gx * 0.55 + gy * 0.7)
+        if (shd < 0.35) shd = 0.35
+        else if (shd > 1.75) shd = 1.75
 
-        // Bilinear material albedo at this spot, shaded by the relief.
-        const a00 = (ty * tw + tx) * 3
-        const a01 = (ty * tw + tx1) * 3
-        const a10 = (ty1 * tw + tx) * 3
-        const a11 = (ty1 * tw + tx1) * 3
-        const tfx = (x >> 1) - tx + (x & 1) * 0.5
-        const wxA = 1 - tfx
-        const ar =
-          (alb[a00] * wxA * wyA + alb[a01] * tfx * wyA + alb[a10] * wxA * tfy + alb[a11] * tfx * tfy) *
-          shd
-        const ag =
-          (alb[a00 + 1] * wxA * wyA +
-            alb[a01 + 1] * tfx * wyA +
-            alb[a10 + 1] * wxA * tfy +
-            alb[a11 + 1] * tfx * tfy) *
-          shd
-        const ab =
-          (alb[a00 + 2] * wxA * wyA +
-            alb[a01 + 2] * tfx * wyA +
-            alb[a10 + 2] * wxA * tfy +
-            alb[a11 + 2] * tfx * tfy) *
-          shd
-
-        // Material tone over the displaced picture (normalized 0..1).
-        let mr: number
-        let mg: number
-        let mb: number
-        if (soft) {
-          // Soft-light: gentle — glass smears tint and shade without hard
-          // darkening.
-          const s0r = sr / 255
-          const s0g = sg / 255
-          const s0b = sb / 255
-          const m0r = ar / 255
-          const m0g = ag / 255
-          const m0b = ab / 255
-          mr =
-            (m0r <= 0.5
-              ? s0r - (1 - 2 * m0r) * s0r * (1 - s0r)
-              : s0r + (2 * m0r - 1) * (softD(s0r) - s0r)) *
-            255
-          mg =
-            (m0g <= 0.5
-              ? s0g - (1 - 2 * m0g) * s0g * (1 - s0g)
-              : s0g + (2 * m0g - 1) * (softD(s0g) - s0g)) *
-            255
-          mb =
-            (m0b <= 0.5
-              ? s0b - (1 - 2 * m0b) * s0b * (1 - s0b)
-              : s0b + (2 * m0b - 1) * (softD(s0b) - s0b)) *
-            255
-        } else {
-          // Multiply: the material's tone lands directly on the picture.
-          mr = (sr * ar) / 255
-          mg = (sg * ag) / 255
-          mb = (sb * ab) / 255
-        }
-
-        // Amount fades between the untouched picture and the full material.
-        od[i] = src[i] * ia + mr * amount
-        od[i + 1] = src[i + 1] * ia + mg * amount
-        od[i + 2] = src[i + 2] * ia + mb * amount
+        od[i] = sr * shd
+        od[i + 1] = sg * shd
+        od[i + 2] = sb * shd
         od[i + 3] = 255
       }
     }
@@ -512,9 +431,4 @@ export function drawTextureFilter(
 
   wctx.putImageData(out, 0, 0)
   ctx.drawImage(work, 0, 0)
-}
-
-/** Soft-light's highlight curve (the W3C blend-mode formula). */
-function softD(s: number): number {
-  return s <= 0.25 ? ((16 * s - 12) * s + 4) * s : Math.sqrt(s)
 }

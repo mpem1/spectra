@@ -1699,8 +1699,10 @@ export interface TextureFilterConfig {
   /** Which material prints the picture. Old saves without this field
    *  load as 'paper' (the most legible displacement demo). */
   type: TextureFilterType
-  /** Texture strength 0..1 — how strongly the material shows through:
-   *  displacement, relief shading and the material's tone fade in together. */
+  /** Texture strength 0..1 — how hard the material's surface warps the
+   *  picture (the displacement, with the mean-zero relief shading riding
+   *  along). The image's own colors never darken, lighten or tint — the
+   *  texture BENDS it, it doesn't tint it. */
   amount: number
   /** Texture scale 0.4..3 — the material's feature size relative to the
    *  frame (lower = finer grain, higher = bigger wrinkles/pits). */
@@ -1856,8 +1858,8 @@ export interface StudioConfig {
   /** Full-frame instant-film stock grade (the effect.app "Instant Film"
    *  effect — renamed Exposure in Spectra) */
   exposureFilter: ExposureFilterConfig
-  /** Full-frame texture stage (the picture printed onto a physical
-   *  material — displacement + relief shading + material tone) */
+  /** Full-frame texture stage (the picture warped onto a physical
+   *  material — displacement + mean-zero relief shading, no tone tint) */
   textureFilter: TextureFilterConfig
   /** Full-frame polaroid-wall post-pass (the page becomes scattered instant
    *  prints, the picture showing through every photo window) */

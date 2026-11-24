@@ -25,10 +25,11 @@ const TEXTURES: { id: TextureFilterType; label: string; sub: string }[] = [
  * material: film grain, paper, canvas, concrete, glass, crumpled foil,
  * rust or dirt. Each material is a bump surface whose flaws DISPLACE the
  * picture (the image warps around every pit, fiber and crease — the
- * displacement), catch a lit-relief shading from the upper left, and blend
- * the material's own tone over the picture, so the texture reads through
- * the image instead of sitting flat on top of it. Amount is the master
- * dial; Scale sizes the material's features.
+ * displacement) and catch a lit-relief shading from the upper left, so
+ * the texture reads through the image instead of sitting flat on top of
+ * it. The image's own colors stay its own — the texture bends it, it
+ * doesn't tint it. Amount is the master dial; Scale sizes the material's
+ * features.
  */
 export function TextureFilterSection() {
   const filter = useStudioStore((s) => s.config.textureFilter)
@@ -51,9 +52,9 @@ export function TextureFilterSection() {
         Prints the finished picture onto a material — grain, paper, canvas,
         concrete, glass, crumpled foil, rust or dirt. The surface&apos;s flaws
         push the picture around (the displacement), so pits, fibers and
-        creases show THROUGH the image — and the material&apos;s own tone and
-        shading blend over it like a real printed surface. Amount sets how
-        strongly it shows; Scale sets how big the flaws are.
+        creases show THROUGH the image — the texture bends the whole
+        picture instead of tinting it, so its colors stay its own. Amount
+        sets how hard the picture bends; Scale sets how big the flaws are.
       </p>
 
       {filter.enabled ? (
@@ -88,7 +89,7 @@ export function TextureFilterSection() {
               {filter.type === 'grain'
                 ? 'Fine film speckle that flickers like real film (24 frames a second) — the classic grain wash over the whole picture.'
                 : filter.type === 'paper'
-                  ? 'Warm printing paper: soft wrinkles and short fibers the picture bends around.'
+                  ? 'Printing paper: soft wrinkles and short fibers the picture bends around.'
                   : filter.type === 'canvas'
                     ? 'A woven artist canvas — the picture lands on crossing threads.'
                     : filter.type === 'concrete'
@@ -96,10 +97,10 @@ export function TextureFilterSection() {
                       : filter.type === 'glass'
                         ? 'Frosted glass with cleaning smears — the picture refracts around every streak.'
                         : filter.type === 'foil'
-                          ? 'Crumpled metal foil — big creases with bright glints and deep shadow folds.'
+                          ? 'Crumpled metal foil — big creases that fold and glint through the picture.'
                           : filter.type === 'rust'
-                            ? 'Corroded metal: orange-brown oxidation patches blooming over the picture.'
-                            : 'Dark grime settling into blotches and specks, like a screen nobody wiped.'}
+                            ? 'Corroded metal: oxidation blooms that buckle the picture around every patch.'
+                            : 'Old grime: settled blotches and crisp specks that dent and scratch the picture.'}
             </p>
           </div>
 
