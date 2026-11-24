@@ -23,6 +23,13 @@
  * sizes the features (fibers, pits, wrinkles) relative to the frame,
  * resolution-independent (720p reference).
  *
+ * The ninth material is the user's own picture ('custom'): its luminance
+ * IS the height field — a Photoshop-Displace-style HEIGHT shift (bright
+ * pushes one way, dark pulls the other, bounded and predictable even for
+ * smooth photos) — drawn tiled under Size / Move X / Move Y / Rotate
+ * transforms with a Contrast dial multiplying the bumps around mid-gray.
+ * See customFieldFor below.
+ *
  * Structure: every material's height field is generated ONCE per (type,
  * size, scale bucket) at HALF resolution (the surfaces are organic; the
  * apply loop bilinear-upsamples) and cached, so per-frame work is one
@@ -45,6 +52,7 @@
  */
 import type { AudioFrame, RenderContext, TextureFilterConfig, TextureFilterType } from './types'
 import { clamp01, frameSeed, getWork, hash01, resetWork } from './filter-utils'
+import { getBackgroundImage } from './image-cache'
 
 /* ------------------------------ noise toolkit ------------------------------ */
 
@@ -119,6 +127,13 @@ const SPECS: Record<TextureFilterType, TexSpec> = {
   foil: { disp: 52, shade: 0.55, feature: 13 },
   rust: { disp: 26, shade: 0.4, feature: 14 },
   dirt: { disp: 22, shade: 0.45, feature: 10 },
+  // 'custom' never generates a procedural field (its height comes from
+  // the user's image) — here `disp` is the HEIGHT-SHIFT amplitude: the
+  // map's full deviation from mid-gray moves the picture ±disp/2 px at
+  // full amount (Photoshop-Displace semantics — bounded no matter how
+  // smooth the uploaded image is, unlike slope-based displacement which
+  // barely moves a smooth photo). feature is unused.
+  custom: { disp: 64, shade: 0.5, feature: 0 },
 }
 
 const TEX_SEEDS: Record<TextureFilterType, number> = {
@@ -247,6 +262,78 @@ function generateField(type: TextureFilterType, tw: number, th: number, k: numbe
   return { h, tw, th }
 }
 
+/* ------------------------- custom texture field ------------------------- */
+
+/** The custom texture's field, built from the user's own image: the image
+ *  is drawn TILE-REPEATED into the half-res field canvas under the Size /
+ *  Move / Rotate transform (tiling, so nudging never runs out of texture),
+ *  each pixel's luminance becomes the raw height, and Contrast
+ *  multiplies the bumps around mid-gray (0 = a perfectly flat sheet — no
+ *  warp at all). One tile cover-fits the frame at Size 1, resolution-
+ *  independent. Cached per (image, quantized size/position/rotation/
+ *  contrast) so dragging a slider regenerates at most a handful of times;
+ *  the generation itself is one half-res drawImage + read, so even a
+ *  cache miss is a couple of milliseconds. Returns null while the image
+ *  is still decoding (the pass skips that frame — the live preview
+ *  repaints every frame, so the texture appears the moment it lands). */
+const customCache = new Map<string, TexField>()
+
+function customFieldFor(cfg: TextureFilterConfig, W: number, H: number): TexField | null {
+  const src = cfg.customSrc ?? ''
+  if (!src) return null
+  const img = getBackgroundImage(src)
+  if (!img) return null
+  // Quantize the transforms into the cache key so dragging a dial
+  // regenerates at most a handful of times across its travel.
+  const qs = Math.round(Math.min(4, Math.max(0.2, cfg.customSize ?? 1)) * 10) / 10
+  const qx = Math.round(Math.min(1, Math.max(-1, cfg.customX ?? 0)) * 50) / 50
+  const qy = Math.round(Math.min(1, Math.max(-1, cfg.customY ?? 0)) * 50) / 50
+  const qr = Math.round(Math.min(180, Math.max(-180, cfg.customRotate ?? 0)) / 2) * 2
+  const qc = Math.round(Math.min(2, Math.max(0, cfg.customContrast ?? 1)) * 10) / 10
+  const key = `custom|${img.naturalWidth}x${img.naturalHeight}|${W}|${H}|${qs}|${qx}|${qy}|${qr}|${qc}`
+  const hit = customCache.get(key)
+  if (hit) return hit
+  const tw = Math.max(24, W >> 1)
+  const th = Math.max(24, H >> 1)
+  const work = getWork('texture:custom', tw, th)
+  const g = resetWork(work.getContext('2d', { willReadFrequently: true })!)
+  const iw = img.naturalWidth
+  const ih = img.naturalHeight
+  // Base sizing: one tile cover-fits the frame at Size 1. Then the pivot
+  // (frame center + Move nudge), the rotation around that pivot, and the
+  // Size zoom — the 'repeat' pattern keeps every combination covered.
+  const s0 = Math.max(tw / iw, th / ih) * qs
+  g.translate(tw / 2 + qx * tw, th / 2 + qy * th)
+  g.rotate((qr * Math.PI) / 180)
+  g.scale(s0, s0)
+  // Center the tile on the pivot, so Size 1 / unrotated / unmoved shows
+  // the image COVER-fitting the frame like a normal background — the
+  // tiling only becomes visible when Size shrinks or the image moves.
+  g.translate(-iw / 2, -ih / 2)
+  const pat = g.createPattern(img, 'repeat')
+  if (!pat) return null
+  g.fillStyle = pat
+  // Fill far enough to cover the rotated + nudged frame from the tile
+  // center (worst case 1.5 frame diagonals in image units, plus a ring
+  // of margin — the repeat handles everything inside).
+  const R = Math.ceil((Math.hypot(tw, th) * 1.5) / s0) + iw + ih
+  g.fillRect(-R, -R, 2 * R, 2 * R)
+  const d = g.getImageData(0, 0, tw, th).data
+  const h = new Float32Array(tw * th)
+  const n = tw * th
+  for (let i = 0, k = 0; k < n; i += 4, k++) {
+    const lum = (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255
+    let hv = 0.5 + (lum - 0.5) * qc
+    if (hv < 0) hv = 0
+    else if (hv > 1) hv = 1
+    h[k] = hv
+  }
+  const field: TexField = { h, tw, th }
+  if (customCache.size > 12) customCache.clear()
+  customCache.set(key, field)
+  return field
+}
+
 /* -------------------------------- grain tiles ------------------------------- */
 
 /** Eight pre-built 256×256 monochrome grain tiles (90..166, centered on
@@ -352,13 +439,18 @@ export function drawTextureFilter(
     // Material surfaces — displacement IS the effect. The picture is
     // sampled dispAmp·slope pixels away from each pixel, toward the
     // bump: fibers, wrinkles, pits, smears and creases drag the whole
-    // image around them while its colors stay its own.
-    const field = fieldFor(type, W, H, scale)
+    // image around them while its colors stay its own. ('custom' builds
+    // its height field from the user's uploaded texture image — same
+    // displacement + mean-zero relief loop underneath.)
+    const field = type === 'custom' ? customFieldFor(cfg, W, H) : fieldFor(type, W, H, scale)
+    if (!field) return // custom image missing / still decoding — untouched frame
     const { h, tw, th } = field
     // Displacement amplitude in canvas px: the spec's full-slope px
     // scaled to the frame and the amount. Amount 0 → 0 → the exact
-    // source picture; amount 1 → the spec's full warp.
+    // source picture; amount 1 → the spec's full warp. For 'custom' it
+    // is the HEIGHT-shift amplitude instead (Photoshop-Displace style).
     const dispAmp = spec.disp * (minWH / 720) * amount
+    const heightShift = type === 'custom'
     // Relief shading rides the amount too and is MEAN-ZERO: the slope
     // terms average ~0 across the surface, so a bump's bright flank is
     // paid for by its far side sinking — local highlights and shadows
@@ -386,11 +478,15 @@ export function drawTextureFilter(
         if (gy > 1) gy = 1
         else if (gy < -1) gy = -1
 
-        // The displacement — sample the picture from dispAmp·slope
-        // pixels away, toward the bump (clamped to the frame — bumps
-        // near the edge just pull the picture, no wrap).
-        const dx = gx * dispAmp
-        const dy = gy * dispAmp
+        // The displacement — sample the picture dispAmp·slope pixels
+        // away, toward the bump (clamped to the frame — bumps near the
+        // edge just pull the picture, no wrap). 'custom' shifts by the
+        // map's own HEIGHT instead (bright pushes one way, dark pulls
+        // the other), so smooth uploaded photos warp as hard as
+        // hard-edged graphics — their per-texel slope is tiny, their
+        // height isn't.
+        const dx = heightShift ? (h[hRow + tx] - 0.5) * dispAmp : gx * dispAmp
+        const dy = heightShift ? (h[hRowN + tx] - 0.5) * dispAmp : gy * dispAmp
         let sxf = x + dx
         let syf = y + dy
         if (sxf < 0) sxf = 0

@@ -118,6 +118,18 @@ export async function exportPngSequence(opts: PngSeqOptions): Promise<PngSeqResu
       // Fall through — the ball paints its face color.
     }
   }
+  // Texture filter's custom bump image — the texture warps frame 0 too.
+  if (
+    config.textureFilter?.enabled &&
+    config.textureFilter.type === 'custom' &&
+    config.textureFilter.customSrc
+  ) {
+    try {
+      await loadBackgroundImage(config.textureFilter.customSrc)
+    } catch {
+      // Fall through — the texture stage is skipped.
+    }
+  }
   // Polaroid wall's own images — frame 0 prints the per-card photo on every
   // card / reveals the wall image across the page / draws the 'image'
   // backdrop, so every one must be decoded before the first frame.

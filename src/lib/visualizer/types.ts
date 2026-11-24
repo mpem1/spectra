@@ -1661,9 +1661,11 @@ export interface ExposureFilterConfig {
   light: number
 }
 
-/** The eight materials the Texture filter can print the picture onto.
- *  'grain' is the only one that animates (film-grain flicker at 24 fps);
- *  the rest are static physical surfaces. */
+/** The materials the Texture filter can print the picture onto — the
+ *  eight procedural surfaces plus 'custom', the user's own uploaded
+ *  texture image (its luminance IS the height field). 'grain' is the only
+ *  procedural one that animates (film-grain flicker at 24 fps); the rest
+ *  are static physical surfaces. */
 export type TextureFilterType =
   | 'grain'
   | 'paper'
@@ -1673,6 +1675,7 @@ export type TextureFilterType =
   | 'foil'
   | 'rust'
   | 'dirt'
+  | 'custom'
 
 /**
  * Texture filter — the finished picture printed onto a physical material
@@ -1705,8 +1708,28 @@ export interface TextureFilterConfig {
    *  texture BENDS it, it doesn't tint it. */
   amount: number
   /** Texture scale 0.4..3 — the material's feature size relative to the
-   *  frame (lower = finer grain, higher = bigger wrinkles/pits). */
+   *  frame (lower = finer grain, higher = bigger wrinkles/pits). Unused
+   *  by 'custom', which has its own Size dial. */
   scale: number
+  /** The user's own texture image (data URL) — 'custom' prints the
+   *  picture through THIS image's bumps: its luminance is the height
+   *  field. Empty in old saves and until the user uploads one. */
+  customSrc: string
+  /** Custom texture zoom 0.2..4 — 1 = one tile cover-fits the frame
+   *  (resolution-independent); bigger = bigger bumps, smaller = finer. */
+  customSize: number
+  /** Custom texture nudge, a fraction of the frame (-1..1 both axes) —
+   *  Move X slides it sideways, Move Y vertically. The image tiles, so
+   *  nudging never runs out of texture. */
+  customX: number
+  customY: number
+  /** Custom texture rotation in degrees (-180..180), pivoting on the
+   *  (moved) frame center. */
+  customRotate: number
+  /** Custom texture contrast 0..2 around mid-gray (100 = neutral): higher
+   *  = harder bumps (steeper slopes → stronger displacement), lower =
+   *  flatter; 0 = a perfectly flat sheet (no warp at all). */
+  customContrast: number
 }
 
 /**
@@ -2545,6 +2568,14 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     type: 'paper',
     amount: 0.6,
     scale: 1,
+    // The custom texture: no image until the user uploads one, one tile
+    // cover-fitting the frame, dead-center, unrotated, neutral contrast
+    customSrc: '',
+    customSize: 1,
+    customX: 0,
+    customY: 0,
+    customRotate: 0,
+    customContrast: 1,
   },
   polaroidFilter: {
     enabled: false,

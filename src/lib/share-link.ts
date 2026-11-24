@@ -61,8 +61,12 @@ export function makePortable(config: StudioConfig): {
   // saved projects only (recipients fall back to the picture / placeholder).
   const vizDrop = !!config.visualizer?.imgvizSrc
   const polaroidDrop = !!config.polaroidFilter?.photoSrc || !!config.polaroidFilter?.mosaicSrc
+  // The Texture filter's custom bump image is media pixels too — a data URL
+  // would blow the URL budget; recipients fall back to no custom texture
+  // (its Size / Move / Rotate / Contrast dials still travel verbatim).
+  const texDrop = !!config.textureFilter?.customSrc
   const fontsDrop = (config.fonts?.length ?? 0) > 0
-  if (!bgDrop && !videoDrop && !discDrop && !wmDrop && !pulseDrop && !vizDrop && !polaroidDrop && !fontsDrop) {
+  if (!bgDrop && !videoDrop && !discDrop && !wmDrop && !pulseDrop && !vizDrop && !polaroidDrop && !texDrop && !fontsDrop) {
     return { config, imageDropped: false }
   }
   return {
@@ -98,6 +102,10 @@ export function makePortable(config: StudioConfig): {
       polaroidFilter: polaroidDrop
         ? { ...config.polaroidFilter, photoSrc: '', mosaicSrc: '' }
         : config.polaroidFilter,
+      textureFilter:
+        texDrop && config.textureFilter
+          ? { ...config.textureFilter, customSrc: '' }
+          : config.textureFilter,
       // Font files are megabytes of base64 — recipients fall back to the
       // built-in fonts (the same graceful loss as images).
       fonts: fontsDrop ? [] : config.fonts,
