@@ -7,7 +7,7 @@ import type { PolaroidFilterConfig } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
-import { MicroLabel, BeatPunchRow, SliderRow, ToggleRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, BeatPunchRow, SliderRow, ToggleRow, ImageDropzone, sectionShell } from '@/components/studio/controls'
 import { ColorPickerButton } from '@/components/studio/color-picker'
 import { cn } from '@/lib/utils'
 
@@ -327,14 +327,12 @@ export function PolaroidFilterSection() {
                     ) : null}
                   </>
                 ) : (
-                  <button
-                    type="button"
-                    className="flex h-16 w-full flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/40 text-zinc-400 transition-colors hover:border-teal-500/60 hover:text-teal-400"
+                  <ImageDropzone
+                    accent="teal"
+                    label="Upload a photo for the prints"
+                    hint="one picture, printed on every card"
                     onClick={() => photoInputRef.current?.click()}
-                  >
-                    <ImagePlus className="size-4" aria-hidden />
-                    <span className="text-xs font-medium">Upload a photo for the prints</span>
-                  </button>
+                  />
                 )}
               </div>
             ) : null}
@@ -421,14 +419,12 @@ export function PolaroidFilterSection() {
                     ) : null}
                   </>
                 ) : (
-                  <button
-                    type="button"
-                    className="flex h-16 w-full flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/40 text-zinc-400 transition-colors hover:border-teal-500/60 hover:text-teal-400"
+                  <ImageDropzone
+                    accent="teal"
+                    label="Upload one image for the whole wall"
+                    hint="it becomes the backdrop as well"
                     onClick={() => mosaicInputRef.current?.click()}
-                  >
-                    <ImagePlus className="size-4" aria-hidden />
-                    <span className="text-xs font-medium">Upload one image for the whole wall</span>
-                  </button>
+                  />
                 )}
               </div>
             ) : null}

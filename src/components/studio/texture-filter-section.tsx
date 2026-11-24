@@ -8,7 +8,7 @@ import { useStudioStore } from '@/store/studio'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { ColorPickerButton } from '@/components/studio/color-picker'
-import { MicroLabel, SliderRow, ToggleRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, SliderRow, ToggleRow, ImageDropzone, sectionShell } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 
 /** The material picker's chips — label + a two-word tell, compact like
@@ -109,6 +109,10 @@ export function TextureFilterSection() {
                     filter.type === m.id
                       ? 'border-emerald-400/70 bg-emerald-500/15 text-emerald-200'
                       : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200',
+                    // Custom takes YOUR image — give it a double-wide
+                    // cell so the upload-your-own option stands out from
+                    // the eight procedural surfaces.
+                    m.id === 'custom' && 'col-span-2',
                   )}
                 >
                   <span className="text-xs font-medium leading-none">{m.label}</span>
@@ -179,18 +183,12 @@ export function TextureFilterSection() {
                   </div>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  className="flex h-16 w-full flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/40 text-zinc-400 transition-colors hover:border-emerald-500/60 hover:text-emerald-400"
+                <ImageDropzone
+                  accent="emerald"
+                  label="Upload a texture image"
+                  hint="bright spots add highlights, dark spots add shadows — dialed separately below"
                   onClick={() => inputRef.current?.click()}
-                >
-                  <ImagePlus className="size-4" aria-hidden />
-                  <span className="text-xs font-medium">Upload a texture image</span>
-                  <span className="text-[10px] text-zinc-600">
-                    bright spots add highlights, dark spots add shadows —
-                    dialed separately below
-                  </span>
-                </button>
+                />
               )}
 
               <SliderRow

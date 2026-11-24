@@ -17,7 +17,7 @@ import { DotSphereStyleSection } from '@/components/studio/dot-sphere-style-sect
 import { VinylSection } from '@/components/studio/vinyl-section'
 import { WatermarkSection } from '@/components/studio/watermark-section'
 import { PulseImageSection } from '@/components/studio/pulse-image-section'
-import { MicroLabel, OptionCard, SECTION_ACCENT, SliderRow, sectionShell, type SectionAccent } from '@/components/studio/controls'
+import { MicroLabel, OptionCard, SECTION_ACCENT, SliderRow, ImageDropzone, sectionShell, type SectionAccent } from '@/components/studio/controls'
 import { ColorPickerButton } from '@/components/studio/color-picker'
 
 const STYLES: { id: VisualizerStyle; label: string; icon: typeof BarChart3 }[] = [
@@ -111,7 +111,11 @@ export function StyleTab() {
 
   return (
     <div className="space-y-5">
-      {/* Visualizer style — 2-column icon grid (emerald = the app accent) */}
+      {/* Visualizer style — 2-column icon grid (emerald = the app accent).
+          The Image style is the custom-artwork entry point: it spans BOTH
+          columns (double the size of the other tabs) and carries a tell,
+          so the one style that takes your own picture stands out even
+          though it sits at the bottom of the grid. */}
       <section className={sectionShell('emerald', 'space-y-2')}>
         <SectionLabel accent="emerald">VISUALIZER</SectionLabel>
         <div className="grid grid-cols-2 gap-2">
@@ -120,6 +124,8 @@ export function StyleTab() {
               key={id}
               icon={icon}
               label={label}
+              sub={id === 'imgviz' ? 'your own artwork' : undefined}
+              className={id === 'imgviz' ? 'col-span-2' : undefined}
               active={visualizer.style === id}
               onClick={() => patchVisualizer({ style: id })}
             />
@@ -191,14 +197,12 @@ export function StyleTab() {
               </div>
             </div>
           ) : (
-            <button
-              type="button"
-              className="flex h-16 w-full flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/40 text-zinc-400 transition-colors hover:border-rose-500/60 hover:text-rose-400"
+            <ImageDropzone
+              accent="rose"
+              label="Upload your PNG"
+              hint="PNG with transparency works best"
               onClick={() => imageInputRef.current?.click()}
-            >
-              <ImagePlus className="size-4" aria-hidden />
-              <span className="text-xs font-medium">Upload your PNG</span>
-            </button>
+            />
           )}
           <SliderRow
             label="Artwork size"

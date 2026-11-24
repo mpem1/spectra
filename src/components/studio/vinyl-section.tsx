@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { ColorPickerButton } from '@/components/studio/color-picker'
-import { MicroLabel, SectionTitle, SliderRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, SectionTitle, SliderRow, ImageDropzone, sectionShell } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 
 /** Read a File into a data URL (for the canvas + project persistence). */
@@ -168,15 +168,12 @@ export function VinylSection() {
           </div>
         </div>
       ) : (
-        <button
-          type="button"
-          className="flex h-20 w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/40 text-zinc-400 transition-colors hover:border-emerald-500/60 hover:text-emerald-400"
+        <ImageDropzone
+          accent="lime"
+          label="Upload album art"
+          hint="PNG / JPG — used by the cover and the disc"
           onClick={() => inputRef.current?.click()}
-        >
-          <ImagePlus className="size-5" aria-hidden />
-          <span className="text-xs font-medium">Upload album art</span>
-          <span className="text-[10px] text-zinc-600">PNG / JPG — used by the cover and the disc</span>
-        </button>
+        />
       )}
 
       {/* Separate disc face art — vinyl label / CD face / cassette label */}
@@ -215,14 +212,13 @@ export function VinylSection() {
             </p>
           </>
         ) : (
-          <button
-            type="button"
-            className="flex h-14 w-full flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/40 text-zinc-400 transition-colors hover:border-emerald-500/60 hover:text-emerald-400"
+          <ImageDropzone
+            accent="lime"
+            label="Use a different image on the disc"
+            hint="Optional — the disc reuses the cover art"
+            className="h-16"
             onClick={() => discInputRef.current?.click()}
-          >
-            <span className="text-xs font-medium">Use a different image on the disc</span>
-            <span className="text-[10px] text-zinc-600">Optional — the disc reuses the cover art</span>
-          </button>
+          />
         )}
       </div>
 

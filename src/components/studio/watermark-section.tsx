@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
-import { MicroLabel, SliderRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, SliderRow, ImageDropzone, sectionShell } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 
 const CORNERS: { id: WatermarkConfig['position']; label: string }[] = [
@@ -104,14 +104,13 @@ export function WatermarkSection() {
               </div>
             </div>
           ) : (
-            <button
-              type="button"
-              className="flex h-16 w-full flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/40 text-zinc-400 transition-colors hover:border-emerald-500/60 hover:text-emerald-400"
+            <ImageDropzone
+              accent="teal"
+              label="Upload a logo"
+              hint="PNG with transparency"
+              ariaLabel="Upload a watermark logo"
               onClick={() => inputRef.current?.click()}
-            >
-              <ImagePlus className="size-4" aria-hidden />
-              <span className="text-xs font-medium">Upload a logo (PNG with transparency)</span>
-            </button>
+            />
           )}
 
           <div className="space-y-1.5">

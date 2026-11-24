@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button'
 import { GradientEditor } from '@/components/studio/gradient-editor'
 import { ColorPickerButton } from '@/components/studio/color-picker'
 import { parseColor, toHex6 } from '@/components/studio/color-utils'
-import { MicroLabel, OptionCard, SECTION_ACCENT, SliderRow, ToggleRow, sectionShell } from '@/components/studio/controls'
+import { MicroLabel, OptionCard, SECTION_ACCENT, SliderRow, ToggleRow, ImageDropzone, sectionShell } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 import {
   forgetAnimatedBackground,
@@ -283,15 +283,12 @@ function ImageBackgroundSection() {
           </div>
         </div>
       ) : (
-        <button
-          type="button"
-          className="flex h-20 w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/40 text-zinc-400 transition-colors hover:border-emerald-500/60 hover:text-emerald-400"
+        <ImageDropzone
+          accent="rose"
+          label="Upload PNG / JPG"
+          hint="or drop an image anywhere on the preview"
           onClick={() => inputRef.current?.click()}
-        >
-          <ImagePlus className="size-5" aria-hidden />
-          <span className="text-xs font-medium">Upload PNG / JPG</span>
-          <span className="text-[10px] text-zinc-600">or drop an image anywhere on the preview</span>
-        </button>
+        />
       )}
 
       <MediaBackgroundControls />
@@ -402,15 +399,13 @@ function VideoBackgroundSection() {
           </div>
         </div>
       ) : (
-        <button
-          type="button"
-          className="flex h-20 w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/40 text-zinc-400 transition-colors hover:border-emerald-500/60 hover:text-emerald-400"
+        <ImageDropzone
+          accent="rose"
+          icon={Clapperboard}
+          label="Upload MP4 / WebM / GIF"
+          hint="a short loop is all you need"
           onClick={() => inputRef.current?.click()}
-        >
-          <Clapperboard className="size-5" aria-hidden />
-          <span className="text-xs font-medium">Upload MP4 / WebM / GIF</span>
-          <span className="text-[10px] text-zinc-600">a short loop is all you need</span>
-        </button>
+        />
       )}
 
       <MediaBackgroundControls />
