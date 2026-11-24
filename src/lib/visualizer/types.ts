@@ -1711,12 +1711,14 @@ export interface TextureFilterConfig {
    *  frame (lower = finer grain, higher = bigger wrinkles/pits). Unused
    *  by 'custom', which has its own Size dial. */
   scale: number
-  /** The user's own texture image (data URL) — 'custom' prints the
-   *  picture through THIS image's bumps: its luminance is the height
-   *  field. Empty in old saves and until the user uploads one. */
+  /** The user's own texture image (data URL) — 'custom' lights the
+   *  picture with THIS image: its brighter parts add a small highlight,
+   *  its darker parts add a small shadow (no warping, no tinting). Empty
+   *  in old saves and until the user uploads one. */
   customSrc: string
   /** Custom texture zoom 0.2..4 — 1 = one tile cover-fits the frame
-   *  (resolution-independent); bigger = bigger bumps, smaller = finer. */
+   *  (resolution-independent); bigger = bigger light/shadow shapes,
+   *  smaller = finer ones. */
   customSize: number
   /** Custom texture nudge, a fraction of the frame (-1..1 both axes) —
    *  Move X slides it sideways, Move Y vertically. The image tiles, so
@@ -1726,9 +1728,10 @@ export interface TextureFilterConfig {
   /** Custom texture rotation in degrees (-180..180), pivoting on the
    *  (moved) frame center. */
   customRotate: number
-  /** Custom texture contrast 0..2 around mid-gray (100 = neutral): higher
-   *  = harder bumps (steeper slopes → stronger displacement), lower =
-   *  flatter; 0 = a perfectly flat sheet (no warp at all). */
+  /** Custom texture contrast 0..2 around mid-gray (100 = neutral): how
+   *  far the map's bright/dark parts reach into highlight/shadow —
+   *  higher = stronger and wider-spread lighting, lower = subtler;
+   *  0 = a perfectly flat sheet (no highlight, no shadow at all). */
   customContrast: number
 }
 

@@ -28,14 +28,17 @@ const TEXTURES: { id: TextureFilterType; label: string; sub: string }[] = [
 /**
  * Texture filter card — the finished picture printed onto a physical
  * material: film grain, paper, canvas, concrete, glass, crumpled foil,
- * rust, dirt — or the user's OWN uploaded texture image. Each surface is
- * a bump map whose flaws DISPLACE the picture (the image warps around
- * every pit, fiber and crease — the displacement) and catch a lit-relief
+ * rust, dirt — or the user's OWN uploaded texture image. Each procedural
+ * surface is a bump map whose flaws DISPLACE the picture (the image
+ * warps around every pit, fiber and crease) and catch a lit-relief
  * shading from the upper left, so the texture reads through the image
- * instead of sitting flat on top of it. The image's own colors stay its
- * own — the texture bends it, it doesn't tint it. Amount is the master
- * dial; Scale sizes the procedural materials' features; the custom
- * texture gets its own Size / Move X / Move Y / Rotate / Contrast dials.
+ * instead of sitting flat on top of it; the image's own colors stay its
+ * own. The custom texture is gentler: a LIGHTING map that adds small
+ * highlights where the uploaded picture is bright and small shadows
+ * where it is dark — the video is never warped or resampled. Amount is
+ * the master dial; Scale sizes the procedural materials' features; the
+ * custom texture gets its own Size / Move X / Move Y / Rotate / Contrast
+ * dials.
  */
 export function TextureFilterSection() {
   const filter = useStudioStore((s) => s.config.textureFilter)
@@ -124,7 +127,7 @@ export function TextureFilterSection() {
                           : filter.type === 'rust'
                             ? 'Corroded metal: oxidation blooms that buckle the picture around every patch.'
                             : filter.type === 'custom'
-                              ? 'Your own picture as the displacement map — its light and dark shapes become contours the picture bends around: bright areas bulge out, dark areas dent in. It tiles, so moving it never runs out of texture.'
+                              ? 'Your own picture as a lighting map — its brighter parts add soft highlights to the video, its darker parts add soft shadows. No warping, no noise — the picture stays crisp. It tiles, so moving it never runs out of texture.'
                               : 'Old grime: settled blotches and crisp specks that dent and scratch the picture.'}
             </p>
           </div>
@@ -179,7 +182,7 @@ export function TextureFilterSection() {
                   <ImagePlus className="size-4" aria-hidden />
                   <span className="text-xs font-medium">Upload a texture image</span>
                   <span className="text-[10px] text-zinc-600">
-                    its bright spots bulge, dark spots dent
+                    bright spots add highlights, dark spots add shadows
                   </span>
                 </button>
               )}

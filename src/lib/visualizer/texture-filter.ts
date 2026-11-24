@@ -23,16 +23,17 @@
  * sizes the features (fibers, pits, wrinkles) relative to the frame,
  * resolution-independent (720p reference).
  *
- * The ninth material is the user's own picture ('custom'): its luminance
- * IS the height field, and the map's LIGHT AND DARK SHAPES become the
- * contours the picture bends around — displacement follows the field's
- * slope (perpendicular to the bright/dark boundaries, the same rule the
- * procedural surfaces obey), measured over a WIDE footprint and
- * normalized to the map's own typical slope so smooth photos warp as
- * visibly as hard-edged graphics: bright areas bulge the picture outward
- * like a raised bump, dark areas dent it in. Drawn tiled under Size /
- * Move X / Move Y / Rotate transforms with a Contrast dial multiplying
- * the bumps around mid-gray. See customFieldFor below.
+ * The ninth material is the user's own picture ('custom') — and its pass
+ * is a LIGHTING overlay, not a displacement: the map is drawn tiled under
+ * the Size / Move X / Move Y / Rotate transforms, its luminance sampled
+ * 1:1 at full frame resolution, its BRIGHTER parts lift a small
+ * screen-blend highlight into the frame and its DARKER parts sink a small
+ * multiply-blend shadow (a Contrast dial stretches the deviation around
+ * mid-gray; 0 = perfectly flat). The picture itself is never resampled —
+ * the earlier contour-displacement attempts read as noise and a shifted
+ * double-exposure and pixelated the frame, so the warp is gone: pixels
+ * stay exactly where they are, only their brightness is nudged. See
+ * customLightFor below.
  *
  * Structure: every material's height field is generated ONCE per (type,
  * size, scale bucket) at HALF resolution (the surfaces are organic; the
@@ -131,12 +132,11 @@ const SPECS: Record<TextureFilterType, TexSpec> = {
   foil: { disp: 52, shade: 0.55, feature: 13 },
   rust: { disp: 26, shade: 0.4, feature: 14 },
   dirt: { disp: 22, shade: 0.45, feature: 10 },
-  // 'custom' never generates a procedural field (its height comes from
-  // the user's image) — here `disp` caps the contour-driven shift: the
-  // map's normalized slope (see customFieldFor) moves the picture up to
-  // disp px at full amount, bright shapes bulging the picture out, dark
-  // shapes denting it in. feature is unused.
-  custom: { disp: 64, shade: 0.5, feature: 0 },
+  // 'custom' is its own LIGHTING pass (the uploaded map adds highlights
+  // where it is bright, shadows where it is dark — see customLightFor)
+  // and never reaches this table; the zeros are placeholders the Record
+  // type requires.
+  custom: { disp: 0, shade: 0, feature: 0 },
 }
 
 const TEX_SEEDS: Record<TextureFilterType, number> = {
@@ -164,16 +164,6 @@ interface TexField {
   h: Float32Array
   tw: number
   th: number
-  /** Custom map only: precomputed CONTOUR gradients — the height rise
-   *  over a wide footprint (the map's light/dark shapes steer the warp;
-   *  the wide span averages fine detail away so nothing degrades into
-   *  per-texel scratch bevels) — plus the slope norm that lifts every
-   *  map's typical rise into the same visible displacement band. The
-   *  procedural fields steer from their own ±1-texel neighborhood and
-   *  leave these undefined. */
-  gx?: Float32Array
-  gy?: Float32Array
-  gnorm?: number
 }
 
 const fieldCache = new Map<string, TexField>()
@@ -278,62 +268,81 @@ function generateField(type: TextureFilterType, tw: number, th: number, k: numbe
   return { h, tw, th }
 }
 
-/* ------------------------- custom texture field ------------------------- */
+/* ------------------------- custom texture light map ------------------------- */
 
-/** The custom texture's field, built from the user's own image: the image
- *  is drawn TILE-REPEATED into the half-res field canvas under the Size /
- *  Move / Rotate transform (tiling, so nudging never runs out of texture),
- *  each pixel's luminance becomes the raw height, and Contrast
- *  multiplies the bumps around mid-gray (0 = a perfectly flat sheet — no
- *  warp at all).
+/** The custom texture's LIGHT map, built from the user's own image — and
+ *  the pass is a lighting overlay, not a displacement: the map's brighter
+ *  parts lift a small screen-blend HIGHLIGHT into the frame, its darker
+ *  parts sink a small multiply-blend SHADOW. (The earlier contour-warp
+ *  passes displaced the picture; the user's verdict: it read as noise and
+ *  a shifted double-exposure, and the resampling pixelated the frame —
+ *  so the picture is never resampled here. Every pixel is adjusted in
+ *  place; only its brightness moves.)
  *
- *  The warp steers by CONTOUR: every texel ships a precomputed gradient —
- *  the height RISE over a wide footprint (a few dozen frame px, scaling
- *  with the frame) — so the displacement follows the map's light/dark
- *  SHAPES, perpendicular to their boundaries, and fine detail averages
- *  away instead of degrading into scratch bevels. A smooth photo's
- *  footprint rise is tiny, so the gradients are normalized: one pass
- *  measures the map's mean absolute rise and the field stores a norm
- *  lifting every map's typical slope into the same visible band
- *  (hard-edged graphics land at 1 — no amplification). The norm is
- *  measured on the RAW luminance, before Contrast, so the Contrast dial
- *  keeps its job as a straight multiplier of the bumps.
- *
- *  One tile cover-fits the frame at Size 1, resolution-independent.
- *  Cached per (image, quantized size/position/rotation/contrast) so
- *  dragging a slider regenerates at most a handful of times; generation
- *  is one half-res drawImage + read + three linear passes, so even a
- *  cache miss is a couple of milliseconds. Returns null while the image
- *  is still decoding (the pass skips that frame — the live preview
- *  repaints every frame, so the texture appears the moment it lands). */
-const customCache = new Map<string, TexField>()
+ *  The image is drawn TILE-REPEATED at FULL frame resolution under the
+ *  Size / Move / Rotate transform (tiling, so nudging never runs out of
+ *  texture), each frame pixel's luminance stored 0..255, aligned 1:1
+ *  with the frame — the highlights and shadows follow the map's own
+ *  shapes at native resolution with nothing between them and the
+ *  picture. One tile cover-fits the frame at Size 1,
+ *  resolution-independent. Contrast is a straight multiplier on the
+ *  map's deviation from mid-gray applied at sample time (0 = a perfectly
+ *  flat sheet — no highlight, no shadow), so it never forces a rebuild.
+ *  Cached per (image, quantized size/position/rotation); a miss is one
+ *  full-res drawImage + read, a couple of milliseconds on slider drops.
+ *  Returns null while the image is still decoding (the pass skips that
+ *  frame — the live preview repaints every frame, so the texture appears
+ *  the moment it lands). */
+const customCache = new Map<string, Uint8Array>()
 
-function customFieldFor(cfg: TextureFilterConfig, W: number, H: number): TexField | null {
+/** Content fingerprint for the cache key. The key must NOT distinguish
+ *  uploads by dimensions alone: two different pictures of the same
+ *  natural size (the overwhelmingly common case) would otherwise share
+ *  one cached light map and a replaced texture would keep lighting the
+ *  frame like the OLD image. The data URL itself is the identity — its
+ *  length plus a sparse char hash separates any two uploads in practice
+ *  — but hashing a multi-megabyte string every frame would be rude, so
+ *  the token is computed once per src and memoized. */
+const customImgToken = new Map<string, string>()
+
+function customTokenFor(src: string): string {
+  let t = customImgToken.get(src)
+  if (!t) {
+    let h = src.length | 0
+    const step = Math.max(1, Math.floor(src.length / 97))
+    for (let i = 0; i < src.length; i += step) h = (Math.imul(h, 31) + src.charCodeAt(i)) | 0
+    t = `${src.length}x${h >>> 0}`
+    if (customImgToken.size > 8) customImgToken.clear()
+    customImgToken.set(src, t)
+  }
+  return t
+}
+
+function customLightFor(cfg: TextureFilterConfig, W: number, H: number): Uint8Array | null {
   const src = cfg.customSrc ?? ''
   if (!src) return null
   const img = getBackgroundImage(src)
   if (!img) return null
   // Quantize the transforms into the cache key so dragging a dial
-  // regenerates at most a handful of times across its travel.
+  // regenerates at most a handful of times across its travel. (Contrast
+  // is deliberately NOT in the key — the pass multiplies it in at sample
+  // time, so its slider never forces a rebuild.)
   const qs = Math.round(Math.min(4, Math.max(0.2, cfg.customSize ?? 1)) * 10) / 10
   const qx = Math.round(Math.min(1, Math.max(-1, cfg.customX ?? 0)) * 50) / 50
   const qy = Math.round(Math.min(1, Math.max(-1, cfg.customY ?? 0)) * 50) / 50
   const qr = Math.round(Math.min(180, Math.max(-180, cfg.customRotate ?? 0)) / 2) * 2
-  const qc = Math.round(Math.min(2, Math.max(0, cfg.customContrast ?? 1)) * 10) / 10
-  const key = `custom|${img.naturalWidth}x${img.naturalHeight}|${W}|${H}|${qs}|${qx}|${qy}|${qr}|${qc}`
+  const key = `custom|${customTokenFor(src)}|${W}|${H}|${qs}|${qx}|${qy}|${qr}`
   const hit = customCache.get(key)
   if (hit) return hit
-  const tw = Math.max(24, W >> 1)
-  const th = Math.max(24, H >> 1)
-  const work = getWork('texture:custom', tw, th)
+  const work = getWork('texture:custom', W, H)
   const g = resetWork(work.getContext('2d', { willReadFrequently: true })!)
   const iw = img.naturalWidth
   const ih = img.naturalHeight
   // Base sizing: one tile cover-fits the frame at Size 1. Then the pivot
   // (frame center + Move nudge), the rotation around that pivot, and the
   // Size zoom — the 'repeat' pattern keeps every combination covered.
-  const s0 = Math.max(tw / iw, th / ih) * qs
-  g.translate(tw / 2 + qx * tw, th / 2 + qy * th)
+  const s0 = Math.max(W / iw, H / ih) * qs
+  g.translate(W / 2 + qx * W, H / 2 + qy * H)
   g.rotate((qr * Math.PI) / 180)
   g.scale(s0, s0)
   // Center the tile on the pivot, so Size 1 / unrotated / unmoved shows
@@ -346,70 +355,17 @@ function customFieldFor(cfg: TextureFilterConfig, W: number, H: number): TexFiel
   // Fill far enough to cover the rotated + nudged frame from the tile
   // center (worst case 1.5 frame diagonals in image units, plus a ring
   // of margin — the repeat handles everything inside).
-  const R = Math.ceil((Math.hypot(tw, th) * 1.5) / s0) + iw + ih
+  const R = Math.ceil((Math.hypot(W, H) * 1.5) / s0) + iw + ih
   g.fillRect(-R, -R, 2 * R, 2 * R)
-  const d = g.getImageData(0, 0, tw, th).data
-  const n = tw * th
-  // Raw luminance first (pre-contrast): the slope norm is measured on it
-  // so the Contrast dial stays a straight multiplier of the bumps.
-  const raw = new Float32Array(n)
+  const d = g.getImageData(0, 0, W, H).data
+  const n = W * H
+  const lum = new Uint8Array(n)
   for (let i = 0, k = 0; k < n; i += 4, k++) {
-    raw[k] = (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255
+    lum[k] = (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) | 0
   }
-  // Contour scale — the footprint (texels) the slope is measured over: a
-  // few dozen frame px growing with the frame, so the warp follows the
-  // map's big SHAPES while smaller detail averages away (no scratches).
-  const minWH = Math.min(W, H)
-  const FR = Math.max(4, Math.round((7 * minWH) / 720))
-  // Slope norm: the map's mean absolute footprint rise on the raw field.
-  // Smooth photos rise ~0.05–0.15 per footprint — the norm lifts them
-  // into the same visible band as hard-edged graphics (which land at the
-  // 1 floor — full-strength shear, no amplification). 0.24 = the typical
-  // rise that renders at ~a quarter of the displacement cap.
-  let meanAbs = 0
-  for (let ty = 0; ty < th; ty++) {
-    const row = ty * tw
-    const rowR = Math.min(th - 1, ty + FR) * tw
-    const rowL = Math.max(0, ty - FR) * tw
-    for (let tx = 0; tx < tw; tx++) {
-      const xr = Math.min(tw - 1, tx + FR)
-      const xl = Math.max(0, tx - FR)
-      meanAbs +=
-        (Math.abs(raw[row + xr] - raw[row + xl]) +
-          Math.abs(raw[rowR + tx] - raw[rowL + tx])) *
-        0.5
-    }
-  }
-  const gnorm = Math.min(6, Math.max(1, 0.24 / (meanAbs / n)))
-  // The contrasted height field the gradients ride: Contrast multiplies
-  // the bumps around mid-gray (0 = a perfectly flat sheet — no warp).
-  const h = new Float32Array(n)
-  for (let k = 0; k < n; k++) {
-    let hv = 0.5 + (raw[k] - 0.5) * qc
-    if (hv < 0) hv = 0
-    else if (hv > 1) hv = 1
-    h[k] = hv
-  }
-  // Precomputed contour gradients — the height rise over the footprint,
-  // straight from the contrasted field. The apply loop reads these
-  // directly: bright shapes push the picture out, dark shapes pull in.
-  const gx = new Float32Array(n)
-  const gy = new Float32Array(n)
-  for (let ty = 0; ty < th; ty++) {
-    const row = ty * tw
-    const rowR = Math.min(th - 1, ty + FR) * tw
-    const rowL = Math.max(0, ty - FR) * tw
-    for (let tx = 0; tx < tw; tx++) {
-      const xr = Math.min(tw - 1, tx + FR)
-      const xl = Math.max(0, tx - FR)
-      gx[row + tx] = h[row + xr] - h[row + xl]
-      gy[row + tx] = h[rowR + tx] - h[rowL + tx]
-    }
-  }
-  const field: TexField = { h, tw, th, gx, gy, gnorm }
-  if (customCache.size > 8) customCache.clear()
-  customCache.set(key, field)
-  return field
+  if (customCache.size > 4) customCache.clear()
+  customCache.set(key, lum)
+  return lum
 }
 
 /* -------------------------------- grain tiles ------------------------------- */
@@ -513,23 +469,60 @@ export function drawTextureFilter(
         od[i + 3] = 255
       }
     }
+  } else if (type === 'custom') {
+    // The uploaded picture as a LIGHT map — the map's brighter parts
+    // lift a small highlight into the frame, its darker parts sink a
+    // small shadow, and every pixel is adjusted IN PLACE: no resampling
+    // (nothing can pixelate the picture), no offset double-exposure, no
+    // warp noise — exactly the lighting pass the user asked for.
+    const lum = customLightFor(cfg, W, H)
+    if (!lum) return // custom image missing / still decoding — untouched frame
+    // Contrast multiplies the map's deviation around mid-gray at sample
+    // time (0 = a flat sheet: no highlight, no shadow anywhere) — a
+    // plain multiply, so it never forces a light-map rebuild.
+    const ck = Math.min(2, Math.max(0, cfg.customContrast ?? 1))
+    // The highlight/shadow ceiling: a full black-or-white map region at
+    // amount 1 moves the picture ~40% of the way toward white/black —
+    // the small, tasteful lighting pass the user described; Amount and
+    // Contrast scale it from there.
+    const STR = 0.4
+    for (let y = 0; y < H; y++) {
+      const lrow = y * W
+      let i = y * W * 4
+      for (let x = 0; x < W; x++, i += 4) {
+        // The map's contrasted deviation from mid-gray, dialed by
+        // amount: positive = highlight (screen blend — light added, it
+        // cannot blow past white), negative = shadow (multiply blend —
+        // darkness absorbed, it cannot sink below black).
+        let dv = (lum[lrow + x] / 255 - 0.5) * ck
+        if (dv > 0.5) dv = 0.5
+        else if (dv < -0.5) dv = -0.5
+        dv *= amount
+        if (dv > 0) {
+          const w = dv * 2 * STR
+          od[i] = src[i] + (255 - src[i]) * w
+          od[i + 1] = src[i + 1] + (255 - src[i + 1]) * w
+          od[i + 2] = src[i + 2] + (255 - src[i + 2]) * w
+        } else if (dv < 0) {
+          const m = 1 + dv * 2 * STR // dv negative → m < 1
+          od[i] = src[i] * m
+          od[i + 1] = src[i + 1] * m
+          od[i + 2] = src[i + 2] * m
+        } else {
+          od[i] = src[i]
+          od[i + 1] = src[i + 1]
+          od[i + 2] = src[i + 2]
+        }
+        od[i + 3] = 255
+      }
+    }
   } else {
     // Material surfaces — displacement IS the effect. The picture is
     // sampled dispAmp·slope pixels away from each pixel, toward the
     // bump: fibers, wrinkles, pits, smears and creases drag the whole
-    // image around them while its colors stay its own. ('custom' builds
-    // its field from the user's uploaded texture image and steers by the
-    // map's contour slopes — same displacement + mean-zero relief loop
-    // underneath.)
-    const field = type === 'custom' ? customFieldFor(cfg, W, H) : fieldFor(type, W, H, scale)
-    if (!field) return // custom image missing / still decoding — untouched frame
+    // image around them while its colors stay its own.
+    const field = fieldFor(type, W, H, scale)
     const { h, tw, th } = field
-    // Custom ships precomputed CONTOUR gradients — the wide-footprint
-    // slope of the uploaded map (see customFieldFor) — plus the norm
-    // that scales every map's slopes into a visible warp.
-    const cgx = field.gx
-    const cgy = field.gy
-    const gnorm = field.gnorm ?? 1
     // Displacement amplitude in canvas px: the spec's full-slope px
     // scaled to the frame and the amount. Amount 0 → 0 → the exact
     // source picture; amount 1 → the spec's full warp.
@@ -553,45 +546,21 @@ export function drawTextureFilter(
         const tx = Math.min(tw - 1, x >> 1)
         const tx1 = Math.min(tw - 1, tx + 1)
         const txP = tx > 0 ? tx - 1 : 0
-        // The surface's slope: procedural fields take the nearest ±1
-        // texel gradient; the custom map reads its precomputed contour
-        // gradient (wide-footprint rise — the map's light/dark shapes).
-        let gx: number
-        let gy: number
-        if (cgx && cgy) {
-          gx = cgx[hRow + tx]
-          gy = cgy[hRow + tx]
-        } else {
-          gx = h[hRow + tx1] - h[hRow + txP]
-          gy = h[hRowN + tx] - h[hRowP + tx]
-          if (gx > 1) gx = 1
-          else if (gx < -1) gx = -1
-          if (gy > 1) gy = 1
-          else if (gy < -1) gy = -1
-        }
+        // The surface's slope — the nearest ±1 texel gradient of the
+        // height field.
+        let gx = h[hRow + tx1] - h[hRow + txP]
+        let gy = h[hRowN + tx] - h[hRowP + tx]
+        if (gx > 1) gx = 1
+        else if (gx < -1) gx = -1
+        if (gy > 1) gy = 1
+        else if (gy < -1) gy = -1
 
         // The displacement — sample the picture dispAmp·slope pixels
         // away, toward the bump (clamped to the frame — bumps near the
-        // edge just pull the picture, no wrap): bright shapes push the
-        // picture outward like a raised bump, dark shapes pull it
-        // inward like a dent — the map's contours literally bend the
-        // frame. Custom multiplies by the map's slope norm (smooth
-        // photos' rises are small; the norm brings every map into a
-        // visible range) and clamps to ±dispAmp so one hard edge in a
-        // mostly-flat map can't slam the frame around.
-        let dx: number
-        let dy: number
-        if (cgx && cgy) {
-          dx = gx * gnorm * dispAmp
-          dy = gy * gnorm * dispAmp
-          if (dx > dispAmp) dx = dispAmp
-          else if (dx < -dispAmp) dx = -dispAmp
-          if (dy > dispAmp) dy = dispAmp
-          else if (dy < -dispAmp) dy = -dispAmp
-        } else {
-          dx = gx * dispAmp
-          dy = gy * dispAmp
-        }
+        // edge just pull the picture, no wrap): fibers push the picture
+        // outward like a raised bump, pits pull it inward like a dent.
+        const dx = gx * dispAmp
+        const dy = gy * dispAmp
         let sxf = x + dx
         let syf = y + dy
         if (sxf < 0) sxf = 0
@@ -618,9 +587,6 @@ export function drawTextureFilter(
 
         // Relief shading — light from the upper left: a bump's left
         // flank (rising toward the light) brightens, its far side sinks.
-        // Custom's gradient is the wide contour slope, so the relief
-        // follows the uploaded shapes — soft sculpting on the map's
-        // bumps, not per-texel bevels.
         let shd = 1 + shadeK * (gx * 0.55 + gy * 0.7)
         if (shd < 0.35) shd = 0.35
         else if (shd > 1.75) shd = 1.75
