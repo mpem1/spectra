@@ -189,7 +189,10 @@ export interface VisualizerConfig {
   /** Dot Sphere style — the ball's solid face the dots sit on:
    *  'dark' = the near-black LED space (rests on transparent backgrounds),
    *  'color' = any picked color, 'image' = the user's picture cover-fitted
-   *  inside the circular face (rounded like the orb, never stretched) */
+   *  inside the circular face (rounded like the orb, never stretched).
+   *  The solid faces are painted as a lit 3D ball (upper-left light,
+   *  specular glint, form shadow around the limb) instead of a flat disk;
+   *  the picture face stays untouched. */
   dotSphereFace: 'dark' | 'color' | 'image'
   /** Dot Sphere style — the face color when dotSphereFace is 'color'
    *  (also the fallback under a face image that is still decoding) */

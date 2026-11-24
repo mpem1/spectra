@@ -49,6 +49,11 @@
  * color, 'image' cover-fits the user's picture inside the circular face
  * (rounded exactly like the orb, never stretched). Color and image faces
  * are explicit choices, so they render on transparent backgrounds too.
+ * A flat disk reads flat, so the SOLID faces are painted as a lit 3D
+ * ball — light from the upper left, a soft specular glint and a form
+ * shadow sinking around the limb — with the strength following the base
+ * color's luminance (the near-black LED space only gains a gentle sheen).
+ * The picture face is the user's own artwork and stays untouched.
  *
  * Music: the ball reacts like the other visualizers — every latitude row
  * rides its own spectrum bin ("Music ripple": bottom rows = low end)
@@ -158,6 +163,78 @@ const RIPPLE_DEPTH = 0.22
 /** The default LED face color (the near-black the ball shipped with). */
 const FACE_DEFAULT = '#050109'
 
+/* ------------------------------- face lighting ------------------------------- */
+
+/* The light source sits at the upper left of the face (offsets in face
+ * radii from the disk center) — the same convention as the Sphere style's
+ * top-lit shading. */
+const LIGHT_X = -0.4
+const LIGHT_Y = -0.45
+
+/** Paint the lit-3D-ball shading over the solid face disk: one radial
+ *  gradient keyed to the upper-left light (highlight → base → form shadow
+ *  sinking around the far limb), a soft specular glint and a thin
+ *  ambient-occlusion ring hugging the edge. The highlight and glint scale
+ *  with the base color's luminance, so the near-black LED space only gains
+ *  a gentle sheen while a picked color reads as a fully lit sphere. Must
+ *  be called while the canvas composite is 'source-over' (it is — the
+ *  dots switch to additive after the face is done). */
+function paintFaceLight(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  rs: number,
+  base: { r: number; g: number; b: number },
+): void {
+  const lum = (0.2126 * base.r + 0.7152 * base.g + 0.0722 * base.b) / 255
+  const css = (c: { r: number; g: number; b: number }) =>
+    `rgb(${Math.round(c.r)},${Math.round(c.g)},${Math.round(c.b)})`
+  const mix = (to: { r: number; g: number; b: number }, k: number) => ({
+    r: base.r + (to.r - base.r) * k,
+    g: base.g + (to.g - base.g) * k,
+    b: base.b + (to.b - base.b) * k,
+  })
+  const WHITE = { r: 255, g: 255, b: 255 }
+  const BLACK = { r: 0, g: 0, b: 0 }
+
+  ctx.save()
+  ctx.beginPath()
+  ctx.arc(cx, cy, rs, 0, TAU)
+  ctx.clip()
+
+  // Form shading — bright toward the light, the picked color through the
+  // midtones, sinking into shadow around the lower-right limb. The end
+  // radius (1.62·rs from the light) lands the far rim at the gradient's
+  // full shadow, the near rim rides the highlight.
+  const lx = cx + LIGHT_X * rs
+  const ly = cy + LIGHT_Y * rs
+  const g = ctx.createRadialGradient(lx, ly, rs * 0.05, lx, ly, rs * 1.62)
+  g.addColorStop(0, css(mix(WHITE, 0.12 + 0.3 * lum)))
+  g.addColorStop(0.42, css(base))
+  g.addColorStop(1, css(mix(BLACK, 0.55)))
+  ctx.fillStyle = g
+  ctx.fillRect(cx - rs, cy - rs, rs * 2, rs * 2)
+
+  // Specular glint — the glossy spot the light leaves on the surface.
+  const gx = cx + LIGHT_X * 1.3 * rs
+  const gy = cy + LIGHT_Y * 1.3 * rs
+  const s = ctx.createRadialGradient(gx, gy, 0, gx, gy, rs * 0.4)
+  s.addColorStop(0, `rgba(255,255,255,${(0.14 + 0.2 * lum).toFixed(3)})`)
+  s.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = s
+  ctx.fillRect(cx - rs, cy - rs, rs * 2, rs * 2)
+
+  // Ambient occlusion — a thin dark ring hugging the limb so the edge
+  // reads as a sphere curving away, not a cut-out circle.
+  const ao = ctx.createRadialGradient(cx, cy, rs * 0.78, cx, cy, rs)
+  ao.addColorStop(0, 'rgba(0,0,0,0)')
+  ao.addColorStop(1, 'rgba(0,0,0,0.22)')
+  ctx.fillStyle = ao
+  ctx.fillRect(cx - rs, cy - rs, rs * 2, rs * 2)
+
+  ctx.restore()
+}
+
 export function drawDotSphereStyle(
   rc: RenderContext,
   frame: Pick<AudioFrame, 'bass' | 'freq' | 'styleTime'>,
@@ -261,8 +338,15 @@ export function drawDotSphereStyle(
     ctx.globalAlpha = la
     ctx.beginPath()
     ctx.arc(cx, cy, rs, 0, TAU)
-    ctx.fillStyle = face === 'dark' ? FACE_DEFAULT : faceColor
+    const faceFill = face === 'dark' ? FACE_DEFAULT : faceColor
+    ctx.fillStyle = faceFill
     ctx.fill()
+    if (face !== 'image') {
+      // The solid face is painted as a lit 3D ball — highlight toward the
+      // upper-left light, form shadow around the far limb — instead of a
+      // flat disk. (The picture face is the user's own artwork: untouched.)
+      paintFaceLight(ctx, cx, cy, rs, parseColor(faceFill) ?? { r: 5, g: 1, b: 9 })
+    }
     if (faceImg) {
       // The picture rounds with the orb: clipped to the face circle and
       // cover-fitted (cropped, never stretched). While it decodes the

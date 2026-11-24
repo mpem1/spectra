@@ -16,8 +16,8 @@ import { cn } from '@/lib/utils'
  * over your background EXACTLY as you picked it — the picture or gradient
  * is never bent, dimmed or repainted. The dots paint in neon pink/blue,
  * your own gradient palette, or the picture's own colors; the ball's face
- * is a dark LED space, any solid color, or a picture rounded like the
- * orb. The ball reacts to the music like the other visualizers: every
+ * is a dark LED space, any solid color (painted as a lit 3D ball), or a
+ * picture rounded like the orb. The ball reacts to the music like the other visualizers: every
  * row of dots rides its own frequency band and pushes outward with it,
  * so the surface ripples like a waveform. Deterministic, so every export
  * bakes the identical look; on transparent backgrounds only the ball's
@@ -150,6 +150,13 @@ export function DotSphereStyleSection() {
               placeholder="#050109"
             />
           </div>
+        ) : null}
+        {viz.dotSphereFace === 'color' ? (
+          <p className="text-[10px] leading-snug text-zinc-600">
+            The face is painted as a lit 3D ball — light from the upper
+            left, a soft gloss and a shadow sinking around the edge — not
+            a flat disk.
+          </p>
         ) : null}
         {viz.dotSphereFace === 'image' ? (
           <div className="space-y-2">
