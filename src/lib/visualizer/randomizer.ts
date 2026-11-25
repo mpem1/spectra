@@ -27,9 +27,12 @@
  * stock, the dither palette) land a random preset, and color fields (halo
  * tint, inks, papers, lens tints, custom-texture tints) get fresh random
  * colors in their own role — glows stay bright, backings stay dark, tints
- * stay tasteful. Choices the randomizer doesn't own are never touched: the
- * current style itself, gradients outside these effects, text, uploaded
- * images, blend modes, sub-modes.
+ * stay tasteful. The BACKDROP rolls too: when the background is set to a
+ * Solid color or a Gradient, its colors land fresh every roll — a deep,
+ * hue-tinted solid, or the existing gradient stops recolored as one
+ * coordinated palette. Choices the randomizer doesn't own are never
+ * touched: the background's mode and gradient geometry (stop layout,
+ * angle, shape, cycling), text, uploaded images, blend modes, sub-modes.
  *
  * A few dials carry hard TASTE CEILINGS: the roll never lands them above the
  * ceiling (the color grade's Strength ≤ 45%, the contour threads ≤ 46 lines
@@ -54,6 +57,7 @@ import {
   type AnaglyphFilterConfig,
   type CamcorderFilterConfig,
   type ColorGradeFilterConfig,
+  type ColorStop,
   type ContourFilterConfig,
   type CubifyFilterConfig,
   type DitherFilterConfig,
@@ -210,6 +214,37 @@ function highlightTint(): string {
 /** A deep lighting tint (the custom texture's shadow color). */
 function shadowTint(): string {
   return hslHex(randHue(), 0.4 + Math.random() * 0.3, 0.1 + Math.random() * 0.12)
+}
+
+/* ----------------------------- background colors ----------------------------- */
+
+/**
+ * The backdrop's roll — fresh colors for the two color-bearing background
+ * modes, always inside the site's dark-backing vocabulary so every
+ * visualizer style stays readable on top of it.
+ *
+ * Solid lands a deep, hue-tinted backing (the factory's near-black, but
+ * colored). Gradient recolors the EXISTING stops as one coordinated
+ * palette: one base hue drifting along the ramp, brightest (but still
+ * deep) at the first stop and near-black at the last — the stop count,
+ * positions, opacities, angle, shape and cycling stay exactly as the user
+ * set them. Transparent / image / video backdrops carry their own colors
+ * and are never touched.
+ */
+function rollSolidBackground(): string {
+  return deepColor()
+}
+
+function rollBackgroundStops(stops: ColorStop[]): ColorStop[] {
+  const baseHue = randHue()
+  const drift = (Math.random() < 0.5 ? -1 : 1) * (40 + Math.random() * 70) // ±40–110° along the ramp
+  const sat = 0.55 + Math.random() * 0.3
+  const topL = 0.16 + Math.random() * 0.14 // brightest stop — still deep enough to dress the scene
+  const deepL = 0.05 + Math.random() * 0.05 // near-black at the far end
+  return stops.map((stop) => {
+    const t = Math.min(1, Math.max(0, stop.position / 100))
+    return { ...stop, color: hslHex(baseHue + drift * t, sat, topL + (deepL - topL) * t) }
+  })
 }
 
 /* --------------------------------- registry ---------------------------------- */
@@ -1056,6 +1091,24 @@ export function randomizeLook(): RandomizeSummary {
   for (const dial of pickRandom(eligible, styleCount)) {
     const label = applyStyleDial(dial)
     if (label) changed.push(label)
+  }
+
+  // Background colors: the two color-bearing backdrop modes join every
+  // roll — a solid lands a fresh deep backing, a gradient gets its
+  // existing stops recolored as one coordinated palette. The mode itself
+  // and the gradient's geometry (stop layout, angle, shape, cycling) stay
+  // exactly as the user set them; transparent / image / video backdrops
+  // carry their own colors and are never touched. Colors don't stack, so
+  // there is nothing to sweep — each roll simply lands fresh ones.
+  const background = useStudioStore.getState().config.background
+  if (background.mode === 'solid') {
+    useStudioStore.getState().patchBackground({ color: rollSolidBackground() })
+    changed.push('Background color')
+  } else if (background.mode === 'gradient') {
+    useStudioStore.getState().patchBackground({
+      gradient: { ...background.gradient, stops: rollBackgroundStops(background.gradient.stops) },
+    })
+    changed.push('Background gradient')
   }
 
   // Color tools: 0–2.
