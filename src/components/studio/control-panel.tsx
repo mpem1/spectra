@@ -1,8 +1,11 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { Dices } from 'lucide-react'
+import { toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useStudioStore, type StudioTab } from '@/store/studio'
+import { randomizeLook } from '@/lib/visualizer/randomizer'
 import { StyleTab } from '@/components/studio/style-tab'
 import { ColorTab } from '@/components/studio/color-tab'
 import { FiltersTab } from '@/components/studio/filters-tab'
@@ -26,6 +29,16 @@ export function ControlPanel() {
   const activeTab = useStudioStore((s) => s.activeTab)
   const setActiveTab = useStudioStore((s) => s.setActiveTab)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Roll one randomized variation: 1–2 style dials, 0–2 color tools and
+  // 0–2 filters, every pick within ±25% of its factory default on the
+  // slider track. The toast lists exactly what moved.
+  const handleRandomize = () => {
+    const { changed } = randomizeLook()
+    toast.success('Look randomized', {
+      description: changed.length ? changed.join(' · ') : 'Nothing to nudge — try a different style first.',
+    })
+  }
 
   // Reset panel scroll when switching tabs so each tab opens at the top
   useEffect(() => {
@@ -55,9 +68,31 @@ export function ControlPanel() {
               </TabsTrigger>
             ))}
           </TabsList>
+          {/* The randomizer — a large full-width button filling the strip
+              right under the tab grid (Style / Color / Filters · Lyrics /
+              Export / Presets), so it is reachable from every tab without
+              scrolling into any panel. */}
+          <button
+            type="button"
+            aria-label="Randomize the look: nudges 1–2 style dials, 0–2 color tools and 0–2 filters within 25% of their defaults"
+            title="Randomize: 1–2 style dials, 0–2 color tools, 0–2 filters — every dial within ±25% of its default"
+            onClick={handleRandomize}
+            className="group flex h-12 w-full shrink-0 items-center justify-center gap-2.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-sm font-semibold text-emerald-300 transition-all duration-200 hover:border-emerald-400 hover:bg-emerald-500 hover:text-zinc-950 hover:shadow-[0_0_24px_-6px] hover:shadow-emerald-500/60 active:scale-[0.98]"
+          >
+            <Dices
+              className="size-4.5 transition-transform duration-300 group-hover:rotate-12 group-active:rotate-45"
+              aria-hidden
+            />
+            Randomize look
+          </button>
+          {/* lg:max-h safety cap sized to the fixed chrome above it on
+              desktop: header 56 + main padding 32 + card padding 24 + the
+              two-row tab grid ~84 + the randomizer button 48 + two flex
+              gaps 24 → 268px. The flex min-h-0 chain does the real work;
+              this just backstops it. */}
           <div
             ref={scrollRef}
-            className="slim-scrollbar min-h-0 flex-1 overflow-y-auto pr-1 lg:max-h-[calc(100vh-150px)]"
+            className="slim-scrollbar min-h-0 flex-1 overflow-y-auto pr-1 lg:max-h-[calc(100vh-268px)]"
           >
             <TabsContent value="style">
               <StyleTab />
