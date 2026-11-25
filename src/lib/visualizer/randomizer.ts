@@ -48,7 +48,9 @@
  * defaults sit above the ceiling, so instead of jittering around the default
  * (which would pin every roll to the cap) a capped dial rolls in the quarter
  * of its slider track just under the ceiling — always present, never
- * overcooked.
+ * overcooked. The gradient map's Speed carries a softer ceiling (≤ 50%):
+ * its factory default already respects it, so the usual ±25% jitter applies
+ * with the ceiling enforced on picks that drift past.
  *
  * The React-to-beat toggles roll too: every picked effect that owns one
  * flips it 50/50, and when it lands on, that effect's punch dial (beat pop,
@@ -119,11 +121,14 @@ function jitter(defaultValue: number, min: number, max: number, step: number): n
 }
 
 /**
- * A capped dial's roll: lands in the quarter of the slider track just under
- * the ceiling (a 45% ceiling on a 0–100% dial rolls 20–45%), snapped onto
- * the step grid. Used when the factory default sits above the ceiling —
- * jittering around the default would clamp every pick onto the cap itself,
- * which is no roll at all.
+ * A capped dial's roll. When the factory default sits ABOVE the ceiling,
+ * the roll lands in the quarter of the slider track just under the ceiling
+ * (a 45% ceiling on a 0–100% dial rolls 20–45%) — jittering around the
+ * default would clamp every pick onto the cap itself, which is no roll at
+ * all. When the default already respects the ceiling, the usual ±25% of
+ * the full track applies and only the picks that drift past the ceiling
+ * are pulled back onto its snapped spot — the ceiling shapes the top of
+ * the band without ever pinning the whole roll onto itself.
  */
 function jitterCapped(
   defaultValue: number,
@@ -133,6 +138,13 @@ function jitterCapped(
   step: number,
 ): number {
   const ceiling = Math.min(max, Math.max(min, cap))
+  if (defaultValue <= ceiling) {
+    const v = jitter(defaultValue, min, max, step)
+    if (v <= ceiling) return v
+    // Drifted past the ceiling: land on the ceiling's snapped spot.
+    const pulled = min + Math.round((ceiling - min) / step) * step
+    return Number(Math.min(ceiling, Math.max(min, pulled)).toFixed(4))
+  }
   const span = max - min
   const floor = Math.max(min, ceiling - span * 0.25)
   let v = floor + Math.random() * (ceiling - floor)
@@ -501,7 +513,9 @@ function applyStyleDial(dial: StyleDial): string | null {
  * sub-mode hides is left alone, and presets and switches are rolled FIRST so
  * their landing gates what the rest of the roll touches (the dither's
  * palette decides which inks exist; the beat switch decides whether its
- * punch dial rolls at all). `reset` sweeps the effect off and back
+ * punch dial rolls at all; the gradient map's shift motion decides which
+ * motion dials roll — the Continuous Speed among them, capped at 50%).
+ * `reset` sweeps the effect off and back
  * to factory defaults — every dial, color and preset it owns, regardless of
  * sub-mode conditions, so a mode switch never hides a stale value. Fields
  * outside the registry (blend modes, sub-modes, uploaded images) survive
@@ -1017,15 +1031,35 @@ const COLOR_EFFECTS: RandomEffect[] = [
           mono: 'Mono',
         },
       },
+      {
+        // The Shift motion chip chooser (Manual / Continuous / React to
+        // beat / Randomize) — rolled FIRST so its landing gates which
+        // motion dials roll below, exactly like the tab's own chooser.
+        label: 'Shift motion',
+        key: 'shiftMode',
+        options: ['manual', 'continuous', 'beat', 'random'],
+        names: {
+          manual: 'Manual motion',
+          continuous: 'Continuous motion',
+          beat: 'Beat motion',
+          random: 'Random walk',
+        },
+      },
     ],
     params: [
       { ...param<GradientMapFilterConfig>('opacity', 0, 1, 0.01), label: 'Opacity' },
       { ...param<GradientMapFilterConfig>('shift', -1, 1, 0.01), label: 'Gradient shift' },
       { ...param<GradientMapFilterConfig>('repeat', 1, 8, 1), label: 'Gradient repeat' },
-      { ...param<GradientMapFilterConfig>('shiftSpeed', 0, 1, 0.05), label: 'Speed', when: (f) => f.shiftMode === 'continuous' },
+      // Taste ceiling: the roll never cycles faster than 50% — runaway
+      // speeds strobe the whole grade. The factory default (30%) already
+      // respects it, so the usual ±25% jitter applies underneath.
+      { ...param<GradientMapFilterConfig>('shiftSpeed', 0, 1, 0.05), label: 'Speed', when: (f) => f.shiftMode === 'continuous', cap: 0.5 },
       { ...param<GradientMapFilterConfig>('beatStep', 0.05, 1, 0.05), label: 'Beat step', when: (f) => f.shiftMode === 'beat' },
       { ...param<GradientMapFilterConfig>('beatSens', 0, 1, 0.05), label: 'Kick sensitivity', when: (f) => f.shiftMode === 'beat' },
       { ...param<GradientMapFilterConfig>('beatEase', 0.02, 0.6, 0.02), label: 'Glide', when: (f) => f.shiftMode === 'beat' },
+      { ...param<GradientMapFilterConfig>('randomStepMin', 0.01, 0.5, 0.01), label: 'Min step', when: (f) => f.shiftMode === 'random' },
+      { ...param<GradientMapFilterConfig>('randomStepMax', 0.01, 0.5, 0.01), label: 'Max step', when: (f) => f.shiftMode === 'random' },
+      { ...param<GradientMapFilterConfig>('randomStepTime', 0.1, 3, 0.05), label: 'Step time', when: (f) => f.shiftMode === 'random' },
     ],
   }),
   makeEffect<ExposureFilterConfig>({
