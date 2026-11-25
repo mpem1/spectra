@@ -27,12 +27,20 @@
  * stock, the dither palette) land a random preset, and color fields (halo
  * tint, inks, papers, lens tints, custom-texture tints) get fresh random
  * colors in their own role — glows stay bright, backings stay dark, tints
- * stay tasteful. The BACKDROP rolls too: when the background is set to a
- * Solid color or a Gradient, its colors land fresh every roll — a deep,
- * hue-tinted solid, or the existing gradient stops recolored as one
- * coordinated palette. Choices the randomizer doesn't own are never
- * touched: the background's mode and gradient geometry (stop layout,
- * angle, shape, cycling), text, uploaded images, blend modes, sub-modes.
+ * stay tasteful. The Style tab's own GRADIENT section rolls as well,
+ * wherever the tab still shows it (every style except perspective, which
+ * keeps its strict two-color split): colors land fresh every roll — half
+ * the rolls one of the editor's five preset ramps, half a coordinated
+ * vivid recolor of the current stops (the visualizer draws from this
+ * palette, so it rolls bright where the backdrop rolls deep) — shape
+ * flips linear/radial and Cycle colors flips on/off, each 50/50. The
+ * BACKDROP rolls too: when the background is set to a Solid color or a
+ * Gradient, its colors land fresh every roll — a deep, hue-tinted solid,
+ * or the existing gradient stops recolored as one coordinated palette.
+ * Choices the randomizer doesn't own are never touched: the background's
+ * mode and gradient geometry (stop layout, angle, shape, cycling), the
+ * visualizer gradient's angle, cycle speed and stop layout (outside the
+ * preset branch), text, uploaded images, blend modes, sub-modes.
  *
  * A few dials carry hard TASTE CEILINGS: the roll never lands them above the
  * ceiling (the color grade's Strength ≤ 45%, the contour threads ≤ 46 lines
@@ -54,6 +62,7 @@
 
 import {
   DEFAULT_STUDIO_CONFIG,
+  GRADIENT_PRESETS,
   type AnaglyphFilterConfig,
   type CamcorderFilterConfig,
   type ColorGradeFilterConfig,
@@ -65,6 +74,7 @@ import {
   type FilmFilterConfig,
   type GlitchFilterConfig,
   type GradientMapFilterConfig,
+  type GradientPresetId,
   type HalationFilterConfig,
   type HalftoneFilterConfig,
   type NeonSplitFilterConfig,
@@ -214,6 +224,35 @@ function highlightTint(): string {
 /** A deep lighting tint (the custom texture's shadow color). */
 function shadowTint(): string {
   return hslHex(randHue(), 0.4 + Math.random() * 0.3, 0.1 + Math.random() * 0.12)
+}
+
+/* ------------------------- visualizer gradient roll -------------------------- */
+
+/**
+ * The Style tab's GRADIENT section rolls wherever the tab shows it — every
+ * style except perspective, whose own card keeps a strict two-color split
+ * instead (the gate mirrors the tab's rendering condition exactly).
+ *
+ * Colors: half the rolls land one of the editor's five preset ramps (the
+ * pills swap the stops and keep every other field — the roll does the
+ * same, so pill highlighting agrees), the other half recolor the EXISTING
+ * stops as one coordinated VIVID palette — one base hue drifting 40–110°
+ * along the ramp at glow brightness. The visualizer draws its colors from
+ * this palette, so it rolls bright where the backdrop rolls deep. Shape
+ * flips linear/radial and the Cycle colors toggle flips on/off, each
+ * 50/50; angle, cycle speed and the stop layout (outside the preset
+ * branch) stay exactly as the user set them.
+ */
+function rollVividStops(stops: ColorStop[]): ColorStop[] {
+  const baseHue = randHue()
+  const drift = (Math.random() < 0.5 ? -1 : 1) * (40 + Math.random() * 70) // ±40–110° along the ramp
+  const sat = 0.72 + Math.random() * 0.23 // glow brightness — the vivid role
+  const lowL = 0.46 + Math.random() * 0.08
+  const highL = lowL + 0.08 + Math.random() * 0.1
+  return stops.map((stop) => {
+    const t = Math.min(1, Math.max(0, stop.position / 100))
+    return { ...stop, color: hslHex(baseHue + drift * t, sat, lowL + (highL - lowL) * t) }
+  })
 }
 
 /* ----------------------------- background colors ----------------------------- */
@@ -1091,6 +1130,39 @@ export function randomizeLook(): RandomizeSummary {
   for (const dial of pickRandom(eligible, styleCount)) {
     const label = applyStyleDial(dial)
     if (label) changed.push(label)
+  }
+
+  // Visualizer gradient: the Style tab's GRADIENT section joins every roll
+  // when the freshly switched style still shows it (every style except
+  // perspective — mirrored from the tab). Colors land fresh each roll: half
+  // the rolls one of the editor's preset ramps, half a coordinated vivid
+  // recolor of the existing stops. Shape flips linear/radial and Cycle
+  // colors flips on/off, each 50/50 — angle, cycle speed and the stop
+  // layout (outside the preset branch) stay as the user set them.
+  const vizAfter = useStudioStore.getState().config.visualizer
+  if (vizAfter.style !== 'perspective') {
+    const notes: string[] = []
+    const gradient = { ...vizAfter.gradient }
+    if (Math.random() < 0.5) {
+      const presetIds = Object.keys(GRADIENT_PRESETS) as GradientPresetId[]
+      const id = pickRandom(presetIds, 1)[0]
+      if (id) {
+        // The editor's preset pills swap the stops and keep every other
+        // field — the roll does exactly that, so pill highlighting agrees.
+        gradient.stops = GRADIENT_PRESETS[id].stops.map((s) => ({ ...s }))
+        changed.push(`Gradient → ${GRADIENT_PRESETS[id].name}`)
+      }
+    } else {
+      gradient.stops = rollVividStops(gradient.stops)
+      changed.push('Gradient colors')
+    }
+    gradient.shape = Math.random() < 0.5 ? 'linear' : 'radial'
+    if (gradient.shape === 'radial') notes.push('radial')
+    gradient.cycleColors = Math.random() < 0.5
+    if (gradient.cycleColors) notes.push('cycle on')
+    useStudioStore.getState().patchGradient(gradient)
+    const last = changed.length - 1
+    if (notes.length && last >= 0 && changed[last]) changed[last] += ` (${notes.join(', ')})`
   }
 
   // Background colors: the two color-bearing backdrop modes join every
