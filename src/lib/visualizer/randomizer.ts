@@ -39,6 +39,11 @@
  * of its slider track just under the ceiling — always present, never
  * overcooked.
  *
+ * The React-to-beat toggles roll too: every picked effect that owns one
+ * flips it 50/50, and when it lands on, that effect's punch dial (beat pop,
+ * tape jolt, beat flare — whatever its own card calls it) rolls like every
+ * other dial. A swept roll switches the toggle back off.
+ *
  * Slider geometry (min/max/step) mirrors the studio UI exactly; the factory
  * defaults are read live from DEFAULT_STUDIO_CONFIG so the two can never
  * drift apart.
@@ -211,6 +216,8 @@ function shadowTint(): string {
 
 type NumericKeys<C> = { [K in keyof C]: NonNullable<C[K]> extends number ? K : never }[keyof C]
 
+type BooleanKeys<C> = { [K in keyof C]: NonNullable<C[K]> extends boolean ? K : never }[keyof C]
+
 /** One visualizer slider the randomizer may nudge. */
 interface StyleDial {
   label: string
@@ -269,6 +276,18 @@ interface EffectPreset<C> {
   /** Extra fields reset must restore for this preset (factory state the
    *  defaults object doesn't carry — e.g. Neon Split's optional mapStops). */
   reset?: Record<string, unknown>
+}
+
+/** One boolean switch inside an effect — the React-to-beat toggle the roll
+ *  may flip; when it lands on, dials gated on it (its punch strength) roll
+ *  with the rest, exactly like the UI showing the slider while it's on. */
+interface EffectSwitch<C> {
+  /** Toast name when the switch lands on — the punch name its own card
+   *  uses, e.g. 'beat pop'. */
+  label: string
+  key: BooleanKeys<C>
+  /** Only randomized while this passes (mirrors the UI's visibility). */
+  when?: (view: C) => boolean
 }
 
 /** A color tool / filter the randomizer may switch on and re-dial. */
@@ -399,14 +418,16 @@ function applyStyleDial(dial: StyleDial): string | null {
 
 /**
  * Wraps one effect (color tool / filter) into a pickable. `apply` switches it
- * on (if it was off), lands random picks in its preset selectors, re-dials
- * its numeric parameters to random positions within 25% of the factory
- * defaults (under the dial's ceiling where one is set) and re-rolls its
- * color options in their own roles; conditions
- * mirror the UI — a dial, color or preset that the effect's current sub-mode
- * hides is left alone, and presets are rolled FIRST so a palette switch can
- * gate which colors and dials the rest of the roll touches (the dither's
- * palette decides which inks exist). `reset` sweeps the effect off and back
+ * on (if it was off), lands random picks in its preset selectors, flips its
+ * boolean switches (the React-to-beat toggles, 50/50), re-dials its numeric
+ * parameters to random positions within 25% of the factory defaults (under
+ * the dial's ceiling where one is set) and re-rolls its color options in
+ * their own roles; conditions
+ * mirror the UI — a dial, color, preset or switch that the effect's current
+ * sub-mode hides is left alone, and presets and switches are rolled FIRST so
+ * their landing gates what the rest of the roll touches (the dither's
+ * palette decides which inks exist; the beat switch decides whether its
+ * punch dial rolls at all). `reset` sweeps the effect off and back
  * to factory defaults — every dial, color and preset it owns, regardless of
  * sub-mode conditions, so a mode switch never hides a stale value. Fields
  * outside the registry (blend modes, sub-modes, uploaded images) survive
@@ -418,6 +439,7 @@ function makeEffect<C extends { enabled: boolean }>(spec: {
   defaults: C
   patch: (partial: Partial<C>) => void
   params: EffectParam<C>[]
+  switches?: EffectSwitch<C>[]
   colors?: EffectColor<C>[]
   presets?: EffectPreset<C>[]
 }): RandomEffect {
@@ -439,6 +461,10 @@ function makeEffect<C extends { enabled: boolean }>(spec: {
           param.def ?? (spec.defaults as unknown as Record<string, unknown>)[param.key as string]
         if (typeof def !== 'number' || !Number.isFinite(def)) continue
         partial[param.key as string] = def
+      }
+      for (const sw of spec.switches ?? []) {
+        const def = (spec.defaults as unknown as Record<string, unknown>)[sw.key as string]
+        if (typeof def === 'boolean') partial[sw.key as string] = def
       }
       for (const preset of spec.presets ?? []) {
         const def = (spec.defaults as unknown as Record<string, unknown>)[preset.key as string]
@@ -483,6 +509,16 @@ function makeEffect<C extends { enabled: boolean }>(spec: {
         }
         picks.push(preset.names[id] ?? id)
       }
+      // Boolean switches next — the React-to-beat toggles. A switch that
+      // lands on gates its own dials (the punch strength rolls below),
+      // mirroring the UI: the slider only shows while the switch is on.
+      for (const sw of spec.switches ?? []) {
+        if (sw.when && !sw.when(view)) continue
+        const on = Math.random() < 0.5
+        partial[sw.key as string] = on
+        view = { ...view, [sw.key]: on } as unknown as C
+        if (on) picks.push(sw.label)
+      }
       let touched = picks.length > 0
       for (const param of spec.params) {
         if (param.when && !param.when(view)) continue
@@ -520,12 +556,14 @@ const FILTER_EFFECTS: RandomEffect[] = [
     get: (c) => c.screenFilter,
     defaults: DEFAULT_STUDIO_CONFIG.screenFilter,
     patch: (p) => useStudioStore.getState().patchScreenFilter(p),
+    switches: [{ label: 'beat pop', key: 'beatReactive' }],
     params: [
       { ...param<ScreenFilterConfig>('size', 2, 8, 1), label: 'Mask size' },
       { ...param<ScreenFilterConfig>('scanlines', 0, 1, 0.05), label: 'Scanlines' },
       { ...param<ScreenFilterConfig>('grille', 0, 1, 0.05), label: 'Phosphor mask' },
       { ...param<ScreenFilterConfig>('aberration', 0, 1, 0.05), label: 'Color split' },
       { ...param<ScreenFilterConfig>('glow', 0, 1, 0.05), label: 'Glow' },
+      { ...param<ScreenFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat pop', when: (f) => f.beatReactive },
     ],
   }),
   makeEffect<VhsFilterConfig>({
@@ -533,11 +571,13 @@ const FILTER_EFFECTS: RandomEffect[] = [
     get: (c) => c.vhsFilter,
     defaults: DEFAULT_STUDIO_CONFIG.vhsFilter,
     patch: (p) => useStudioStore.getState().patchVhsFilter(p),
+    switches: [{ label: 'beat pop', key: 'beatReactive' }],
     params: [
       { ...param<VhsFilterConfig>('wobble', 0, 1, 0.05), label: 'Wobble' },
       { ...param<VhsFilterConfig>('tracking', 0, 1, 0.05), label: 'Tracking' },
       { ...param<VhsFilterConfig>('trackingSpeed', 0, 1, 0.05), label: 'Tracking speed' },
       { ...param<VhsFilterConfig>('dust', 0, 1, 0.05), label: 'Dust' },
+      { ...param<VhsFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat pop', when: (f) => f.beatReactive },
     ],
   }),
   makeEffect<CamcorderFilterConfig>({
@@ -545,6 +585,7 @@ const FILTER_EFFECTS: RandomEffect[] = [
     get: (c) => c.camcorderFilter,
     defaults: DEFAULT_STUDIO_CONFIG.camcorderFilter,
     patch: (p) => useStudioStore.getState().patchCamcorderFilter(p),
+    switches: [{ label: 'tape jolt', key: 'beatReactive' }],
     params: [
       { ...param<CamcorderFilterConfig>('resolution', 128, 1024, 1), label: 'Resolution' },
       { ...param<CamcorderFilterConfig>('distortion', 0, 2.5, 0.01), label: 'Distortion' },
@@ -565,6 +606,7 @@ const FILTER_EFFECTS: RandomEffect[] = [
       { ...param<CamcorderFilterConfig>('blur', 0.3, 50, 0.01), label: 'Blur' },
       { ...param<CamcorderFilterConfig>('blurMix', 0, 1, 0.01), label: 'Blur mix' },
       { ...param<CamcorderFilterConfig>('gradeStrength', 0, 1, 0.01), label: 'Grade strength' },
+      { ...param<CamcorderFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Tape jolt', when: (f) => f.beatReactive },
     ],
   }),
   makeEffect<FilmFilterConfig>({
@@ -572,11 +614,13 @@ const FILTER_EFFECTS: RandomEffect[] = [
     get: (c) => c.filmFilter,
     defaults: DEFAULT_STUDIO_CONFIG.filmFilter,
     patch: (p) => useStudioStore.getState().patchFilmFilter(p),
+    switches: [{ label: 'beat pop', key: 'beatReactive' }],
     params: [
       { ...param<FilmFilterConfig>('scratches', 0, 1, 0.05), label: 'Scratches' },
       { ...param<FilmFilterConfig>('dust', 0, 1, 0.05), label: 'Dust & hair' },
       { ...param<FilmFilterConfig>('speed', 0, 1, 0.05), label: 'Reel speed' },
       { ...param<FilmFilterConfig>('flicker', 0, 1, 0.05), label: 'Flicker' },
+      { ...param<FilmFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat pop', when: (f) => f.beatReactive },
     ],
   }),
   makeEffect<TextureFilterConfig>({
@@ -610,11 +654,13 @@ const FILTER_EFFECTS: RandomEffect[] = [
     get: (c) => c.halftoneFilter,
     defaults: DEFAULT_STUDIO_CONFIG.halftoneFilter,
     patch: (p) => useStudioStore.getState().patchHalftoneFilter(p),
+    switches: [{ label: 'beat pop', key: 'beatReactive' }],
     params: [
       { ...param<HalftoneFilterConfig>('dotSize', 3, 14, 1), label: 'Dot size' },
       { ...param<HalftoneFilterConfig>('dotRange', 0, 1, 0.05), label: 'Shadow range' },
       { ...param<HalftoneFilterConfig>('strength', 0, 1, 0.05), label: 'Ink strength' },
       { ...param<HalftoneFilterConfig>('contrast', 0, 1, 0.05), label: 'Contrast' },
+      { ...param<HalftoneFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat pop', when: (f) => f.beatReactive },
     ],
     colors: [
       {
@@ -648,10 +694,12 @@ const FILTER_EFFECTS: RandomEffect[] = [
     get: (c) => c.glitchFilter,
     defaults: DEFAULT_STUDIO_CONFIG.glitchFilter,
     patch: (p) => useStudioStore.getState().patchGlitchFilter(p),
+    switches: [{ label: 'beat pop', key: 'beatReactive' }],
     params: [
       { ...param<GlitchFilterConfig>('blocks', 0, 1, 0.05), label: 'Blocks' },
       { ...param<GlitchFilterConfig>('slices', 0, 1, 0.05), label: 'Slices' },
       { ...param<GlitchFilterConfig>('rate', 0, 1, 0.05), label: 'Burst rate' },
+      { ...param<GlitchFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat pop', when: (f) => f.beatReactive },
     ],
   }),
   makeEffect<AnaglyphFilterConfig>({
@@ -659,9 +707,13 @@ const FILTER_EFFECTS: RandomEffect[] = [
     get: (c) => c.anaglyphFilter,
     defaults: DEFAULT_STUDIO_CONFIG.anaglyphFilter,
     patch: (p) => useStudioStore.getState().patchAnaglyphFilter(p),
+    switches: [{ label: 'beat pop', key: 'beatReactive' }],
     params: [
       { ...param<AnaglyphFilterConfig>('depth', 0, 2.5, 0.05), label: 'Depth' },
       { ...param<AnaglyphFilterConfig>('strength', 0, 1, 0.05), label: 'Mix' },
+      // The 3D glasses' punch dial is the reactivity slider (its card binds
+      // the beat row to it) — gated on the beat switch like the UI.
+      { ...param<AnaglyphFilterConfig>('reactivity', 0, 1, 0.05), label: 'Beat pop', when: (f) => f.beatReactive },
     ],
     colors: [
       {
@@ -688,6 +740,7 @@ const FILTER_EFFECTS: RandomEffect[] = [
     get: (c) => c.phosphorFilter,
     defaults: DEFAULT_STUDIO_CONFIG.phosphorFilter,
     patch: (p) => useStudioStore.getState().patchPhosphorFilter(p),
+    switches: [{ label: 'beat flare', key: 'beatReactive' }],
     params: [
       { ...param<PhosphorFilterConfig>('cellSize', 3, 12, 1), label: 'Cell size' },
       { ...param<PhosphorFilterConfig>('gap', 0, 0.6, 0.05), label: 'Spacing' },
@@ -695,6 +748,7 @@ const FILTER_EFFECTS: RandomEffect[] = [
       // Taste ceiling: the roll never exceeds 30% strength.
       { ...param<PhosphorFilterConfig>('strength', 0, 1, 0.05), label: 'Strength', cap: 0.3 },
       { ...param<PhosphorFilterConfig>('glow', 0, 1, 0.05), label: 'Glow' },
+      { ...param<PhosphorFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat flare', when: (f) => f.beatReactive },
     ],
     colors: [
       {
@@ -709,6 +763,7 @@ const FILTER_EFFECTS: RandomEffect[] = [
     get: (c) => c.contourFilter,
     defaults: DEFAULT_STUDIO_CONFIG.contourFilter,
     patch: (p) => useStudioStore.getState().patchContourFilter(p),
+    switches: [{ label: 'beat swell', key: 'beatReactive' }],
     params: [
       // Taste ceilings: the roll never exceeds 46 lines or 46% strength —
       // dense/strong contour webs bury the picture they trace.
@@ -720,6 +775,7 @@ const FILTER_EFFECTS: RandomEffect[] = [
       { ...param<ContourFilterConfig>('stillness', 0, 1, 0.05), label: 'Stillness' },
       { ...param<ContourFilterConfig>('waveSpread', 0, 1, 0.05), label: 'Wave spread' },
       { ...param<ContourFilterConfig>('strength', 0, 1, 0.05), label: 'Strength', cap: 0.46 },
+      { ...param<ContourFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat swell', when: (f) => f.beatReactive },
     ],
     colors: [
       {
@@ -734,6 +790,7 @@ const FILTER_EFFECTS: RandomEffect[] = [
     get: (c) => c.cubifyFilter,
     defaults: DEFAULT_STUDIO_CONFIG.cubifyFilter,
     patch: (p) => useStudioStore.getState().patchCubifyFilter(p),
+    switches: [{ label: 'beat lift', key: 'beatReactive' }],
     params: [
       { ...param<CubifyFilterConfig>('scale', 0, 8, 0.01), label: 'Cube size' },
       { ...param<CubifyFilterConfig>('stretch', -1, 1, 0.01), label: 'Cube stretch' },
@@ -741,6 +798,7 @@ const FILTER_EFFECTS: RandomEffect[] = [
       { ...param<CubifyFilterConfig>('angle', 0, 90, 1), label: 'Rotation angle' },
       { ...param<CubifyFilterConfig>('dispersion', 0, 1, 0.001), label: 'Dispersion' },
       { ...param<CubifyFilterConfig>('blend', 0, 1, 0.05), label: 'Mix' },
+      { ...param<CubifyFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat lift', when: (f) => f.beatReactive },
     ],
   }),
   makeEffect<DitherFilterConfig>({
@@ -748,6 +806,9 @@ const FILTER_EFFECTS: RandomEffect[] = [
     get: (c) => c.ditherFilter,
     defaults: DEFAULT_STUDIO_CONFIG.ditherFilter,
     patch: (p) => useStudioStore.getState().patchDitherFilter(p),
+    // The card's punch row reads Beat shift / Beat flare per palette mode —
+    // both bind the same switch, so the toast keeps the neutral name.
+    switches: [{ label: 'beat punch', key: 'beatReactive' }],
     presets: [
       {
         label: 'Palette',
@@ -788,6 +849,7 @@ const FILTER_EFFECTS: RandomEffect[] = [
       { ...param<DitherFilterConfig>('contrast', 0, 1, 0.05), label: 'Contrast', when: (f) => f.mode !== 'macpaint' },
       { ...param<DitherFilterConfig>('glow', 0, 1, 0.05), label: 'Glow', when: (f) => f.mode !== 'macpaint' },
       { ...param<DitherFilterConfig>('strength', 0, 1, 0.05), label: 'Strength' },
+      { ...param<DitherFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat punch', when: (f) => f.beatReactive },
     ],
   }),
 ]
@@ -915,6 +977,7 @@ const COLOR_EFFECTS: RandomEffect[] = [
     get: (c) => c.halationFilter,
     defaults: DEFAULT_STUDIO_CONFIG.halationFilter,
     patch: (p) => useStudioStore.getState().patchHalationFilter(p),
+    switches: [{ label: 'beat flare', key: 'beatReactive' }],
     params: [
       { ...param<HalationFilterConfig>('threshold', 0, 1, 0.01), label: 'Threshold' },
       { ...param<HalationFilterConfig>('knee', 0.01, 0.8, 0.01), label: 'Knee' },
@@ -924,6 +987,7 @@ const COLOR_EFFECTS: RandomEffect[] = [
       { ...param<HalationFilterConfig>('intensity', 0, 1, 0.01), label: 'Intensity' },
       { ...param<HalationFilterConfig>('backgroundGain', 0, 1, 0.01), label: 'Background gain' },
       { ...param<HalationFilterConfig>('blueComp', 0, 1, 0.01), label: 'Compensation' },
+      { ...param<HalationFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat flare', when: (f) => f.beatReactive },
     ],
     colors: [
       { label: 'Halo tint', keys: ['tint'], roll: () => ({ tint: vividColor() }) },
