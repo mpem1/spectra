@@ -31,6 +31,14 @@
  * current style itself, gradients outside these effects, text, uploaded
  * images, blend modes, sub-modes.
  *
+ * A few dials carry hard TASTE CEILINGS: the roll never lands them above the
+ * ceiling (the color grade's Strength ≤ 45%, the contour threads ≤ 46 lines
+ * and ≤ 46% strength, the phosphor tube ≤ 30% strength). Their factory
+ * defaults sit above the ceiling, so instead of jittering around the default
+ * (which would pin every roll to the cap) a capped dial rolls in the quarter
+ * of its slider track just under the ceiling — always present, never
+ * overcooked.
+ *
  * Slider geometry (min/max/step) mirrors the studio UI exactly; the factory
  * defaults are read live from DEFAULT_STUDIO_CONFIG so the two can never
  * drift apart.
@@ -87,6 +95,38 @@ function jitter(defaultValue: number, min: number, max: number, step: number): n
     if (up && down) v = defaultValue + (Math.random() < 0.5 ? step : -step)
     else if (up) v = defaultValue + step
     else if (down) v = defaultValue - step
+  }
+  return v
+}
+
+/**
+ * A capped dial's roll: lands in the quarter of the slider track just under
+ * the ceiling (a 45% ceiling on a 0–100% dial rolls 20–45%), snapped onto
+ * the step grid. Used when the factory default sits above the ceiling —
+ * jittering around the default would clamp every pick onto the cap itself,
+ * which is no roll at all.
+ */
+function jitterCapped(
+  defaultValue: number,
+  cap: number,
+  min: number,
+  max: number,
+  step: number,
+): number {
+  const ceiling = Math.min(max, Math.max(min, cap))
+  const span = max - min
+  const floor = Math.max(min, ceiling - span * 0.25)
+  let v = floor + Math.random() * (ceiling - floor)
+  // Snap onto the step grid, then kill float noise.
+  v = min + Math.round((v - min) / step) * step
+  v = Number(Math.min(ceiling, Math.max(min, v)).toFixed(4))
+  // A pick must always be a real change off the factory default.
+  if (Math.abs(v - defaultValue) < step) {
+    const up = v + step <= ceiling
+    const down = v - step >= min
+    if (up && down) v = v + (defaultValue <= v ? step : -step)
+    else if (up) v = v + step
+    else if (down) v = v - step
   }
   return v
 }
@@ -191,6 +231,10 @@ interface EffectParam<C> {
   step: number
   /** Factory default override for optional legacy keys missing from DEFAULT_STUDIO_CONFIG. */
   def?: number
+  /** Hard ceiling for the roll — the dial never lands above it. The factory
+   *  default may sit above the ceiling; the roll then stays in the quarter
+   *  of the track just under it (see jitterCapped). */
+  cap?: number
   /** Only randomized while this passes (sub-mode conditions, mirrored from the UI). */
   when?: (cfg: C) => boolean
 }
@@ -357,7 +401,8 @@ function applyStyleDial(dial: StyleDial): string | null {
  * Wraps one effect (color tool / filter) into a pickable. `apply` switches it
  * on (if it was off), lands random picks in its preset selectors, re-dials
  * its numeric parameters to random positions within 25% of the factory
- * defaults and re-rolls its color options in their own roles; conditions
+ * defaults (under the dial's ceiling where one is set) and re-rolls its
+ * color options in their own roles; conditions
  * mirror the UI — a dial, color or preset that the effect's current sub-mode
  * hides is left alone, and presets are rolled FIRST so a palette switch can
  * gate which colors and dials the rest of the roll touches (the dither's
@@ -444,7 +489,10 @@ function makeEffect<C extends { enabled: boolean }>(spec: {
         const def =
           param.def ?? (spec.defaults as unknown as Record<string, unknown>)[param.key as string]
         if (typeof def !== 'number' || !Number.isFinite(def)) continue
-        const value = jitter(def, param.min, param.max, param.step)
+        const value =
+          param.cap !== undefined
+            ? jitterCapped(def, param.cap, param.min, param.max, param.step)
+            : jitter(def, param.min, param.max, param.step)
         partial[param.key as string] = value
         view = { ...view, [param.key]: value } as unknown as C
         touched = true
@@ -644,7 +692,8 @@ const FILTER_EFFECTS: RandomEffect[] = [
       { ...param<PhosphorFilterConfig>('cellSize', 3, 12, 1), label: 'Cell size' },
       { ...param<PhosphorFilterConfig>('gap', 0, 0.6, 0.05), label: 'Spacing' },
       { ...param<PhosphorFilterConfig>('contrast', 0, 1, 0.05), label: 'Contrast' },
-      { ...param<PhosphorFilterConfig>('strength', 0, 1, 0.05), label: 'Strength' },
+      // Taste ceiling: the roll never exceeds 30% strength.
+      { ...param<PhosphorFilterConfig>('strength', 0, 1, 0.05), label: 'Strength', cap: 0.3 },
       { ...param<PhosphorFilterConfig>('glow', 0, 1, 0.05), label: 'Glow' },
     ],
     colors: [
@@ -661,14 +710,16 @@ const FILTER_EFFECTS: RandomEffect[] = [
     defaults: DEFAULT_STUDIO_CONFIG.contourFilter,
     patch: (p) => useStudioStore.getState().patchContourFilter(p),
     params: [
-      { ...param<ContourFilterConfig>('lines', 24, 160, 2), label: 'Lines' },
+      // Taste ceilings: the roll never exceeds 46 lines or 46% strength —
+      // dense/strong contour webs bury the picture they trace.
+      { ...param<ContourFilterConfig>('lines', 24, 160, 2), label: 'Lines', cap: 46 },
       { ...param<ContourFilterConfig>('warp', 0, 1, 0.05), label: 'Warp' },
       { ...param<ContourFilterConfig>('motion', 0, 1, 0.05), label: 'Drift' },
       { ...param<ContourFilterConfig>('reactivity', 0, 1, 0.05), label: 'Reactivity' },
       { ...param<ContourFilterConfig>('glow', 0, 1, 0.05), label: 'Glow' },
       { ...param<ContourFilterConfig>('stillness', 0, 1, 0.05), label: 'Stillness' },
       { ...param<ContourFilterConfig>('waveSpread', 0, 1, 0.05), label: 'Wave spread' },
-      { ...param<ContourFilterConfig>('strength', 0, 1, 0.05), label: 'Strength' },
+      { ...param<ContourFilterConfig>('strength', 0, 1, 0.05), label: 'Strength', cap: 0.46 },
     ],
     colors: [
       {
@@ -797,7 +848,9 @@ const COLOR_EFFECTS: RandomEffect[] = [
       },
     ],
     params: [
-      { ...param<ColorGradeFilterConfig>('strength', 0, 1, 0.05), label: 'Strength' },
+      // Taste ceiling: the roll never grades harder than 45% — full-bore
+      // grades steamroll every other pick in the roll.
+      { ...param<ColorGradeFilterConfig>('strength', 0, 1, 0.05), label: 'Strength', cap: 0.45 },
       { ...param<ColorGradeFilterConfig>('contrast', 0, 1, 0.05), label: 'Contrast' },
       // Warmth dresses the sepia look only, exactly like the UI.
       { ...param<ColorGradeFilterConfig>('warmth', 0, 1, 0.05), label: 'Warmth', when: (f) => f.look === 'sepia' },
