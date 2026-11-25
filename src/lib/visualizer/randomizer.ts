@@ -21,9 +21,15 @@
  * and moves each picked dial to a random position within 25% of its factory
  * default — positive or negative along the horizontal slider track (always
  * at least one step, so a pick is a real, visible change; zero-default dials
- * therefore move too) — switching each picked effect on. Choices the
- * randomizer doesn't own are never touched: the current style itself,
- * colors, gradients, text, uploaded images, sub-modes.
+ * therefore move too) — switching each picked effect on. Every picked effect
+ * also re-rolls its COLOR options: preset selectors (Neon Split's ramp, the
+ * color grade's look, the gradient map's ramp library, the instant-film
+ * stock, the dither palette) land a random preset, and color fields (halo
+ * tint, inks, papers, lens tints, custom-texture tints) get fresh random
+ * colors in their own role — glows stay bright, backings stay dark, tints
+ * stay tasteful. Choices the randomizer doesn't own are never touched: the
+ * current style itself, gradients outside these effects, text, uploaded
+ * images, blend modes, sub-modes.
  *
  * Slider geometry (min/max/step) mirrors the studio UI exactly; the factory
  * defaults are read live from DEFAULT_STUDIO_CONFIG so the two can never
@@ -54,6 +60,8 @@ import {
   type VhsFilterConfig,
 } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
+import { RAMPS } from '@/lib/visualizer/neon-split-data'
+import { EXPOSURE_STOCKS } from '@/lib/visualizer/exposure-filter'
 
 /* -------------------------------- jitter math -------------------------------- */
 
@@ -90,6 +98,75 @@ function deltaLabel(def: number, v: number, min: number, max: number): string {
   return `${v >= def ? '+' : '-'}${pct}%`
 }
 
+/* ------------------------------ random colors ------------------------------- */
+
+/** hsl(h° 0–360, s 0–1, l 0–1) → '#rrggbb' — the roll's color vocabulary. */
+function hslHex(h: number, s: number, l: number): string {
+  const hue = ((h % 360) + 360) % 360
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1))
+  const m = l - c / 2
+  let r = 0
+  let g = 0
+  let b = 0
+  if (hue < 60) {
+    r = c
+    g = x
+  } else if (hue < 120) {
+    r = x
+    g = c
+  } else if (hue < 180) {
+    g = c
+    b = x
+  } else if (hue < 240) {
+    g = x
+    b = c
+  } else if (hue < 300) {
+    r = x
+    b = c
+  } else {
+    r = c
+    b = x
+  }
+  const hex = (v: number) =>
+    Math.round(Math.min(1, Math.max(0, v + m)) * 255)
+      .toString(16)
+      .padStart(2, '0')
+  return `#${hex(r)}${hex(g)}${hex(b)}`
+}
+
+const randHue = () => Math.random() * 360
+
+/** Vivid glow — the ink/glow/tint role: bright, saturated, any hue. */
+function vividColor(): string {
+  return hslHex(randHue(), 0.72 + Math.random() * 0.23, 0.52 + Math.random() * 0.14)
+}
+
+/** Deep backing — the tube/paper-behind-the-glow role: dark, hue-tinted. */
+function deepColor(): string {
+  return hslHex(randHue(), 0.55 + Math.random() * 0.35, 0.06 + Math.random() * 0.1)
+}
+
+/** Print ink — the dark print role (halftone ink, MacPaint ink). */
+function printInkColor(): string {
+  return hslHex(randHue(), 0.45 + Math.random() * 0.4, 0.09 + Math.random() * 0.14)
+}
+
+/** Print paper — the bright paper role (MacPaint paper, halftone backdrop). */
+function printPaperColor(): string {
+  return hslHex(randHue(), 0.25 + Math.random() * 0.45, 0.88 + Math.random() * 0.09)
+}
+
+/** A bright lighting tint (the custom texture's highlight color). */
+function highlightTint(): string {
+  return hslHex(randHue(), 0.4 + Math.random() * 0.4, 0.66 + Math.random() * 0.16)
+}
+
+/** A deep lighting tint (the custom texture's shadow color). */
+function shadowTint(): string {
+  return hslHex(randHue(), 0.4 + Math.random() * 0.3, 0.1 + Math.random() * 0.12)
+}
+
 /* --------------------------------- registry ---------------------------------- */
 
 type NumericKeys<C> = { [K in keyof C]: NonNullable<C[K]> extends number ? K : never }[keyof C]
@@ -116,6 +193,38 @@ interface EffectParam<C> {
   def?: number
   /** Only randomized while this passes (sub-mode conditions, mirrored from the UI). */
   when?: (cfg: C) => boolean
+}
+
+/** One color option inside an effect — a set of '#rrggbb' config fields the
+ *  roll recolors together (an ink+paper pair, a lens stack) so related
+ *  colors always coordinate. */
+interface EffectColor<C> {
+  label: string
+  /** The config fields this entry owns (also what reset restores). */
+  keys: (keyof C & string)[]
+  /** Rolls the new colors — one entry may write several fields at once;
+   *  values are hex strings or arrays of them (the 3D glasses' tint stacks). */
+  roll: (view: C) => Record<string, unknown>
+  /** Only randomized while this passes (mirrors the UI's visibility). */
+  when?: (view: C) => boolean
+}
+
+/** One preset selector inside an effect — the roll lands a random option in
+ *  the field (a ramp, a film stock, a palette). */
+interface EffectPreset<C> {
+  label: string
+  key: keyof C & string
+  options: readonly string[]
+  /** Toast names per option id (falls back to the id). */
+  names: Record<string, string>
+  /** Only randomized while this passes. */
+  when?: (view: C) => boolean
+  /** Extra patch a chosen option carries — a ramp preset also loads its
+   *  stops into the editable gradient map, exactly like the UI chip. */
+  extra?: (id: string) => Record<string, unknown> | null
+  /** Extra fields reset must restore for this preset (factory state the
+   *  defaults object doesn't carry — e.g. Neon Split's optional mapStops). */
+  reset?: Record<string, unknown>
 }
 
 /** A color tool / filter the randomizer may switch on and re-dial. */
@@ -246,13 +355,17 @@ function applyStyleDial(dial: StyleDial): string | null {
 
 /**
  * Wraps one effect (color tool / filter) into a pickable. `apply` switches it
- * on (if it was off) and re-dials its numeric parameters to random positions
- * within 25% of the factory defaults; conditions mirror the UI — a dial that
- * the effect's current sub-mode hides is left alone. `reset` sweeps the
- * effect off and back to factory defaults — every dial it owns, regardless
- * of sub-mode conditions, so a mode switch never hides a stale jittered
- * value. Fields outside the dial list (sub-mode, colors, uploaded images)
- * survive both operations.
+ * on (if it was off), lands random picks in its preset selectors, re-dials
+ * its numeric parameters to random positions within 25% of the factory
+ * defaults and re-rolls its color options in their own roles; conditions
+ * mirror the UI — a dial, color or preset that the effect's current sub-mode
+ * hides is left alone, and presets are rolled FIRST so a palette switch can
+ * gate which colors and dials the rest of the roll touches (the dither's
+ * palette decides which inks exist). `reset` sweeps the effect off and back
+ * to factory defaults — every dial, color and preset it owns, regardless of
+ * sub-mode conditions, so a mode switch never hides a stale value. Fields
+ * outside the registry (blend modes, sub-modes, uploaded images) survive
+ * both operations.
  */
 function makeEffect<C extends { enabled: boolean }>(spec: {
   label: string
@@ -260,41 +373,92 @@ function makeEffect<C extends { enabled: boolean }>(spec: {
   defaults: C
   patch: (partial: Partial<C>) => void
   params: EffectParam<C>[]
+  colors?: EffectColor<C>[]
+  presets?: EffectPreset<C>[]
 }): RandomEffect {
+  // Stops arrays and tint stacks are plain JSON — a deep clone keeps every
+  // editor (gradient editor, lens stack) from ever mutating the factory
+  // defaults through a shared reference.
+  const cloneDefault = (v: unknown): unknown =>
+    Array.isArray(v) ? JSON.parse(JSON.stringify(v)) : v
+
   return {
     label: spec.label,
     reset: () => {
-      // Off + factory dials, unconditionally — writing a default into a
-      // dial the current sub-mode hides is a no-op visually and guarantees
-      // the slate is clean for the next roll.
-      const partial: Record<string, number | boolean> = { enabled: false }
+      // Off + factory dials, colors and presets, unconditionally — writing a
+      // default into a field the current sub-mode hides is a no-op visually
+      // and guarantees the slate is clean for the next roll.
+      const partial: Record<string, unknown> = { enabled: false }
       for (const param of spec.params) {
         const def =
           param.def ?? (spec.defaults as unknown as Record<string, unknown>)[param.key as string]
         if (typeof def !== 'number' || !Number.isFinite(def)) continue
         partial[param.key as string] = def
       }
+      for (const preset of spec.presets ?? []) {
+        const def = (spec.defaults as unknown as Record<string, unknown>)[preset.key as string]
+        if (def !== undefined) partial[preset.key as string] = cloneDefault(def)
+        if (preset.reset) Object.assign(partial, preset.reset)
+      }
+      for (const color of spec.colors ?? []) {
+        for (const key of color.keys) {
+          const def = (spec.defaults as unknown as Record<string, unknown>)[key]
+          if (def !== undefined) partial[key] = cloneDefault(def)
+        }
+      }
       spec.patch(partial as unknown as Partial<C>)
     },
     apply: () => {
       const cfg = spec.get(useStudioStore.getState().config)
       // Built as a plain string-keyed record — the keys are config keys
-      // validated by NumericKeys<C> at each definition site, so the single
-      // double-cast at the patch call below is the only untyped spot.
-      const partial: Record<string, number | boolean> = {}
-      if (!cfg.enabled) partial.enabled = true
-      let touched = false
+      // validated by NumericKeys<C>/keyof C at each definition site, so the
+      // single double-cast at the patch call below is the only untyped spot.
+      const partial: Record<string, unknown> = {}
+      // The view tracks every value this roll has landed — presets may gate
+      // dials and colors (the dither's palette decides which inks exist),
+      // so every `when` tests the roll's own state, not the stale config.
+      let view: C = { ...cfg }
+      const picks: string[] = []
+      if (!cfg.enabled) {
+        partial.enabled = true
+        view = { ...view, enabled: true }
+      }
+      // Preset selectors first — a palette switch gates what the rest of
+      // the roll may touch.
+      for (const preset of spec.presets ?? []) {
+        if (preset.when && !preset.when(view)) continue
+        const id = preset.options[Math.floor(Math.random() * preset.options.length)]
+        if (id === undefined) continue
+        partial[preset.key as string] = id
+        view = { ...view, [preset.key]: id } as unknown as C
+        const extra = preset.extra?.(id)
+        if (extra) {
+          Object.assign(partial, extra)
+          view = { ...view, ...(extra as Partial<C>) } as unknown as C
+        }
+        picks.push(preset.names[id] ?? id)
+      }
+      let touched = picks.length > 0
       for (const param of spec.params) {
-        if (param.when && !param.when(cfg)) continue
+        if (param.when && !param.when(view)) continue
         const def =
           param.def ?? (spec.defaults as unknown as Record<string, unknown>)[param.key as string]
         if (typeof def !== 'number' || !Number.isFinite(def)) continue
-        partial[param.key as string] = jitter(def, param.min, param.max, param.step)
+        const value = jitter(def, param.min, param.max, param.step)
+        partial[param.key as string] = value
+        view = { ...view, [param.key]: value } as unknown as C
+        touched = true
+      }
+      for (const color of spec.colors ?? []) {
+        if (color.when && !color.when(view)) continue
+        Object.assign(partial, color.roll(view))
         touched = true
       }
       if (!touched && cfg.enabled) return null
       spec.patch(partial as unknown as Partial<C>)
-      return cfg.enabled ? spec.label : `${spec.label} on`
+      const on = cfg.enabled ? '' : ' on'
+      const note = picks.length ? ` (${picks.join(', ')})` : ''
+      return `${spec.label}${on}${note}`
     },
   }
 }
@@ -378,6 +542,20 @@ const FILTER_EFFECTS: RandomEffect[] = [
       // custom texture has its own Size dial tied to the uploaded map.
       { ...param<TextureFilterConfig>('scale', 0.4, 3, 0.1), label: 'Scale', when: (f) => f.type !== 'custom' },
     ],
+    colors: [
+      {
+        label: 'Highlight tint',
+        keys: ['customHighlightColor'],
+        when: (v) => v.type === 'custom',
+        roll: () => ({ customHighlightColor: highlightTint() }),
+      },
+      {
+        label: 'Shadow tint',
+        keys: ['customShadowColor'],
+        when: (v) => v.type === 'custom',
+        roll: () => ({ customShadowColor: shadowTint() }),
+      },
+    ],
   }),
   makeEffect<HalftoneFilterConfig>({
     label: 'Halftone print',
@@ -389,6 +567,32 @@ const FILTER_EFFECTS: RandomEffect[] = [
       { ...param<HalftoneFilterConfig>('dotRange', 0, 1, 0.05), label: 'Shadow range' },
       { ...param<HalftoneFilterConfig>('strength', 0, 1, 0.05), label: 'Ink strength' },
       { ...param<HalftoneFilterConfig>('contrast', 0, 1, 0.05), label: 'Contrast' },
+    ],
+    colors: [
+      {
+        label: 'Ink',
+        keys: ['inkColor'],
+        roll: () => ({ inkColor: printInkColor() }),
+      },
+      {
+        label: 'Gradient ink',
+        keys: ['inkColor2'],
+        when: (v) => v.gradient,
+        roll: () => ({ inkColor2: vividColor() }),
+      },
+      {
+        label: 'Backdrop',
+        keys: ['backdropColor'],
+        // The backdrop only shows while a poster mode is up.
+        when: (v) => v.printOnly || v.gradient || v.imageFill,
+        roll: () => ({ backdropColor: printPaperColor() }),
+      },
+      {
+        label: 'Backdrop gradient',
+        keys: ['backdropColor2'],
+        when: (v) => (v.printOnly || v.gradient || v.imageFill) && v.backdropGradient,
+        roll: () => ({ backdropColor2: vividColor() }),
+      },
     ],
   }),
   makeEffect<GlitchFilterConfig>({
@@ -411,6 +615,25 @@ const FILTER_EFFECTS: RandomEffect[] = [
       { ...param<AnaglyphFilterConfig>('depth', 0, 2.5, 0.05), label: 'Depth' },
       { ...param<AnaglyphFilterConfig>('strength', 0, 1, 0.05), label: 'Mix' },
     ],
+    colors: [
+      {
+        label: 'Lens tints',
+        keys: ['leftColors', 'rightColors'],
+        // Complementary hues — any pair keeps the classic channel
+        // separation (red↔cyan by construction); extra slots trail as
+        // tracer echoes one hue-step apart, matching the stack order.
+        roll: (v) => {
+          const n = Math.min(4, Math.max(1, v.leftColors?.length ?? 1))
+          const h = randHue()
+          const side = (base: number) =>
+            Array.from(
+              { length: n },
+              (_, i) => hslHex(base + i * 26, 0.9, 0.5 + Math.random() * 0.06),
+            )
+          return { leftColors: side(h), rightColors: side(h + 180) }
+        },
+      },
+    ],
   }),
   makeEffect<PhosphorFilterConfig>({
     label: 'Phosphor tube',
@@ -423,6 +646,13 @@ const FILTER_EFFECTS: RandomEffect[] = [
       { ...param<PhosphorFilterConfig>('contrast', 0, 1, 0.05), label: 'Contrast' },
       { ...param<PhosphorFilterConfig>('strength', 0, 1, 0.05), label: 'Strength' },
       { ...param<PhosphorFilterConfig>('glow', 0, 1, 0.05), label: 'Glow' },
+    ],
+    colors: [
+      {
+        label: 'Phosphor & tube',
+        keys: ['inkColor', 'paperColor'],
+        roll: () => ({ inkColor: vividColor(), paperColor: deepColor() }),
+      },
     ],
   }),
   makeEffect<ContourFilterConfig>({
@@ -439,6 +669,13 @@ const FILTER_EFFECTS: RandomEffect[] = [
       { ...param<ContourFilterConfig>('stillness', 0, 1, 0.05), label: 'Stillness' },
       { ...param<ContourFilterConfig>('waveSpread', 0, 1, 0.05), label: 'Wave spread' },
       { ...param<ContourFilterConfig>('strength', 0, 1, 0.05), label: 'Strength' },
+    ],
+    colors: [
+      {
+        label: 'Thread & tube',
+        keys: ['inkColor', 'paperColor'],
+        roll: () => ({ inkColor: vividColor(), paperColor: deepColor() }),
+      },
     ],
   }),
   makeEffect<CubifyFilterConfig>({
@@ -460,6 +697,34 @@ const FILTER_EFFECTS: RandomEffect[] = [
     get: (c) => c.ditherFilter,
     defaults: DEFAULT_STUDIO_CONFIG.ditherFilter,
     patch: (p) => useStudioStore.getState().patchDitherFilter(p),
+    presets: [
+      {
+        label: 'Palette',
+        key: 'mode',
+        options: ['blue', 'mono', 'color', 'custom', 'macpaint'],
+        names: { blue: 'Blue glow', mono: 'B&W', color: 'Color', custom: 'Custom', macpaint: 'MacPaint' },
+      },
+    ],
+    colors: [
+      {
+        label: 'Blue glow',
+        keys: ['blueInkColor', 'bluePaperColor'],
+        when: (v) => v.mode === 'blue',
+        roll: () => ({ blueInkColor: vividColor(), bluePaperColor: deepColor() }),
+      },
+      {
+        label: 'Custom palette',
+        keys: ['inkColor', 'paperColor'],
+        when: (v) => v.mode === 'custom',
+        roll: () => ({ inkColor: vividColor(), paperColor: deepColor() }),
+      },
+      {
+        label: 'MacPaint inks',
+        keys: ['macInkColor', 'macPaperColor'],
+        when: (v) => v.mode === 'macpaint',
+        roll: () => ({ macInkColor: printInkColor(), macPaperColor: printPaperColor() }),
+      },
+    ],
     params: [
       // MacPaint mode swaps the dials for its own set (mirrors the UI).
       { ...param<DitherFilterConfig>('macThreshold', 0, 1, 0.01), label: 'Threshold', when: (f) => f.mode === 'macpaint' },
@@ -483,6 +748,22 @@ const COLOR_EFFECTS: RandomEffect[] = [
     get: (c) => c.neonSplitFilter,
     defaults: DEFAULT_STUDIO_CONFIG.neonSplitFilter,
     patch: (p) => useStudioStore.getState().patchNeonSplitFilter(p),
+    presets: [
+      {
+        label: 'Ramp',
+        key: 'ramp',
+        options: ['violet', 'uv', 'acid', 'ember', 'ice'],
+        names: { violet: 'Violet neon', uv: 'UV', acid: 'Acid', ember: 'Ember', ice: 'Ice' },
+        // The UI's ramp chips load their stops into the editable gradient
+        // map — the roll does exactly that, so the editor and the look agree.
+        extra: (id) => {
+          const stops = RAMPS[id]
+          return stops ? { mapStops: stops.map((s) => ({ ...s })) } : null
+        },
+        // The factory state derives the map from the ramp (no mapStops).
+        reset: { mapStops: undefined },
+      },
+    ],
     params: [
       { ...param<NeonSplitFilterConfig>('mapAmount', 0, 1, 0.05), label: 'Opacity' },
       { ...param<NeonSplitFilterConfig>('mapShift', -1, 1, 0.01), label: 'Gradient shift', def: 0 },
@@ -507,6 +788,14 @@ const COLOR_EFFECTS: RandomEffect[] = [
     get: (c) => c.colorGradeFilter,
     defaults: DEFAULT_STUDIO_CONFIG.colorGradeFilter,
     patch: (p) => useStudioStore.getState().patchColorGradeFilter(p),
+    presets: [
+      {
+        label: 'Grade',
+        key: 'look',
+        options: ['bw', 'sepia'],
+        names: { bw: 'Black & white', sepia: 'Sepia' },
+      },
+    ],
     params: [
       { ...param<ColorGradeFilterConfig>('strength', 0, 1, 0.05), label: 'Strength' },
       { ...param<ColorGradeFilterConfig>('contrast', 0, 1, 0.05), label: 'Contrast' },
@@ -519,6 +808,27 @@ const COLOR_EFFECTS: RandomEffect[] = [
     get: (c) => c.gradientMapFilter,
     defaults: DEFAULT_STUDIO_CONFIG.gradientMapFilter,
     patch: (p) => useStudioStore.getState().patchGradientMapFilter(p),
+    presets: [
+      {
+        label: 'Ramp',
+        key: 'preset',
+        // The built-in ramp library only — 'custom' is the user's own
+        // editable stops and never a random pick.
+        options: ['neon', 'uv', 'acid', 'ember', 'ice', 'sunset', 'magma', 'gold', 'rose', 'mono'],
+        names: {
+          neon: 'Neon',
+          uv: 'UV',
+          acid: 'Acid',
+          ember: 'Ember',
+          ice: 'Ice',
+          sunset: 'Sunset',
+          magma: 'Magma',
+          gold: 'Gold',
+          rose: 'Rose',
+          mono: 'Mono',
+        },
+      },
+    ],
     params: [
       { ...param<GradientMapFilterConfig>('opacity', 0, 1, 0.01), label: 'Opacity' },
       { ...param<GradientMapFilterConfig>('shift', -1, 1, 0.01), label: 'Gradient shift' },
@@ -534,6 +844,14 @@ const COLOR_EFFECTS: RandomEffect[] = [
     get: (c) => c.exposureFilter,
     defaults: DEFAULT_STUDIO_CONFIG.exposureFilter,
     patch: (p) => useStudioStore.getState().patchExposureFilter(p),
+    presets: [
+      {
+        label: 'Stock',
+        key: 'stock',
+        options: EXPOSURE_STOCKS.map((s) => s.id),
+        names: Object.fromEntries(EXPOSURE_STOCKS.map((s) => [s.id, s.label])),
+      },
+    ],
     params: [
       { ...param<ExposureFilterConfig>('color', 0, 2, 0.01), label: 'Color' },
       { ...param<ExposureFilterConfig>('light', 0, 2, 0.01), label: 'Light' },
@@ -553,6 +871,9 @@ const COLOR_EFFECTS: RandomEffect[] = [
       { ...param<HalationFilterConfig>('intensity', 0, 1, 0.01), label: 'Intensity' },
       { ...param<HalationFilterConfig>('backgroundGain', 0, 1, 0.01), label: 'Background gain' },
       { ...param<HalationFilterConfig>('blueComp', 0, 1, 0.01), label: 'Compensation' },
+    ],
+    colors: [
+      { label: 'Halo tint', keys: ['tint'], roll: () => ({ tint: vividColor() }) },
     ],
   }),
 ]

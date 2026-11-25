@@ -79,8 +79,8 @@ export function ControlPanel() {
               previous picks never stack. */}
           <button
             type="button"
-            aria-label="Randomize the look: starts from a clean slate, switches to a different visualizer style, then nudges 1–2 of its dials, 0–2 color tools and 0–2 filters within 25% of their defaults"
-            title="Randomize: clean slate, then a new visualizer style + 1–2 of its dials, 0–2 color tools, 0–2 filters — every dial within ±25% of its default"
+            aria-label="Randomize the look: starts from a clean slate, switches to a different visualizer style, then nudges 1–2 of its dials, 0–2 color tools and 0–2 filters within 25% of their defaults — re-rolling each picked effect's color presets and color fields too"
+            title="Randomize: clean slate, then a new visualizer style + 1–2 of its dials, 0–2 color tools, 0–2 filters — dials within ±25% of default, colors and presets re-rolled"
             onClick={handleRandomize}
             className="group flex h-12 w-full shrink-0 items-center justify-center gap-2.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-sm font-semibold text-emerald-300 transition-all duration-200 hover:border-emerald-400 hover:bg-emerald-500 hover:text-zinc-950 hover:shadow-[0_0_24px_-6px] hover:shadow-emerald-500/60 active:scale-[0.98]"
           >
