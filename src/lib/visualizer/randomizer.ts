@@ -1,9 +1,15 @@
 'use client'
 
 /**
- * The look randomizer — one click, a fresh variation of the current setup.
+ * The look randomizer — one click, one fresh look. Never cumulative.
  *
- * Every click picks:
+ * Every click starts by sweeping the slate clean: every style dial the
+ * randomizer owns returns to its factory value, and every color tool /
+ * filter it owns is switched off with its dials back at factory defaults —
+ * so nothing from a previous roll (or an earlier tweak to a dial it owns)
+ * stacks on top of the next one.
+ *
+ * Onto that clean slate it picks:
  *  - 1–2 style dials (visualizer sliders, drawn only from the ones the
  *    current style actually shows),
  *  - 0–2 color tools (the Color tab effects),
@@ -12,10 +18,9 @@
  * and moves each picked dial to a random position within 25% of its factory
  * default — positive or negative along the horizontal slider track (always
  * at least one step, so a pick is a real, visible change; zero-default dials
- * therefore move too). Picked effects that are switched off are turned on;
- * anything not picked is left exactly where the user set it. Switches,
- * colors, gradients, text and uploaded images are never touched — dials
- * only.
+ * therefore move too) — switching each picked effect on. Choices the
+ * randomizer doesn't own are never touched: the current style itself,
+ * colors, gradients, text, uploaded images, sub-modes.
  *
  * Slider geometry (min/max/step) mirrors the studio UI exactly; the factory
  * defaults are read live from DEFAULT_STUDIO_CONFIG so the two can never
@@ -114,6 +119,8 @@ interface RandomEffect {
   label: string
   /** Returns the toast label, or null when nothing could be randomized. */
   apply: () => string | null
+  /** Switch the effect off and return every dial it owns to factory default. */
+  reset: () => void
 }
 
 function pickRandom<T>(items: readonly T[], count: number): T[] {
@@ -214,10 +221,14 @@ function applyStyleDial(dial: StyleDial): string | null {
 /* --------------------------- color tools & filters --------------------------- */
 
 /**
- * Wraps one effect (color tool / filter) into a pickable: the first click on
- * it switches it on (if it was off) and re-dials its numeric parameters to
- * random positions within 25% of the factory defaults. Conditions mirror the
- * UI — a dial that the effect's current sub-mode hides is left alone.
+ * Wraps one effect (color tool / filter) into a pickable. `apply` switches it
+ * on (if it was off) and re-dials its numeric parameters to random positions
+ * within 25% of the factory defaults; conditions mirror the UI — a dial that
+ * the effect's current sub-mode hides is left alone. `reset` sweeps the
+ * effect off and back to factory defaults — every dial it owns, regardless
+ * of sub-mode conditions, so a mode switch never hides a stale jittered
+ * value. Fields outside the dial list (sub-mode, colors, uploaded images)
+ * survive both operations.
  */
 function makeEffect<C extends { enabled: boolean }>(spec: {
   label: string
@@ -228,6 +239,19 @@ function makeEffect<C extends { enabled: boolean }>(spec: {
 }): RandomEffect {
   return {
     label: spec.label,
+    reset: () => {
+      // Off + factory dials, unconditionally — writing a default into a
+      // dial the current sub-mode hides is a no-op visually and guarantees
+      // the slate is clean for the next roll.
+      const partial: Record<string, number | boolean> = { enabled: false }
+      for (const param of spec.params) {
+        const def =
+          param.def ?? (spec.defaults as unknown as Record<string, unknown>)[param.key as string]
+        if (typeof def !== 'number' || !Number.isFinite(def)) continue
+        partial[param.key as string] = def
+      }
+      spec.patch(partial as unknown as Partial<C>)
+    },
     apply: () => {
       const cfg = spec.get(useStudioStore.getState().config)
       // Built as a plain string-keyed record — the keys are config keys
@@ -517,13 +541,35 @@ export interface RandomizeSummary {
 }
 
 /**
- * Roll one randomized variation of the current look: 1–2 style dials,
- * 0–2 color tools and 0–2 filters, every picked dial within ±25% of its
- * factory default on the slider track. Applies the patches to the studio
- * store and returns what moved.
+ * Roll one fresh look: first default everything the randomizer owns (so
+ * previous picks never stack), then pick 1–2 style dials, 0–2 color tools
+ * and 0–2 filters, every picked dial within ±25% of its factory default on
+ * the slider track. Applies the patches to the studio store and returns
+ * what moved.
  */
 export function randomizeLook(): RandomizeSummary {
   const changed: string[] = []
+
+  /* ------------------------- clean slate ------------------------- */
+
+  // Style dials: every dial the randomizer owns goes back to its factory
+  // value — including dials the current style hides, so no stale jitter
+  // resurfaces after a style switch. One patch for the whole sweep.
+  const styleReset: Record<string, number> = {}
+  for (const dial of STYLE_DIALS) {
+    const def = (DEFAULT_STUDIO_CONFIG.visualizer as unknown as Record<string, unknown>)[
+      dial.key as string
+    ]
+    if (typeof def === 'number' && Number.isFinite(def)) styleReset[dial.key as string] = def
+  }
+  useStudioStore.getState().patchVisualizer(styleReset as Partial<VisualizerConfig>)
+
+  // Color tools & filters: off, dials back to factory. Their non-dial
+  // fields (sub-modes, gradients, colors, uploaded images) survive.
+  for (const effect of COLOR_EFFECTS) effect.reset()
+  for (const effect of FILTER_EFFECTS) effect.reset()
+
+  /* -------------------------- fresh roll -------------------------- */
 
   // Style: always 1–2 dials (the eligible pool is never empty — five dials
   // apply to every style).
