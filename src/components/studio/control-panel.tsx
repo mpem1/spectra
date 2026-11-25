@@ -32,13 +32,14 @@ export function ControlPanel() {
 
   // Roll one fresh look on a clean slate: everything the randomizer owns
   // (style dials, color tools, filters) is first defaulted/off so previous
-  // picks never stack, then 1–2 style dials, 0–2 color tools and 0–2
-  // filters are picked, every dial within ±25% of its factory default. The
-  // toast lists exactly what moved.
+  // picks never stack, then the visualizer switches to a different style
+  // card and 1–2 of its dials, 0–2 color tools and 0–2 filters are picked,
+  // every dial within ±25% of its factory default. The toast lists exactly
+  // what moved.
   const handleRandomize = () => {
     const { changed } = randomizeLook()
     toast.success('Fresh look rolled', {
-      description: changed.length ? changed.join(' · ') : 'Nothing to nudge — try a different style first.',
+      description: changed.length ? changed.join(' · ') : 'Nothing to roll — the pool came up empty.',
     })
   }
 
@@ -74,12 +75,12 @@ export function ControlPanel() {
               right under the tab grid (Style / Color / Filters · Lyrics /
               Export / Presets), so it is reachable from every tab without
               scrolling into any panel. Each click rolls a fresh look on a
-              clean slate: everything it owns is defaulted/off first, so
+              clean slate — including a different visualizer style card — so
               previous picks never stack. */}
           <button
             type="button"
-            aria-label="Randomize the look: starts from a clean slate, then nudges 1–2 style dials, 0–2 color tools and 0–2 filters within 25% of their defaults"
-            title="Randomize: clean slate first, then 1–2 style dials, 0–2 color tools, 0–2 filters — every dial within ±25% of its default"
+            aria-label="Randomize the look: starts from a clean slate, switches to a different visualizer style, then nudges 1–2 of its dials, 0–2 color tools and 0–2 filters within 25% of their defaults"
+            title="Randomize: clean slate, then a new visualizer style + 1–2 of its dials, 0–2 color tools, 0–2 filters — every dial within ±25% of its default"
             onClick={handleRandomize}
             className="group flex h-12 w-full shrink-0 items-center justify-center gap-2.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-sm font-semibold text-emerald-300 transition-all duration-200 hover:border-emerald-400 hover:bg-emerald-500 hover:text-zinc-950 hover:shadow-[0_0_24px_-6px] hover:shadow-emerald-500/60 active:scale-[0.98]"
           >

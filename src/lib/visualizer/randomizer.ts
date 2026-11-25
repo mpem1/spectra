@@ -10,8 +10,11 @@
  * stacks on top of the next one.
  *
  * Onto that clean slate it picks:
+ *  - a different visualizer style card (the shape itself — Bars → Wave → …;
+ *    Image only joins the pool when artwork is actually uploaded, since
+ *    without it the style is an empty placeholder frame),
  *  - 1–2 style dials (visualizer sliders, drawn only from the ones the
- *    current style actually shows),
+ *    freshly picked style actually shows),
  *  - 0–2 color tools (the Color tab effects),
  *  - 0–2 filters (the Filters tab effects),
  *
@@ -47,6 +50,7 @@ import {
   type StudioConfig,
   type TextureFilterConfig,
   type VisualizerConfig,
+  type VisualizerStyle,
   type VhsFilterConfig,
 } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
@@ -139,6 +143,26 @@ function pickRandom<T>(items: readonly T[], count: number): T[] {
 
 const notStyle = (...styles: string[]) => (viz: VisualizerConfig) => !styles.includes(viz.style)
 const isStyle = (...styles: string[]) => (viz: VisualizerConfig) => styles.includes(viz.style)
+
+/**
+ * The Style tab's visualizer cards, mirrored for the roll — same ids as the
+ * tab's STYLES list (keep in sync) plus toast labels.
+ */
+const VISUALIZER_STYLES: { id: VisualizerStyle; label: string }[] = [
+  { id: 'bars', label: 'Bars' },
+  { id: 'wave', label: 'Wave' },
+  { id: 'radial', label: 'Radial' },
+  { id: 'particles', label: 'Particles' },
+  { id: 'blob', label: 'Blob' },
+  { id: 'grid', label: 'Grid' },
+  { id: 'ribbon', label: 'Ribbon' },
+  { id: 'perspective', label: 'Perspective' },
+  { id: 'terrain', label: 'Terrain' },
+  { id: 'sphere', label: 'Sphere' },
+  { id: 'dotsphere', label: 'Dot Sphere' },
+  { id: 'serato', label: 'Serato' },
+  { id: 'imgviz', label: 'Image' },
+]
 
 /**
  * Style-tab dials, one entry per slider the UI can show. `when` mirrors the
@@ -542,10 +566,10 @@ export interface RandomizeSummary {
 
 /**
  * Roll one fresh look: first default everything the randomizer owns (so
- * previous picks never stack), then pick 1–2 style dials, 0–2 color tools
- * and 0–2 filters, every picked dial within ±25% of its factory default on
- * the slider track. Applies the patches to the studio store and returns
- * what moved.
+ * previous picks never stack), then switch to a different visualizer style
+ * and pick 1–2 of its dials, 0–2 color tools and 0–2 filters, every picked
+ * dial within ±25% of its factory default on the slider track. Applies the
+ * patches to the studio store and returns what moved.
  */
 export function randomizeLook(): RandomizeSummary {
   const changed: string[] = []
@@ -571,8 +595,23 @@ export function randomizeLook(): RandomizeSummary {
 
   /* -------------------------- fresh roll -------------------------- */
 
+  // The style card itself: always switch to a different visualizer, so the
+  // shape of the scene changes on every click. Image style joins the pool
+  // only when artwork is uploaded — without it the style is an empty
+  // placeholder frame, never a look worth rolling.
+  const vizBefore = useStudioStore.getState().config.visualizer
+  const stylePool = VISUALIZER_STYLES.filter(
+    (s) => s.id !== vizBefore.style && (s.id !== 'imgviz' || !!vizBefore.imgvizSrc),
+  )
+  const nextStyle = pickRandom(stylePool, 1)[0]
+  if (nextStyle) {
+    useStudioStore.getState().patchVisualizer({ style: nextStyle.id })
+    changed.push(`Style → ${nextStyle.label}`)
+  }
+
   // Style: always 1–2 dials (the eligible pool is never empty — five dials
-  // apply to every style).
+  // apply to every style). Eligibility is checked against the freshly
+  // switched style, mirroring the sliders its tab now shows.
   const viz = useStudioStore.getState().config.visualizer
   const eligible = STYLE_DIALS.filter((dial) => !dial.when || dial.when(viz))
   const styleCount = 1 + Math.floor(Math.random() * 2)
