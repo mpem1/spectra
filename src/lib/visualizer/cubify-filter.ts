@@ -27,19 +27,25 @@
  *          for the upper half — two folded prism faces per cell
  *     5. undo the transform and resample the frame (linear, clamped)
  *   run(): three warps with per-channel strengths (R and B get
- *     (1.2 ∓ dispersion)/1.2 of the depth) for chromatic edge fringing.
+ *     (1.2 ∓ dispersion)/1.2 of the depth) for chromatic edge fringing —
+ *     the under-/over-pulled channel deviations tint into the TWO FRINGE
+ *     COLORS (dispersionColorA/B; the factory red/blue pair reduces the
+ *     assembly back to the captured per-channel RGB split exactly).
  *
  * SHAPE MIXES: the grid can carry more than one tile geometry at once.
  * Which shape a cell carries is a pure function of the cell's grid index:
  * one shape tiles everything; two alternate in a checkerboard
  * (mod(x+y, 2)); three or more shuffle cell by cell by a stable sin hash.
  * The assignment scrolls with the grid exactly like the cells themselves.
- * Shape mixes run ONE warp per pixel — all three channels sample through
- * the identical distort, because the captured shader's per-channel
- * dispersion would print three differently-warped ghost copies of every
- * non-cube tile (shapes stacked on top of each other) and smear gray
- * patch tiles wherever a cell straddles the frame's content edge; the
- * chromatic glass therefore stays a classic-cube feature. The round beads
+ * The dispersion glass rides EVERY shape: the three channels pull with
+ * different strengths, but each channel's pull clamps inside its own cell
+ * on every shape (smoothstep maps [0,1] onto [0,1], the bead's radial
+ * frame onto the rim, the diamond's and triangle's folds likewise), so
+ * the channels never print offset copies of the tile — they fringe INSIDE
+ * it, exactly like the cube always did (an earlier port ran the split on
+ * full coordinate scalings instead of the pull strengths, which DID stack
+ * three ghost tiles per cell — that bug is why the glass was briefly
+ * cube-only). The round beads
  * are SCREEN-TRUE: the grid's cells are wider/taller than square by the
  * stretch dial (scy/scx = exp(∓2·stretch)), so the radial math grows off
  * the square cell frame and inscribes the cell's SMALLER screen dimension —
@@ -49,21 +55,23 @@
  * outside it (a real alpha cutout: the untouched picture beneath shows
  * through between the tiles — never painted black), so circles read as
  * beads floating on the frame, diamonds as gems and cubes as blocks; 0
- * keeps the seamless original glass. The factory single-cube path is
- * byte-identical to the captured shader.
+ * keeps the seamless original glass. The factory single-cube path prints
+ * the captured shader's pixels exactly (at the factory fringe colors).
  *
  * That is the whole effect — there is no bevel, light or grout in the
  * original; the 3D read comes entirely from the edge-pull warp. (The tile
- * gaps above are this port's one addition to the glass, and only for the
- * shape mixes — the factory cube keeps the pure original.) The port
+ * gaps above are this port's one addition to the glass's geometry, and
+ * only for the shape mixes — the factory cube keeps the pure original.)
+ * The port
  * runs the IDENTICAL math on the GPU: two tiny WebGL programs share one
- * offscreen GL canvas — the captured original (used whenever the mix is
- * exactly the factory cube: byte-identical output AND its original
- * instruction mix, which software-GL rasterizers measurably need) and the
- * tile-shape program (any other mix) — and the result is composited back
- * over the frame (one texture upload + one quad per frame). Where WebGL is
- * unavailable a per-pixel CPU fallback runs the same formulas with bilinear
- * sampling, so the look never silently disappears.
+ * offscreen GL canvas — the captured original pipeline (used whenever the
+ * mix is exactly the factory cube: same three warps, same constants, and
+ * at the factory fringe colors the output reduces to the captured shader
+ * exactly) and the tile-shape program (any other mix) — and the result is
+ * composited back over the frame (one texture upload + one quad per
+ * frame). Where WebGL is unavailable a per-pixel CPU fallback runs the
+ * same formulas with bilinear sampling, so the look never silently
+ * disappears.
  *
  * Clock: the animation drift follows the decorative style clock (wall clock
  * live so the cubes keep drifting while paused; song time in exports), the
@@ -83,6 +91,7 @@
 import type { AudioFrame, CubifyFilterConfig, CubifyShape, RenderContext } from './types'
 import { CUBIFY_SHAPE_ORDER } from './types'
 import { beatAmount, clamp01, getWork, resetWork } from './filter-utils'
+import { parseHexRGB } from './shade-ladder'
 
 /* ------------------------------- GLSL (WebGL1) ------------------------------ */
 /* Transcribed from the captured effect.app Cubify fragment shader — same
@@ -98,10 +107,13 @@ void main() {
 `
 
 /* The captured effect.app program — used whenever the tile mix is exactly
- * the factory cube. Byte-identical to the original shader and its original
- * instruction mix: under software GL (SwiftShader) even an unreached
- * dispatch branch in the program measurably slows the rasterizer, so the
- * classic look gets its own clean program. */
+ * the factory cube. The captured pipeline verbatim (same three warps, same
+ * constants, same instruction shape) — the one generalization is the final
+ * channel assembly: the under-/over-pulled deviations tint into the two
+ * fringe colors, and at the factory red/blue pair that reduces EXACTLY to
+ * the captured per-channel split (cR.r, cG.g, cB.b). It keeps its own clean
+ * program because under software GL (SwiftShader) even an unreached
+ * dispatch branch in the shapes program measurably slows the rasterizer. */
 const FRAG_SRC_CLASSIC = `
 precision highp float;
 uniform sampler2D iChannel0;
@@ -115,6 +127,8 @@ uniform float uAngle;
 uniform vec2 uPhase;
 uniform vec2 uSpeed;
 uniform float uDispersion;
+uniform vec3 uFringeA;
+uniform vec3 uFringeB;
 
 vec2 toRel(vec2 fragPx) {
   float ar = iResolution.x / max(iResolution.y, 1e-6);
@@ -173,24 +187,32 @@ void main() {
   const float baseIOR = 1.2;
   vec2 pos = toRel(gl_FragCoord.xy);
 
-  float sG = uDepth * (baseIOR / baseIOR);
   float sR = uDepth * ((baseIOR - uDispersion) / baseIOR);
+  float sG = uDepth * (baseIOR / baseIOR);
   float sB = uDepth * ((baseIOR + uDispersion) / baseIOR);
 
-  float r = pixel(distort(pos, sR)).r;
-  float g = pixel(distort(pos, sG)).g;
-  float b = pixel(distort(pos, sB)).b;
+  vec3 cR = pixel(distort(pos, sR)).rgb;
+  vec3 cG = pixel(distort(pos, sG)).rgb;
+  vec3 cB = pixel(distort(pos, sB)).rgb;
 
-  gl_FragColor = vec4(r, g, b, 1.0);
+  // The fringes: the base sample stays, the under-pulled deviation tints
+  // into fringe A and the over-pulled into fringe B. At the factory
+  // red/blue pair this reduces EXACTLY to the captured assembly
+  // vec3(cR.r, cG.g, cB.b).
+  vec3 col = cG + uFringeA * (cR - cG) + uFringeB * (cB - cG);
+
+  gl_FragColor = vec4(col, 1.0);
 }
 `
 
 /* The tile-shape program — same pipeline, with the per-cell shape dispatch
  * (five tile geometries, checkerboard and hash mixes). Runs whenever the
- * mix is anything other than the single factory cube. ONE warp per pixel:
- * no per-channel dispersion (that glass belongs to the classic cube
- * program — on shapes it stacked three ghost copies per tile), plus the
- * tile-gap silhouette pass and screen-true bead geometry. */
+ * mix is anything other than the single factory cube. The full chromatic
+ * glass: three pull strengths per pixel (R weaker, B stronger by the
+ * dispersion dial, exactly the classic program's trio) — every channel's
+ * pull clamps inside its own cell on every shape, so the split fringes
+ * INSIDE the tile instead of printing offset ghost copies of it — plus
+ * the tile-gap silhouette pass and screen-true bead geometry. */
 const FRAG_SRC_SHAPES = `
 precision highp float;
 uniform sampler2D iChannel0;
@@ -203,10 +225,13 @@ uniform float uHard;
 uniform float uAngle;
 uniform vec2 uPhase;
 uniform vec2 uSpeed;
+uniform float uDispersion;
 uniform vec4 uShapeA; // mixed tile shapes 1..4 (ids: 0 cube, 1 circle, 2 oval, 3 diamond, 4 triangle)
 uniform float uShapeB; // mixed tile shape 5
 uniform float uShapeN; // how many shapes mix (1..5)
 uniform float uGaps;   // tile silhouette rim, 0..1 (0 = seamless glass)
+uniform vec3 uFringeA; // under-pulled deviation tint
+uniform vec3 uFringeB; // over-pulled deviation tint
 
 vec2 toRel(vec2 fragPx) {
   float ar = iResolution.x / max(iResolution.y, 1e-6);
@@ -359,9 +384,23 @@ float tileEdge(vec2 f, float shape) {
   return 1.0 - smoothstep(1.0 - w, 1.0, d);
 }
 
+/* One channel's full ride: warp this pixel's cell position with pull k,
+ * undo the grid transform, resample. Every pull clamps inside its own
+ * cell on every shape (smoothstep maps [0,1] onto [0,1]; the bead's
+ * radial frame onto its rim; the folds likewise), so the three channels
+ * always sample the SAME cell — the split fringes inside the tile and
+ * never prints offset ghost copies of it. */
+vec3 sampleTile(vec2 f, float shape, vec2 base, float k, vec2 scxy, vec2 phase, float c, float s) {
+  vec2 uv = warpCell(f, shape, k);
+  uv = (uv + base - phase) / scxy;
+  uv *= mat2(c, -s, s, c);
+  return pixel(uv).rgb;
+}
+
 void main() {
-  // ONE clean warp per pixel — the whole rotate → scale → phase → dispatch
-  // pipeline inline, then a single sample and the silhouette multiply.
+  const float baseIOR = 1.2;
+  // ONE clean cell setup per pixel — rotate → scale → phase → dispatch —
+  // then the three channels ride it with their own pull strengths.
   vec2 pos = toRel(gl_FragCoord.xy);
   float s = sin(radians(uAngle));
   float c = cos(radians(uAngle));
@@ -372,10 +411,19 @@ void main() {
   vec2 base = floor(pos);
   vec2 f = pos - base;
   float shape = pickShape(base);
-  vec2 uv = warpCell(f, shape, uDepth);
-  uv = (uv + base - (uPhase + deltaPhase)) / scxy;
-  uv *= mat2(c, -s, s, c);
-  vec3 col = pixel(uv).rgb;
+
+  float sR = uDepth * ((baseIOR - uDispersion) / baseIOR);
+  float sG = uDepth;
+  float sB = uDepth * ((baseIOR + uDispersion) / baseIOR);
+  vec3 cR = sampleTile(f, shape, base, sR, scxy, uPhase + deltaPhase, c, s);
+  vec3 cG = sampleTile(f, shape, base, sG, scxy, uPhase + deltaPhase, c, s);
+  vec3 cB = sampleTile(f, shape, base, sB, scxy, uPhase + deltaPhase, c, s);
+
+  // The fringes — the same assembly the classic program runs: the base
+  // sample stays, the under-pulled deviation tints into fringe A and the
+  // over-pulled into fringe B (factory red/blue = the captured split).
+  vec3 col = cG + uFringeA * (cR - cG) + uFringeB * (cB - cG);
+
   // The silhouette multiplies color AND alpha (premultiplied rgba): outside
   // the tiles the print is genuinely transparent, so the untouched picture
   // beneath shows through the gaps — the shapes never paint black over it.
@@ -416,6 +464,8 @@ const CLASSIC_UNIFORMS = [
   'uPhase',
   'uSpeed',
   'uDispersion',
+  'uFringeA',
+  'uFringeB',
   'iChannel0',
 ]
 
@@ -552,6 +602,8 @@ function drawGL(g: CubifyGL, rc: RenderContext, p: CubifyParams): void {
   gl.uniform2f(loc.uPhase!, p.offsetX, p.offsetY)
   gl.uniform2f(loc.uSpeed!, p.speedX, p.speedY)
   gl.uniform1f(loc.uDispersion!, p.dispersion)
+  gl.uniform3f(loc.uFringeA!, p.fringeA[0], p.fringeA[1], p.fringeA[2])
+  gl.uniform3f(loc.uFringeB!, p.fringeB[0], p.fringeB[1], p.fringeB[2])
   if (!p.cubeOnly) {
     gl.uniform4f(
       loc.uShapeA!,
@@ -771,8 +823,13 @@ interface CubifyParams {
   /** How many shapes mix (shapeIds.length, 1..5). */
   shapeN: number
   /** True when the mix is exactly the factory cube — picks the classic
-   *  program (the captured shader verbatim) over the shape-dispatch one. */
+   *  program (the captured shader pipeline) over the shape-dispatch one. */
   cubeOnly: boolean
+  /** The two fringe colors (0..1 rgb) the dispersion's under-/over-pulled
+   *  channel deviations tint into — the factory red/blue pair reduces the
+   *  assembly to the captured per-channel RGB split exactly. */
+  fringeA: [number, number, number]
+  fringeB: [number, number, number]
 }
 
 /** Per-pixel port of the shader for environments without WebGL: same math,
@@ -802,10 +859,11 @@ function drawCPU(rc: RenderContext, p: CubifyParams, blend: number): void {
   const mG = p.depth
   const mR = (p.depth * (ior - p.dispersion)) / ior
   const mB = (p.depth * (ior + p.dispersion)) / ior
-  // One clean warp for shape mixes — the per-channel split would print
-  // three differently-warped ghost copies of every non-cube tile (stacked
-  // shapes). The chromatic glass stays a classic-cube feature.
-  const split = p.dispersion > 0.0005 && p.cubeOnly
+  // The chromatic glass rides every tile shape — each channel's pull clamps
+  // inside its own cell (identical for all three: the cell setup doesn't
+  // depend on the pull), so the split fringes inside the tile. Same gate as
+  // the classic path: at dispersion 0 the three samples are identical.
+  const split = p.dispersion > 0.0005
   const [gx, gy] = beadGrow(p.stretch)
 
   const sample = (u: number, v: number): [number, number, number] => {
@@ -850,9 +908,12 @@ function drawCPU(rc: RenderContext, p: CubifyParams, blend: number): void {
         const cR = sample((uvR[0] / incX + 1) / 2, (uvR[1] / incY + 1) / 2)
         const cG = sample((uvG[0] / incX + 1) / 2, (uvG[1] / incY + 1) / 2)
         const cB = sample((uvB[0] / incX + 1) / 2, (uvB[1] / incY + 1) / 2)
-        r = cR[0]
-        g = cG[1]
-        b = cB[2]
+        // The fringe assembly — the base sample stays, the under-pulled
+        // deviation tints into fringe A, the over-pulled into fringe B (at
+        // the factory red/blue this reduces to (cR.r, cG.g, cB.b) exactly).
+        r = cG[0] + p.fringeA[0] * (cR[0] - cG[0]) + p.fringeB[0] * (cB[0] - cG[0])
+        g = cG[1] + p.fringeA[1] * (cR[1] - cG[1]) + p.fringeB[1] * (cB[1] - cG[1])
+        b = cG[2] + p.fringeA[2] * (cR[2] - cG[2]) + p.fringeB[2] * (cB[2] - cG[2])
         edge = uvG[2]
       } else {
         const uv = distortX(relX, relY, mG, cosA, sinA, scx, scy, phaseX, phaseY, p.hard, p.shapeIds, p.gaps, gx, gy)
@@ -923,6 +984,12 @@ export function drawCubifyFilter(
 
   const shapeIds = normalizeShapeIds(cfg.shapes)
   const cubeOnly = shapeIds.length === 1 && shapeIds[0] === 0
+  // The fringe colors — the under-/over-pulled channel deviations tint into
+  // these (the factory red/blue pair reduces the assembly to the captured
+  // per-channel RGB split exactly; junk hex falls back to the factory pair
+  // like every other color field's guard).
+  const fringeA = parseHexRGB(cfg.dispersionColorA ?? '#ff0000') ?? [1, 0, 0]
+  const fringeB = parseHexRGB(cfg.dispersionColorB ?? '#0000ff') ?? [0, 0, 1]
   const params: CubifyParams = {
     time: frame.styleTime,
     scale: cfg.scale ?? 0.6,
@@ -941,6 +1008,8 @@ export function drawCubifyFilter(
     shapeIds,
     shapeN: shapeIds.length,
     cubeOnly,
+    fringeA: [fringeA[0] / 255, fringeA[1] / 255, fringeA[2] / 255],
+    fringeB: [fringeB[0] / 255, fringeB[1] / 255, fringeB[2] / 255],
   }
 
   const g = getGL(W, H)

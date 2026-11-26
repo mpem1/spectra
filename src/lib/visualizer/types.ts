@@ -1000,14 +1000,18 @@ export const CUBIFY_SHAPE_ORDER: CubifyShape[] = ['cube', 'circle', 'oval', 'dia
  * squashed bead (oval), a 45°-twisted gem (diamond) or a folded prism
  * (triangle) — one shape tiles every cell, two alternate in a checkerboard,
  * three or more shuffle cell by cell by a stable hash that scrolls with the
- * grid. Shape mixes run ONE clean warp per pixel and can cut visible tile
- * silhouettes (`gaps` fades each shape out of the print so the untouched
- * picture shows through between the tiles — never painted black — round
- * beads inscribe the cell's smaller screen dimension, so they render round
- * whatever the stretch dial does). "Hard edges" snaps the warp to each
- * shape's landmarks instead; "dispersion" splits the warp per RGB channel
- * but belongs to the classic cube tiles only (on shapes it printed three
- * stacked ghost copies per cell). The grid can rotate, drift
+ * grid. Every tile shape runs the chromatic dispersion glass: the warp
+ * splits per channel into the two fringe colors (`dispersionColorA/B` —
+ * the factory red/blue pair is the captured original RGB split) and —
+ * because each channel's pull clamps inside its own cell on every shape —
+ * the channels fringe INSIDE each tile instead of printing offset ghost
+ * copies of it. Shape mixes can also cut visible tile silhouettes (`gaps`
+ * fades each shape out of the print so the untouched picture shows through
+ * between the tiles — never painted black — round beads inscribe the
+ * cell's smaller screen dimension, so they render round whatever the
+ * stretch dial does). "Hard edges" snaps the warp to each shape's
+ * landmarks instead (and with it the split vanishes — no smooth pull, no
+ * fringe). The grid can rotate, drift
  * (animation speed) and be offset. Deterministic (no randomness — same
  * frame in, same pixels out), so exports match the preview frame-exactly.
  * Skipped on transparent backgrounds.
@@ -1044,12 +1048,20 @@ export interface CubifyFilterConfig {
    *  the preview is paused and freezes to song time in exports) */
   speedX: number
   speedY: number
-  /** Dispersion 0..1 — the warp strength splits per RGB channel, fringing
-   *  the cube edges like chromatic glass. A CUBE-ONLY feature: shape mixes
-   *  run one clean warp per pixel (the per-channel split would print three
-   *  differently-warped ghost copies of every bead — stacked shapes), so
-   *  the dial only lives on the classic single-cube look. */
+  /** Dispersion 0..1 — the warp strength splits per channel, fringing the
+   *  tile edges like chromatic glass on EVERY tile shape: the under-pulled
+   *  deviation tints into dispersionColorA, the over-pulled into
+   *  dispersionColorB (each channel's pull clamps inside its own cell, so
+   *  the split fringes INSIDE the tile — never stacked ghost copies of
+   *  it). Hard edges bypasses the smooth pull, so there the split lands 0
+   *  and the glass reads clean. */
   dispersion: number
+  /** Fringe color A ('#rrggbb') — what the under-pulled channel deviation
+   *  tints into. The factory red is the captured effect.app glass. */
+  dispersionColorA: string
+  /** Fringe color B ('#rrggbb') — what the over-pulled channel deviation
+   *  tints into. The factory blue is the captured effect.app glass. */
+  dispersionColorB: string
   /** Tile gaps 0..1 — how hard each mixed tile's SILHOUETTE reads: outside
    *  the tile shape (and across its rim band) the print fades to fully
    *  transparent — a real alpha cutout, so the untouched picture beneath
@@ -2950,6 +2962,8 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     speedY: 0.34,
     gaps: 0.5,
     dispersion: 0.75,
+    dispersionColorA: '#ff0000',
+    dispersionColorB: '#0000ff',
     blend: 1,
     beatReactive: false,
     beatStrength: 0.5,

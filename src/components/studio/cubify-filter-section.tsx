@@ -5,6 +5,7 @@ import type { CubifyFilterConfig, CubifyShape } from '@/lib/visualizer/types'
 import { CUBIFY_SHAPE_ORDER } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { Switch } from '@/components/ui/switch'
+import { ColorPickerButton } from '@/components/studio/color-picker'
 import { MicroLabel, BeatPunchRow, SliderRow, ToggleRow, sectionShell } from '@/components/studio/controls'
 import { cn } from '@/lib/utils'
 
@@ -66,13 +67,15 @@ const SHAPE_CHIPS: { id: CubifyShape; label: string; icon: LucideIcon }[] = [
  * per-cell edge-pull warp = the 3D depth, optional hard pixel snap, RGB
  * dispersion on the edges). The Shape mix chooser cuts the grid into cubes,
  * circles, ovals, diamonds or triangles — one shape tiles everything, two
- * alternate in a checkerboard, three or more shuffle cell by cell. Shape
- * mixes run one clean warp per pixel (no RGB split — that glass belongs to
- * the lone cube) and cut visible tile silhouettes (Tile gaps — the picture
- * shows through between the tiles, never painted black). The beads are
- * screen-true: circles render round whatever the stretch dial does. Dials
- * match the original effect's controls. Deterministic, so every export bakes
- * the identical look; skipped on transparent backgrounds.
+ * alternate in a checkerboard, three or more shuffle cell by cell. The
+ * chromatic dispersion glass rides EVERY shape — the channel split pulls
+ * apart into the two selectable fringe colors inside each tile (the factory
+ * red/blue pair is the captured original) — and shape mixes can cut visible
+ * tile silhouettes (Tile gaps — the picture shows through between the
+ * tiles, never painted black). The beads are screen-true: circles render
+ * round whatever the stretch dial does. Dials match the original effect's
+ * controls. Deterministic, so every export bakes the identical look;
+ * skipped on transparent backgrounds.
  */
 export function CubifyFilterSection() {
   const filter = useStudioStore((s) => s.config.cubifyFilter)
@@ -81,8 +84,8 @@ export function CubifyFilterSection() {
   const set = (key: keyof CubifyFilterConfig) => (value: number) =>
     patchCubifyFilter({ [key]: value } as Partial<CubifyFilterConfig>)
 
-  // The factory mix (the lone captured cube) is the one look that keeps the
-  // original's chromatic dispersion and never cuts silhouettes.
+  // Tile gaps are a shape-mix feature — the factory lone cube keeps the
+  // captured original's seamless glass and never cuts silhouettes.
   const cubeOnly = filter.shapes.length === 1 && filter.shapes[0] === 'cube'
 
   // Toggle one shape in or out of the mix, always re-stored in canonical
@@ -233,16 +236,37 @@ export function CubifyFilterSection() {
             onChange={set('speedY')}
             format={(v) => `${v.toFixed(2)} cells/s`}
           />
-          {cubeOnly ? (
-            <SliderRow
-              label="Dispersion"
-              value={filter.dispersion}
-              min={0}
-              max={1}
-              step={0.001}
-              onChange={set('dispersion')}
-              format={(v) => `${(v * 100).toFixed(1)}%`}
-            />
+          <SliderRow
+            label="Dispersion"
+            value={filter.dispersion}
+            min={0}
+            max={1}
+            step={0.001}
+            onChange={set('dispersion')}
+            format={(v) => `${(v * 100).toFixed(1)}%`}
+          />
+          {filter.dispersion > 0.001 ? (
+            <div className="space-y-1.5">
+              <div className="flex h-5 items-center justify-between">
+                <MicroLabel>Fringe colors</MicroLabel>
+                <div className="flex items-center gap-1.5">
+                  <ColorPickerButton
+                    value={filter.dispersionColorA}
+                    onChange={(dispersionColorA) => patchCubifyFilter({ dispersionColorA })}
+                    ariaLabel="Cubify fringe color A"
+                  />
+                  <ColorPickerButton
+                    value={filter.dispersionColorB}
+                    onChange={(dispersionColorB) => patchCubifyFilter({ dispersionColorB })}
+                    ariaLabel="Cubify fringe color B"
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] leading-snug text-zinc-600">
+                The two colors the glass splits every tile's edges into — the
+                factory red / blue pair is the original effect.app fringing.
+              </p>
+            </div>
           ) : null}
           <SliderRow
             label="Mix"
@@ -264,15 +288,18 @@ export function CubifyFilterSection() {
             The grid drifts with the song (speed dials above). Hard edges
             snaps every tile to hard pixels — cubes to their corners, beads
             to center-or-rim, diamonds to their points, triangles to the
-            fold. Tile gaps cuts each mixed shape out of the mosaic — the
+            fold (and with no smooth pull left, the fringe vanishes there).
+            Tile gaps cuts each mixed shape out of the mosaic — the
             untouched picture shows through between the tiles instead of any
             paint, so circles read as round beads floating on the frame
             (beads inscribe the cell's smaller screen dimension, so a circle
             is a circle whatever the stretch dial does; 0% keeps the
-            seamless glass). The chromatic dispersion
-            glass belongs to the lone cube — shape mixes run one clean warp
-            so their shapes never print stacked RGB ghost copies. Skipped on
-            transparent backgrounds so alpha recordings stay clean.
+            seamless glass). Dispersion splits the glass on EVERY tile
+            shape — each channel's pull stays inside its own cell, so the
+            colors fringe the tile's interior and rim instead of stacking
+            ghost copies of it, and the Fringe colors pick which two colors
+            the split lands on. Skipped on transparent backgrounds so alpha
+            recordings stay clean.
           </p>
         </>
       ) : null}
