@@ -43,6 +43,10 @@ import { drawPolaroidFilter } from './polaroid-filter'
 import { drawPhosphorFilter } from './phosphor-filter'
 import { drawContourFilter } from './contour-filter'
 import { drawCubifyFilter } from './cubify-filter'
+import { drawKaleidoscopeFilter } from './kaleidoscope-filter'
+import { drawWaveWarpFilter } from './wave-warp-filter'
+import { drawVignetteFilter } from './vignette-filter'
+import { drawShakeFilter } from './shake-filter'
 import { drawDotSphereStyle } from './dot-sphere-style'
 import { getWork, resetWork } from './filter-utils'
 
@@ -237,6 +241,15 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   drawHalftoneFilter(rc, config.halftoneFilter, frame, transparent)
   drawGlitchFilter(rc, config.glitchFilter, frame, transparent)
   drawAnaglyphFilter(rc, config.anaglyphFilter, frame, transparent)
+  // Water wave — the picture ripples like a reflection on water (thin-strip
+  // sine displacement, drifts with the style clock). A re-projection stage:
+  // it runs before the color grades so everything after it tones the
+  // rippled picture.
+  drawWaveWarpFilter(rc, config.waveWarpFilter, frame, transparent)
+  // Kaleidoscope — the picture mirrored through a radial array of wedge
+  // slices around a center point, spinning slowly. Also re-projection:
+  // before the color stages, which grade the mirrored print.
+  drawKaleidoscopeFilter(rc, config.kaleidoscopeFilter, frame, transparent)
   // Neon split — recolors the whole finished picture through the neon ramp
   // (gradient map + film grain + bloom). Before the color grade, which tones
   // whatever sits beneath it, so the two stack.
@@ -288,6 +301,14 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // included) into chunky Bayer dot patterns, so it always reads as the
   // outermost poster layer.
   drawDitherFilter(rc, config.ditherFilter, frame, transparent)
+  // Vignette — the lens darkens toward the frame's edges (an elliptical
+  // falloff, tintable). After the poster layers so their prints read
+  // through the lens too, before the camera shake / polaroid scene.
+  drawVignetteFilter(rc, config.vignetteFilter, frame, transparent)
+  // Camera shake — the whole finished picture reframed like handheld
+  // footage (smooth wander + roll wobble + beat jolt). The last optical
+  // step before the polaroid wall, which stays the outermost scene.
+  drawShakeFilter(rc, config.shakeFilter, frame, transparent)
   // Polaroid wall — the outermost re-materialization: the finished picture is
   // printed onto a page of scattered instant prints, every photo window
   // showing the whole picture through it (grid split drifts the sections

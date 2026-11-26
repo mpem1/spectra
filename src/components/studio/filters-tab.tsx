@@ -8,10 +8,14 @@ import { TextureFilterSection } from '@/components/studio/texture-filter-section
 import { HalftoneFilterSection } from '@/components/studio/halftone-filter-section'
 import { GlitchFilterSection } from '@/components/studio/glitch-filter-section'
 import { AnaglyphFilterSection } from '@/components/studio/anaglyph-filter-section'
+import { WaveWarpFilterSection } from '@/components/studio/wave-warp-filter-section'
+import { KaleidoscopeFilterSection } from '@/components/studio/kaleidoscope-filter-section'
 import { PhosphorFilterSection } from '@/components/studio/phosphor-section'
 import { ContourFilterSection } from '@/components/studio/contour-filter-section'
 import { CubifyFilterSection } from '@/components/studio/cubify-filter-section'
 import { DitherFilterSection } from '@/components/studio/dither-filter-section'
+import { VignetteFilterSection } from '@/components/studio/vignette-filter-section'
+import { ShakeFilterSection } from '@/components/studio/shake-filter-section'
 import { LayersSection } from '@/components/studio/layers-section'
 
 /**
@@ -59,6 +63,12 @@ export function FiltersTab() {
       {/* 3D glasses — red/cyan anaglyph re-projection with beat pop */}
       <AnaglyphFilterSection />
 
+      {/* Water wave — the picture ripples like a reflection on water */}
+      <WaveWarpFilterSection />
+
+      {/* Kaleidoscope — the picture mirrored through radial wedge slices */}
+      <KaleidoscopeFilterSection />
+
       {/* Phosphor monitor — the lo-fi sci-fi video tube: columns of glowing
           dashes on a dark tube, shade ladder recolorable */}
       <PhosphorFilterSection />
@@ -74,6 +84,12 @@ export function FiltersTab() {
       {/* Retro dither — chunky Bayer dot patterns (glowing blue poster,
           1-bit B&W, retro color, or custom duotone) with a bright-dot bloom */}
       <DitherFilterSection />
+
+      {/* Vignette — the lens darkens toward the frame's edges */}
+      <VignetteFilterSection />
+
+      {/* Camera shake — handheld drift + roll wobble + beat jolt */}
+      <ShakeFilterSection />
 
       {/* Layers — keep the moving layers colored above every filter.
           (The Polaroid wall lives in the Style tab: it is a background

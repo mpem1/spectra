@@ -38,6 +38,10 @@ import {
   type PhosphorFilterConfig,
   type ContourFilterConfig,
   type CubifyFilterConfig,
+  type KaleidoscopeFilterConfig,
+  type WaveWarpFilterConfig,
+  type VignetteFilterConfig,
+  type ShakeFilterConfig,
 } from '@/lib/visualizer/types'
 import {
   exportMP4,
@@ -146,6 +150,14 @@ type StudioState = {
   patchContourFilter: (partial: Partial<ContourFilterConfig>) => void
   /** Patches config.cubifyFilter (the glossy cube-tile print) */
   patchCubifyFilter: (partial: Partial<CubifyFilterConfig>) => void
+  /** Patches config.kaleidoscopeFilter (the radial mirror wedges) */
+  patchKaleidoscopeFilter: (partial: Partial<KaleidoscopeFilterConfig>) => void
+  /** Patches config.waveWarpFilter (the water-ripple strip warp) */
+  patchWaveWarpFilter: (partial: Partial<WaveWarpFilterConfig>) => void
+  /** Patches config.vignetteFilter (the lens edge falloff) */
+  patchVignetteFilter: (partial: Partial<VignetteFilterConfig>) => void
+  /** Patches config.shakeFilter (the handheld camera drift) */
+  patchShakeFilter: (partial: Partial<ShakeFilterConfig>) => void
   /** Patches config.layers (the layers-vs-filters options) */
   patchLayers: (partial: Partial<LayersConfig>) => void
   /** Adds an imported font file to the shared lyrics/title library */
@@ -344,6 +356,26 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, cubifyFilter: { ...s.config.cubifyFilter, ...partial } },
     })),
 
+  patchKaleidoscopeFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, kaleidoscopeFilter: { ...s.config.kaleidoscopeFilter, ...partial } },
+    })),
+
+  patchWaveWarpFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, waveWarpFilter: { ...s.config.waveWarpFilter, ...partial } },
+    })),
+
+  patchVignetteFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, vignetteFilter: { ...s.config.vignetteFilter, ...partial } },
+    })),
+
+  patchShakeFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, shakeFilter: { ...s.config.shakeFilter, ...partial } },
+    })),
+
   patchLayers: (partial) =>
     set((s) => ({
       config: { ...s.config, layers: { ...s.config.layers, ...partial } },
@@ -496,6 +528,10 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         phosphorFilter: { ...DEFAULT_STUDIO_CONFIG.phosphorFilter, ...config.phosphorFilter },
         contourFilter: { ...DEFAULT_STUDIO_CONFIG.contourFilter, ...config.contourFilter },
         cubifyFilter: { ...DEFAULT_STUDIO_CONFIG.cubifyFilter, ...config.cubifyFilter },
+        kaleidoscopeFilter: { ...DEFAULT_STUDIO_CONFIG.kaleidoscopeFilter, ...config.kaleidoscopeFilter },
+        waveWarpFilter: { ...DEFAULT_STUDIO_CONFIG.waveWarpFilter, ...config.waveWarpFilter },
+        vignetteFilter: { ...DEFAULT_STUDIO_CONFIG.vignetteFilter, ...config.vignetteFilter },
+        shakeFilter: { ...DEFAULT_STUDIO_CONFIG.shakeFilter, ...config.shakeFilter },
         // Layers-vs-filters options: new saves carry their own section; old
         // saves graduate the halftone's flip-gated "Layers stay colored".
         layers: resolveLayersConfig(config),

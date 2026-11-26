@@ -1033,6 +1033,121 @@ export interface CubifyFilterConfig {
 }
 
 /**
+ * Kaleidoscope filter — the whole picture mirrored through a radial array
+ * of wedge slices around a center point: every wedge shows the same slice
+ * of the picture (odd wedges mirrored about their own center axis, so the
+ * seams always read as clean reflections), spinning slowly and zoomable.
+ * Deterministic (the spin derives from the decorative style clock, no
+ * randomness), so exports match the preview frame-exactly. Skipped on
+ * transparent backgrounds.
+ */
+export interface KaleidoscopeFilterConfig {
+  enabled: boolean
+  /** Mirror wedges around the center, 2..16 (2 = a plain two-way mirror) */
+  segments: number
+  /** Spin — the whole mirror array rotates this many turns per second,
+   *  -0.5..0.5 (negative spins the other way) */
+  spin: number
+  /** Zoom into the slice, 1..4 (1 = the auto-cover framing, higher
+   *  magnifies the slice) */
+  zoom: number
+  /** Kaleidoscope center, 0..100 % of the frame */
+  centerX: number
+  centerY: number
+  /** Mix 0..1 — how much of the frame the mirror print takes over (below 1
+   *  the untouched frame fades back through) */
+  blend: number
+  /** React to beat — the array kicks around an extra wedge on the song's
+   *  low end (driven by frame.bass, additive, resting exactly at the dialed
+   *  look between kicks) */
+  beatReactive: boolean
+  /** How hard the beat spin hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
+}
+
+/**
+ * Water wave filter — the whole picture ripples like a reflection on
+ * water: the frame is redrawn in thin horizontal strips, every strip
+ * shifted sideways by a sine whose phase rolls down the frame and drifts
+ * with the decorative style clock (each strip draws twice, wrapped, so the
+ * shifted edges stay seamless). Deterministic (same frame in, same pixels
+ * out), so exports match the preview frame-exactly. Skipped on transparent
+ * backgrounds.
+ */
+export interface WaveWarpFilterConfig {
+  enabled: boolean
+  /** Ripple height in px on the 720p reference canvas, 0..120 */
+  amplitude: number
+  /** Ripples — full waves from the frame's top edge to its bottom, 0.5..8 */
+  density: number
+  /** Flow speed — the ripple pattern drifts this many cycles per second,
+   *  0..3 */
+  speed: number
+  /** Mix 0..1 — how much of the frame the rippled print takes over (below
+   *  1 the untouched frame fades back through) */
+  blend: number
+  /** React to beat — the ripples swell deeper on the song's low end
+   *  (driven by frame.bass, multiplicative, resting exactly at the dialed
+   *  look between kicks) */
+  beatReactive: boolean
+  /** How hard the beat wobble hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
+}
+
+/**
+ * Vignette filter — the lens darkens toward the frame's edges: an
+ * elliptical falloff centered on the picture (transparent at the center,
+ * the tint color fading in toward the corners), with reach / softness
+ * dials and a tintable edge color. Deterministic, skipped on transparent
+ * backgrounds.
+ */
+export interface VignetteFilterConfig {
+  enabled: boolean
+  /** Strength 0..1 — how dark the edges get */
+  amount: number
+  /** Reach 0..1 — how far in from the corners the darkness starts */
+  reach: number
+  /** Softness 0..1 — the falloff's feather (0 = a hard lens edge,
+   *  1 = the longest smooth fade) */
+  softness: number
+  /** Edge tint as '#rrggbb' — near-black keeps the classic neutral lens;
+   *  a hue casts a colored shadow into the corners */
+  tintColor: string
+  /** React to beat — the vignette darkens deeper on the song's low end
+   *  (driven by frame.bass, additive, resting exactly at the dialed look
+   *  between kicks) */
+  beatReactive: boolean
+  /** How hard the beat pulse hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
+}
+
+/**
+ * Camera shake filter — the finished picture is reframed like handheld
+ * footage: the whole frame drifts around on a smooth two-sine wander,
+ * rolls a fraction of a degree with it, and jolts sharply on the song's
+ * low end when "React to beat" is on (each kick's direction hashed from
+ * the song time, so exports kick the exact same way). An overscan scale
+ * keeps the moved frame from ever revealing its edges. Deterministic, so
+ * exports match the preview frame-exactly. Skipped on transparent
+ * backgrounds.
+ */
+export interface ShakeFilterConfig {
+  enabled: boolean
+  /** Handheld drift in px on the 720p reference canvas, 0..60 */
+  amount: number
+  /** Drift speed — how fast the handheld wander circles, 0..3 */
+  speed: number
+  /** Roll wobble — the frame tilts this many degrees with the drift, 0..2 */
+  wobble: number
+  /** React to beat — a sharp jolt kicks the frame on the song's low end
+   *  (driven by frame.bass, additive, resting exactly at the dialed drift
+   *  between kicks) */
+  beatReactive: boolean
+  /** How hard the beat jolt hits, 0..1 (only matters when beatReactive) */
+  beatStrength: number
+}
+
+/**
  * Phosphor monitor filter — the lo-fi sci-fi video-tube look: the whole
  * picture is repainted as glowing vertical lines or columns of short
  * horizontal dashes (one sample per cell, tone → shade of the picked
@@ -1933,6 +2048,15 @@ export interface StudioConfig {
   /** Full-frame cubify post-pass (the picture resampled into glossy 3D
    *  cube tiles — the effect.app Cubify effect) */
   cubifyFilter: CubifyFilterConfig
+  /** Full-frame kaleidoscope post-pass (radial mirror wedges around a
+   *  center point) */
+  kaleidoscopeFilter: KaleidoscopeFilterConfig
+  /** Full-frame water-wave post-pass (thin-strip sine ripple) */
+  waveWarpFilter: WaveWarpFilterConfig
+  /** Full-frame vignette post-pass (elliptical lens falloff at the edges) */
+  vignetteFilter: VignetteFilterConfig
+  /** Full-frame camera-shake post-pass (handheld drift + beat jolt) */
+  shakeFilter: ShakeFilterConfig
   /** How the moving layers interact with the full-frame filter chain */
   layers: LayersConfig
   /** Imported font library — shared by the lyrics and the title card */
@@ -2712,6 +2836,43 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     speedY: 0.34,
     dispersion: 0.75,
     blend: 1,
+    beatReactive: false,
+    beatStrength: 0.5,
+  },
+  kaleidoscopeFilter: {
+    enabled: false,
+    segments: 8,
+    spin: 0.05,
+    zoom: 1.4,
+    centerX: 50,
+    centerY: 50,
+    blend: 1,
+    beatReactive: false,
+    beatStrength: 0.5,
+  },
+  waveWarpFilter: {
+    enabled: false,
+    amplitude: 22,
+    density: 2.5,
+    speed: 0.8,
+    blend: 1,
+    beatReactive: false,
+    beatStrength: 0.5,
+  },
+  vignetteFilter: {
+    enabled: false,
+    amount: 0.55,
+    reach: 0.5,
+    softness: 0.6,
+    tintColor: '#000000',
+    beatReactive: false,
+    beatStrength: 0.5,
+  },
+  shakeFilter: {
+    enabled: false,
+    amount: 10,
+    speed: 1,
+    wobble: 0.4,
     beatReactive: false,
     beatStrength: 0.5,
   },

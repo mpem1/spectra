@@ -27,7 +27,8 @@
  * stock, the dither palette) land a random preset, and color fields (halo
  * tint, inks, papers, lens tints, custom-texture tints) get fresh random
  * colors in their own role — glows stay bright, backings stay dark, tints
- * stay tasteful. The Style tab's own GRADIENT section rolls as well,
+ * stay tasteful (the vignette's edge tint rolls deep). The Style tab's own
+ * GRADIENT section rolls as well,
  * wherever the tab still shows it (every style except perspective, which
  * keeps its strict two-color split): colors land fresh every roll — half
  * the rolls one of the editor's five preset ramps, half a coordinated
@@ -79,14 +80,18 @@ import {
   type GradientPresetId,
   type HalationFilterConfig,
   type HalftoneFilterConfig,
+  type KaleidoscopeFilterConfig,
   type NeonSplitFilterConfig,
   type PhosphorFilterConfig,
   type ScreenFilterConfig,
+  type ShakeFilterConfig,
   type StudioConfig,
   type TextureFilterConfig,
+  type VignetteFilterConfig,
   type VisualizerConfig,
   type VisualizerStyle,
   type VhsFilterConfig,
+  type WaveWarpFilterConfig,
 } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { RAMPS } from '@/lib/visualizer/neon-split-data'
@@ -938,6 +943,73 @@ const FILTER_EFFECTS: RandomEffect[] = [
       { ...param<DitherFilterConfig>('glow', 0, 1, 0.05), label: 'Glow', when: (f) => f.mode !== 'macpaint' },
       { ...param<DitherFilterConfig>('strength', 0, 1, 0.05), label: 'Strength' },
       { ...param<DitherFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat punch', when: (f) => f.beatReactive },
+    ],
+  }),
+  makeEffect<WaveWarpFilterConfig>({
+    label: 'Water wave',
+    get: (c) => c.waveWarpFilter,
+    defaults: DEFAULT_STUDIO_CONFIG.waveWarpFilter,
+    patch: (p) => useStudioStore.getState().patchWaveWarpFilter(p),
+    switches: [{ label: 'beat wobble', key: 'beatReactive' }],
+    params: [
+      { ...param<WaveWarpFilterConfig>('amplitude', 0, 120, 1), label: 'Amplitude' },
+      { ...param<WaveWarpFilterConfig>('density', 0.5, 8, 0.1), label: 'Ripples' },
+      { ...param<WaveWarpFilterConfig>('speed', 0, 3, 0.05), label: 'Flow speed' },
+      { ...param<WaveWarpFilterConfig>('blend', 0, 1, 0.05), label: 'Mix' },
+      { ...param<WaveWarpFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat wobble', when: (f) => f.beatReactive },
+    ],
+  }),
+  makeEffect<KaleidoscopeFilterConfig>({
+    label: 'Kaleidoscope',
+    get: (c) => c.kaleidoscopeFilter,
+    defaults: DEFAULT_STUDIO_CONFIG.kaleidoscopeFilter,
+    patch: (p) => useStudioStore.getState().patchKaleidoscopeFilter(p),
+    switches: [{ label: 'beat spin', key: 'beatReactive' }],
+    params: [
+      // The roll never lands 2 wedges (the plain two-way mirror reads as a
+      // break, not a look) — 3..16 keeps every pick a real kaleidoscope.
+      { ...param<KaleidoscopeFilterConfig>('segments', 3, 16, 1), label: 'Segments' },
+      { ...param<KaleidoscopeFilterConfig>('spin', -0.5, 0.5, 0.01), label: 'Spin' },
+      { ...param<KaleidoscopeFilterConfig>('zoom', 1, 4, 0.05), label: 'Zoom' },
+      { ...param<KaleidoscopeFilterConfig>('centerX', 0, 100, 1), label: 'Center X' },
+      { ...param<KaleidoscopeFilterConfig>('centerY', 0, 100, 1), label: 'Center Y' },
+      { ...param<KaleidoscopeFilterConfig>('blend', 0, 1, 0.05), label: 'Mix' },
+      { ...param<KaleidoscopeFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat spin', when: (f) => f.beatReactive },
+    ],
+  }),
+  makeEffect<VignetteFilterConfig>({
+    label: 'Vignette',
+    get: (c) => c.vignetteFilter,
+    defaults: DEFAULT_STUDIO_CONFIG.vignetteFilter,
+    patch: (p) => useStudioStore.getState().patchVignetteFilter(p),
+    switches: [{ label: 'beat pulse', key: 'beatReactive' }],
+    params: [
+      { ...param<VignetteFilterConfig>('amount', 0, 1, 0.05), label: 'Amount' },
+      { ...param<VignetteFilterConfig>('reach', 0, 1, 0.05), label: 'Reach' },
+      { ...param<VignetteFilterConfig>('softness', 0, 1, 0.05), label: 'Softness' },
+      { ...param<VignetteFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat pulse', when: (f) => f.beatReactive },
+    ],
+    colors: [
+      {
+        label: 'Edge tint',
+        keys: ['tintColor'],
+        // The shadow always rolls deep — a bright edge tint would read as a
+        // glow frame, not a lens.
+        roll: () => ({ tintColor: deepColor() }),
+      },
+    ],
+  }),
+  makeEffect<ShakeFilterConfig>({
+    label: 'Camera shake',
+    get: (c) => c.shakeFilter,
+    defaults: DEFAULT_STUDIO_CONFIG.shakeFilter,
+    patch: (p) => useStudioStore.getState().patchShakeFilter(p),
+    switches: [{ label: 'beat jolt', key: 'beatReactive' }],
+    params: [
+      { ...param<ShakeFilterConfig>('amount', 0, 60, 1), label: 'Drift' },
+      { ...param<ShakeFilterConfig>('speed', 0, 3, 0.05), label: 'Drift speed' },
+      { ...param<ShakeFilterConfig>('wobble', 0, 2, 0.05), label: 'Roll wobble' },
+      { ...param<ShakeFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat jolt', when: (f) => f.beatReactive },
     ],
   }),
 ]
