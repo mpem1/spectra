@@ -25,14 +25,13 @@
  * also re-rolls its COLOR options: preset selectors (Neon Split's ramp, the
  * color grade's look, the gradient map's ramp library and its shift motion,
  * the instant-film stock, the dither palette, the kaleidoscope's segment
- * style) land a random preset, and color fields (halo
- * tint, inks, papers, lens tints, custom-texture tints) get fresh random
- * colors in their own role — glows stay bright, backings stay dark, tints
- * stay tasteful (the vignette's edge tint rolls deep, and only while the
- * lens carries its color function — the tint picker hides when the edge
- * blur owns the vignette). The Style tab's own
- * GRADIENT section rolls as well,
- * wherever the tab still shows it (every style except perspective, which
+ * style, the cubify tile-shape mix) land a random preset, and color fields
+ * (halo tint, inks, papers, lens tints, custom-texture tints) get fresh
+ * random colors in their own role — glows stay bright, backings stay dark,
+ * tints stay tasteful (the vignette's edge tint rolls deep, and only while
+ * the lens carries its color function — the tint picker hides when the edge
+ * blur owns the vignette). The Style tab's own GRADIENT section rolls as
+ * well, wherever the tab still shows it (every style except perspective, which
  * keeps its strict two-color split): colors land fresh every roll — half
  * the rolls one of the editor's five preset ramps, half a coordinated
  * vivid recolor of the current stops (the visualizer draws from this
@@ -78,6 +77,7 @@ import {
   type ColorStop,
   type ContourFilterConfig,
   type CubifyFilterConfig,
+  type CubifyShape,
   type DitherFilterConfig,
   type ExposureFilterConfig,
   type FilmFilterConfig,
@@ -100,6 +100,7 @@ import {
   type VhsFilterConfig,
   type WaveWarpFilterConfig,
 } from '@/lib/visualizer/types'
+import { CUBIFY_SHAPE_ORDER } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { RAMPS } from '@/lib/visualizer/neon-split-data'
 import { EXPOSURE_STOCKS } from '@/lib/visualizer/exposure-filter'
@@ -374,6 +375,10 @@ interface EffectPreset<C> {
   /** Extra fields reset must restore for this preset (factory state the
    *  defaults object doesn't carry — e.g. Neon Split's optional mapStops). */
   reset?: Record<string, unknown>
+  /** Value transform — what an option id writes into the field. Absent:
+   *  the id itself (enum presets). Present: the id's decoded payload (the
+   *  cubify tile mix writes its parsed CubifyShape[]). */
+  value?: (id: string) => unknown
 }
 
 /** One boolean switch inside an effect — the React-to-beat toggle the roll
@@ -600,8 +605,9 @@ function makeEffect<C extends { enabled: boolean }>(spec: {
         if (preset.when && !preset.when(view)) continue
         const id = preset.options[Math.floor(Math.random() * preset.options.length)]
         if (id === undefined) continue
-        partial[preset.key as string] = id
-        view = { ...view, [preset.key]: id } as unknown as C
+        const value = preset.value ? preset.value(id) : id
+        partial[preset.key as string] = value
+        view = { ...view, [preset.key]: value } as unknown as C
         const extra = preset.extra?.(id)
         if (extra) {
           Object.assign(partial, extra)
@@ -648,6 +654,48 @@ function makeEffect<C extends { enabled: boolean }>(spec: {
 }
 
 const param = <C,>(key: NumericKeys<C>, min: number, max: number, step: number) => ({ key, min, max, step })
+
+/* ------------------------- cubify tile-shape roll pool ----------------------- */
+
+/** Plural toast names for the cubify tile shapes. */
+const CUBIFY_MIX_PLURALS: Record<string, string> = {
+  cube: 'cubes',
+  circle: 'circles',
+  oval: 'ovals',
+  diamond: 'diamonds',
+  triangle: 'triangles',
+}
+
+/** Every subset of the five tile shapes with 1–3 members, in canonical
+ *  order — the cubify roll pool. Uniform over the pool lands roughly a
+ *  fifth single-shape tiles, two-fifths two-shape checkerboards and
+ *  two-fifths three-shape shuffles (the "more than 2 shapes at once"
+ *  mixes stay common without drowning out the classic reads). */
+const CUBIFY_MIX_SUBSETS: CubifyShape[][] = []
+for (let size = 1; size <= 3; size++) {
+  const combos = (start: number, acc: CubifyShape[]): void => {
+    if (acc.length === size) {
+      CUBIFY_MIX_SUBSETS.push([...acc])
+      return
+    }
+    for (let i = start; i < CUBIFY_SHAPE_ORDER.length; i++) {
+      const shape = CUBIFY_SHAPE_ORDER[i]
+      if (shape) combos(i + 1, [...acc, shape])
+    }
+  }
+  combos(0, [])
+}
+
+/** Mix ids ('cube', 'circle+diamond', 'circle+oval+triangle', …). */
+const CUBIFY_MIX_OPTIONS = CUBIFY_MIX_SUBSETS.map((mix) => mix.join('+'))
+
+/** Toast names per mix id — 'circles + diamonds' style. */
+const CUBIFY_MIX_NAMES: Record<string, string> = Object.fromEntries(
+  CUBIFY_MIX_SUBSETS.map((mix) => [
+    mix.join('+'),
+    mix.map((s) => CUBIFY_MIX_PLURALS[s] ?? s).join(' + '),
+  ]),
+)
 
 /** The Filters tab cards (the Layers options are not a look — excluded). */
 const FILTER_EFFECTS: RandomEffect[] = [
@@ -891,6 +939,16 @@ const FILTER_EFFECTS: RandomEffect[] = [
     defaults: DEFAULT_STUDIO_CONFIG.cubifyFilter,
     patch: (p) => useStudioStore.getState().patchCubifyFilter(p),
     switches: [{ label: 'beat lift', key: 'beatReactive' }],
+    presets: [
+      {
+        label: 'Shape',
+        key: 'shapes',
+        options: CUBIFY_MIX_OPTIONS,
+        names: CUBIFY_MIX_NAMES,
+        // The id encodes the mix; the config field carries the parsed array.
+        value: (id) => id.split('+') as CubifyShape[],
+      },
+    ],
     params: [
       { ...param<CubifyFilterConfig>('scale', 0, 8, 0.01), label: 'Cube size' },
       { ...param<CubifyFilterConfig>('stretch', -1, 1, 0.01), label: 'Cube stretch' },

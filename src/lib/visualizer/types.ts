@@ -979,6 +979,15 @@ export interface DitherFilterConfig {
   macPaperColor: string
 }
 
+/** The tile geometries the Cubify grid can cut its cells into, in canonical
+ *  order (the order shapes are stored and mixed in). The cube is the
+ *  original effect.app look; the rest warp the same depth dial radially,
+ *  diagonally or folded so the read changes but the dial semantics stay. */
+export type CubifyShape = 'cube' | 'circle' | 'oval' | 'diamond' | 'triangle'
+
+/** Canonical order of the Cubify tile shapes (storage + mix order). */
+export const CUBIFY_SHAPE_ORDER: CubifyShape[] = ['cube', 'circle', 'oval', 'diamond', 'triangle']
+
 /**
  * Cubify filter — effect.app's Cubify effect, ported 1:1 from its shader
  * (captured from the live editor) over the whole finished picture: the
@@ -986,14 +995,26 @@ export interface DitherFilterConfig {
  * and warped INSIDE every cell — the cell's fractional position is pushed
  * toward the cell edges by an iterated smoothstep ("depth distortion") —
  * then un-transformed and resampled. The result reads as the picture
- * refracted through an array of beveled glass cubes. "Hard edges" snaps the
- * warp to the cell corners instead, "dispersion" splits the warp per RGB
- * channel. The grid can rotate, drift (animation speed) and be offset.
- * Deterministic (no randomness — same frame in, same pixels out), so exports
- * match the preview frame-exactly. Skipped on transparent backgrounds.
+ * refracted through an array of beveled glass tiles. The tile shape is
+ * mixable (`shapes`): the original cube, a radial glass bead (circle), a
+ * squashed bead (oval), a 45°-twisted gem (diamond) or a folded prism
+ * (triangle) — one shape tiles every cell, two alternate in a checkerboard,
+ * three or more shuffle cell by cell by a stable hash that scrolls with the
+ * grid. "Hard edges" snaps the warp to each shape's landmarks instead,
+ * "dispersion" splits the warp per RGB channel. The grid can rotate, drift
+ * (animation speed) and be offset. Deterministic (no randomness — same
+ * frame in, same pixels out), so exports match the preview frame-exactly.
+ * Skipped on transparent backgrounds.
  */
 export interface CubifyFilterConfig {
   enabled: boolean
+  /** Tile shapes — which cell geometries the grid cuts into, always stored
+   *  in CUBIFY_SHAPE_ORDER order (the UI rebuilds the array canonically).
+   *  One entry tiles the whole grid; two checkerboard (even cells take the
+   *  first, odd the second); three or more shuffle per cell by a stable
+   *  hash. The factory single 'cube' is byte-identical to the original
+   *  effect.app shader path. */
+  shapes: CubifyShape[]
   /** Cube size — the logarithmic grid scale, 0..8 (effect.app's dial, its
    *  default 0.6 ≈ 3.6 cubes across the short side; the cell size is
    *  exp(-scale) of the half-height) */
@@ -2899,6 +2920,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
   },
   cubifyFilter: {
     enabled: false,
+    shapes: ['cube'],
     scale: 0.6,
     stretch: -0.21,
     depth: 1.8,
