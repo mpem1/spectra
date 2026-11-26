@@ -1089,7 +1089,7 @@ export interface KaleidoscopeFilterConfig {
   wander: number
   /** Drift speed, 0..3 cycles/s — how fast the wander runs its path
    *  (0 freezes it; the path itself is a Lissajous of two incommensurate
-   *  sines, so it never repeats) */
+   *  sines, so it never repeats). Default 0.1 — a slow, easy drift */
   wanderSpeed: number
   /** Breathe, 0..1 — the slice swells up to +40% zoom on a slow sine
    *  (zoom-in only, so the auto-cover guarantee never breaks) */
@@ -2942,7 +2942,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     zoom: 1.4,
     mirrorMode: 'alternate',
     wander: 0,
-    wanderSpeed: 0.5,
+    wanderSpeed: 0.1,
     breathe: 0,
     centerX: 50,
     centerY: 50,

@@ -81,7 +81,7 @@ export function drawKaleidoscopeFilter(
   // a fresh hashed spot (fifth-second buckets), so the pattern re-forms
   // on every kick even with the wander dial parked at zero.
   const wander = clamp01(cfg.wander ?? 0)
-  const wanderSpeed = Math.max(0, cfg.wanderSpeed ?? 0.5)
+  const wanderSpeed = Math.max(0, cfg.wanderSpeed ?? 0.1)
   const ph = frame.styleTime * wanderSpeed * TAU
   const ax = wander * W * 0.1
   const ay = wander * H * 0.1
