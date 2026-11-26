@@ -1095,23 +1095,31 @@ export interface WaveWarpFilterConfig {
 }
 
 /**
- * Vignette filter — the lens darkens toward the frame's edges: an
+ * Vignette filter — the lens works the frame's edges one of two ways,
+ * chosen on the card (either function, one at a time): COLOR — the classic
  * elliptical falloff centered on the picture (transparent at the center,
- * the tint color fading in toward the corners), with reach / softness
- * dials and a tintable edge color. Deterministic, skipped on transparent
+ * the tint color fading in toward the corners), or EDGE BLUR — the same
+ * elliptical falloff but the edges read a blurred copy of the picture
+ * instead of a darkened one (a frosted lens rim). Reach / softness dials
+ * shape the falloff either way. Deterministic, skipped on transparent
  * backgrounds.
  */
 export interface VignetteFilterConfig {
   enabled: boolean
-  /** Strength 0..1 — how dark the edges get */
+  /** Strength 0..1 — how dark (color mode) or how blurred (blur mode)
+   *  the edges get */
   amount: number
-  /** Reach 0..1 — how far in from the corners the darkness starts */
+  /** Reach 0..1 — how far in from the corners the effect starts */
   reach: number
   /** Softness 0..1 — the falloff's feather (0 = a hard lens edge,
    *  1 = the longest smooth fade) */
   softness: number
+  /** Edge blur — the lens blurs the picture toward the edges instead of
+   *  laying the tint over them (false = the classic color shadow, true =
+   *  a frosted rim; the tint picker hides while this owns the card) */
+  edgeBlur: boolean
   /** Edge tint as '#rrggbb' — near-black keeps the classic neutral lens;
-   *  a hue casts a colored shadow into the corners */
+   *  a hue casts a colored shadow into the corners (color mode only) */
   tintColor: string
   /** React to beat — the vignette darkens deeper on the song's low end
    *  (driven by frame.bass, additive, resting exactly at the dialed look
@@ -2907,6 +2915,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     amount: 0.55,
     reach: 0.5,
     softness: 0.6,
+    edgeBlur: false,
     tintColor: '#000000',
     beatReactive: false,
     beatStrength: 0.5,

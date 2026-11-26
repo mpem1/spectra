@@ -27,7 +27,9 @@
  * stock, the dither palette) land a random preset, and color fields (halo
  * tint, inks, papers, lens tints, custom-texture tints) get fresh random
  * colors in their own role — glows stay bright, backings stay dark, tints
- * stay tasteful (the vignette's edge tint rolls deep). The Style tab's own
+ * stay tasteful (the vignette's edge tint rolls deep, and only while the
+ * lens carries its color function — the tint picker hides when the edge
+ * blur owns the vignette). The Style tab's own
  * GRADIENT section rolls as well,
  * wherever the tab still shows it (every style except perspective, which
  * keeps its strict two-color split): colors land fresh every roll — half
@@ -986,7 +988,10 @@ const FILTER_EFFECTS: RandomEffect[] = [
     get: (c) => c.vignetteFilter,
     defaults: DEFAULT_STUDIO_CONFIG.vignetteFilter,
     patch: (p) => useStudioStore.getState().patchVignetteFilter(p),
-    switches: [{ label: 'beat pulse', key: 'beatReactive' }],
+    // Two switches, rolled in order: which function the lens carries
+    // (edge blur vs. the classic color shadow — either one, one at a time),
+    // then the beat trigger.
+    switches: [{ label: 'edge blur', key: 'edgeBlur' }, { label: 'beat pulse', key: 'beatReactive' }],
     params: [
       { ...param<VignetteFilterConfig>('amount', 0, 1, 0.05), label: 'Amount' },
       { ...param<VignetteFilterConfig>('reach', 0, 1, 0.05), label: 'Reach' },
@@ -998,7 +1003,10 @@ const FILTER_EFFECTS: RandomEffect[] = [
         label: 'Edge tint',
         keys: ['tintColor'],
         // The shadow always rolls deep — a bright edge tint would read as a
-        // glow frame, not a lens.
+        // glow frame, not a lens. Only while the lens carries the color
+        // function: the tint picker hides when edge blur owns the card, and
+        // a rolled color no one can see is a dead pick.
+        when: (f) => !f.edgeBlur,
         roll: () => ({ tintColor: deepColor() }),
       },
     ],
