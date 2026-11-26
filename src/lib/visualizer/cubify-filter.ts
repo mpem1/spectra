@@ -45,10 +45,12 @@
  * the square cell frame and inscribes the cell's SMALLER screen dimension —
  * circles render as circles and ovals as 70%-height ovals whatever the
  * dials do. TILE GAPS: each mixed tile can cut a real silhouette — the
- * print fades to black across a rim band at the shape's boundary (and
- * everywhere outside it), so circles read as beads, diamonds as gems and
- * cubes as blocks; 0 keeps the seamless original glass. The factory
- * single-cube path is byte-identical to the captured shader.
+ * print fades OUT across a rim band at the shape's boundary and everywhere
+ * outside it (a real alpha cutout: the untouched picture beneath shows
+ * through between the tiles — never painted black), so circles read as
+ * beads floating on the frame, diamonds as gems and cubes as blocks; 0
+ * keeps the seamless original glass. The factory single-cube path is
+ * byte-identical to the captured shader.
  *
  * That is the whole effect — there is no bevel, light or grout in the
  * original; the 3D read comes entirely from the edge-pull warp. (The tile
@@ -327,9 +329,12 @@ vec2 warpCell(vec2 f, float shape, float k) {
   return uHard > 0.5 ? step(0.5, g) : vec2(pull(g.x, k), pull(g.y, k));
 }
 
-/* The tile-gap silhouette — fades the print to black across a rim band at
- * each tile's boundary and everywhere outside it, so the mixed shapes read
- * as real mosaic tiles (0 = the seamless original glass, edge stays 1).
+/* The tile-gap silhouette — fades the print OUT across a rim band at each
+ * tile's boundary and everywhere outside it, so the mixed shapes read as
+ * real mosaic tiles floating on the untouched picture (0 = the seamless
+ * original glass, edge stays 1). The factor multiplies BOTH the color and
+ * the alpha (premultiplied output), so what shows between the tiles is the
+ * frame beneath — never painted black.
  * d is the pixel's shape distance: 0 at the cell's center, exactly 1 on the
  * tile's rim (the same frame each warp uses, so silhouette and lens agree).
  * The cube rims at its cell edges, the beads at their inscribed circle /
@@ -371,8 +376,11 @@ void main() {
   uv = (uv + base - (uPhase + deltaPhase)) / scxy;
   uv *= mat2(c, -s, s, c);
   vec3 col = pixel(uv).rgb;
-  col *= tileEdge(f, shape);
-  gl_FragColor = vec4(col, 1.0);
+  // The silhouette multiplies color AND alpha (premultiplied rgba): outside
+  // the tiles the print is genuinely transparent, so the untouched picture
+  // beneath shows through the gaps — the shapes never paint black over it.
+  float edge = tileEdge(f, shape);
+  gl_FragColor = vec4(col * edge, edge);
 }
 `
 
@@ -458,12 +466,17 @@ function getGL(w: number, h: number): CubifyGL | null {
     const canvas = document.createElement('canvas')
     canvas.width = w
     canvas.height = h
+    // alpha: true — the tile silhouettes are a REAL cutout: outside the
+    // shapes the print is transparent so the untouched picture beneath
+    // shows through the gaps. premultipliedAlpha: true matches the shape
+    // program's premultiplied rgba output (col·edge, edge); the classic
+    // program writes alpha 1 everywhere and stays effectively opaque.
     const gl = (canvas.getContext('webgl', {
-      alpha: false,
+      alpha: true,
       depth: false,
       stencil: false,
       antialias: false,
-      premultipliedAlpha: false,
+      premultipliedAlpha: true,
       preserveDrawingBuffer: false,
     }) ?? canvas.getContext('experimental-webgl')) as WebGLRenderingContext | null
     if (!gl) return null
@@ -665,7 +678,10 @@ function warpCell(
 
 /** The tile-gap silhouette — the JS mirror of the shader's tileEdge(): 1
  *  inside the tile, fading to 0 across the rim band at the shape's boundary
- *  and everywhere outside it (0 gaps = the seamless glass, always 1). */
+ *  and everywhere outside it (0 gaps = the seamless glass, always 1). The
+ *  CPU path writes the factor into the ALPHA channel (straight alpha), so
+ *  the picture beneath shows through the gaps exactly like the GL path's
+ *  premultiplied cutout. */
 function tileEdge(
   fx: number,
   fy: number,
@@ -826,6 +842,7 @@ function drawCPU(rc: RenderContext, p: CubifyParams, blend: number): void {
       let r: number
       let g: number
       let b: number
+      let edge = 1
       if (split) {
         const uvR = distortX(relX, relY, mR, cosA, sinA, scx, scy, phaseX, phaseY, p.hard, p.shapeIds, p.gaps, gx, gy)
         const uvG = distortX(relX, relY, mG, cosA, sinA, scx, scy, phaseX, phaseY, p.hard, p.shapeIds, p.gaps, gx, gy)
@@ -833,21 +850,26 @@ function drawCPU(rc: RenderContext, p: CubifyParams, blend: number): void {
         const cR = sample((uvR[0] / incX + 1) / 2, (uvR[1] / incY + 1) / 2)
         const cG = sample((uvG[0] / incX + 1) / 2, (uvG[1] / incY + 1) / 2)
         const cB = sample((uvB[0] / incX + 1) / 2, (uvB[1] / incY + 1) / 2)
-        r = cR[0] * uvG[2]
-        g = cG[1] * uvG[2]
-        b = cB[2] * uvG[2]
+        r = cR[0]
+        g = cG[1]
+        b = cB[2]
+        edge = uvG[2]
       } else {
         const uv = distortX(relX, relY, mG, cosA, sinA, scx, scy, phaseX, phaseY, p.hard, p.shapeIds, p.gaps, gx, gy)
         const c = sample((uv[0] / incX + 1) / 2, (uv[1] / incY + 1) / 2)
-        r = c[0] * uv[2]
-        g = c[1] * uv[2]
-        b = c[2] * uv[2]
+        r = c[0]
+        g = c[1]
+        b = c[2]
+        edge = uv[2]
       }
       const o = (py * W + px) * 4
       d8[o] = r
       d8[o + 1] = g
       d8[o + 2] = b
-      d8[o + 3] = 255
+      // Straight-alpha cutout (ImageData is non-premultiplied): the rim
+      // fades the tile's ALPHA, not its color — compositing over the frame
+      // lands the identical col·e + under·(1−e) blend the GL path prints.
+      d8[o + 3] = Math.round(255 * edge)
     }
   }
   octx.putImageData(img, 0, 0)

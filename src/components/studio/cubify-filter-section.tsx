@@ -68,7 +68,8 @@ const SHAPE_CHIPS: { id: CubifyShape; label: string; icon: LucideIcon }[] = [
  * circles, ovals, diamonds or triangles — one shape tiles everything, two
  * alternate in a checkerboard, three or more shuffle cell by cell. Shape
  * mixes run one clean warp per pixel (no RGB split — that glass belongs to
- * the lone cube) and cut visible tile silhouettes (Tile gaps). The beads are
+ * the lone cube) and cut visible tile silhouettes (Tile gaps — the picture
+ * shows through between the tiles, never painted black). The beads are
  * screen-true: circles render round whatever the stretch dial does. Dials
  * match the original effect's controls. Deterministic, so every export bakes
  * the identical look; skipped on transparent backgrounds.
@@ -120,7 +121,8 @@ export function CubifyFilterSection() {
         the frame snaps onto a rotated grid and every cell bends its content
         toward the tile edges, reading as 3D blocks, bubbles, gems or folded
         prisms. The real effect.app algorithm, dial for dial — plus tile
-        shapes beyond the original cube, each one cut out as a visible shape.
+        shapes beyond the original cube, each one cut out of the mosaic with
+        the picture showing through between them.
       </p>
 
       {filter.enabled ? (
@@ -262,10 +264,12 @@ export function CubifyFilterSection() {
             The grid drifts with the song (speed dials above). Hard edges
             snaps every tile to hard pixels — cubes to their corners, beads
             to center-or-rim, diamonds to their points, triangles to the
-            fold. Tile gaps fades the rim outside each mixed shape to black
-            so circles read as round beads and diamonds as gems (beads
-            inscribe the cell's smaller screen dimension, so a circle is a
-            circle whatever the stretch dial does). The chromatic dispersion
+            fold. Tile gaps cuts each mixed shape out of the mosaic — the
+            untouched picture shows through between the tiles instead of any
+            paint, so circles read as round beads floating on the frame
+            (beads inscribe the cell's smaller screen dimension, so a circle
+            is a circle whatever the stretch dial does; 0% keeps the
+            seamless glass). The chromatic dispersion
             glass belongs to the lone cube — shape mixes run one clean warp
             so their shapes never print stacked RGB ghost copies. Skipped on
             transparent backgrounds so alpha recordings stay clean.

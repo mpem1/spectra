@@ -1001,7 +1001,8 @@ export const CUBIFY_SHAPE_ORDER: CubifyShape[] = ['cube', 'circle', 'oval', 'dia
  * (triangle) — one shape tiles every cell, two alternate in a checkerboard,
  * three or more shuffle cell by cell by a stable hash that scrolls with the
  * grid. Shape mixes run ONE clean warp per pixel and can cut visible tile
- * silhouettes (`gaps` fades the rim outside each shape to black — round
+ * silhouettes (`gaps` fades each shape out of the print so the untouched
+ * picture shows through between the tiles — never painted black — round
  * beads inscribe the cell's smaller screen dimension, so they render round
  * whatever the stretch dial does). "Hard edges" snaps the warp to each
  * shape's landmarks instead; "dispersion" splits the warp per RGB channel
@@ -1050,11 +1051,13 @@ export interface CubifyFilterConfig {
    *  the dial only lives on the classic single-cube look. */
   dispersion: number
   /** Tile gaps 0..1 — how hard each mixed tile's SILHOUETTE reads: outside
-   *  the tile shape (and across its rim band) the print fades to black, so
-   *  circles read as round beads, diamonds as gems, etc. 0 = the seamless
-   *  original glass (no silhouette at all — the shapes are then lenses you
-   *  can feel but not see). Only shape mixes cut silhouettes; the factory
-   *  single-cube look stays byte-identical with this parked anywhere. */
+   *  the tile shape (and across its rim band) the print fades to fully
+   *  transparent — a real alpha cutout, so the untouched picture beneath
+   *  shows through between the tiles and circles read as round beads
+   *  floating on the frame. 0 = the seamless original glass (no silhouette
+   *  at all — the shapes are then lenses you can feel but not see). Only
+   *  shape mixes cut silhouettes; the factory single-cube look stays
+   *  byte-identical with this parked anywhere. */
   gaps: number
   /** Mix 0..1 — how much of the frame the cube print takes over (below 1
    *  the untouched frame fades back through) */
