@@ -33,13 +33,27 @@
  * Which shape a cell carries is a pure function of the cell's grid index:
  * one shape tiles everything; two alternate in a checkerboard
  * (mod(x+y, 2)); three or more shuffle cell by cell by a stable sin hash.
- * The assignment scrolls with the grid exactly like the cells themselves,
- * and the dispersion's three warps share one cell (and so one shape) per
- * pixel. The factory single-cube path is byte-identical to the captured
- * shader.
+ * The assignment scrolls with the grid exactly like the cells themselves.
+ * Shape mixes run ONE warp per pixel — all three channels sample through
+ * the identical distort, because the captured shader's per-channel
+ * dispersion would print three differently-warped ghost copies of every
+ * non-cube tile (shapes stacked on top of each other) and smear gray
+ * patch tiles wherever a cell straddles the frame's content edge; the
+ * chromatic glass therefore stays a classic-cube feature. The round beads
+ * are SCREEN-TRUE: the grid's cells are wider/taller than square by the
+ * stretch dial (scy/scx = exp(∓2·stretch)), so the radial math grows off
+ * the square cell frame and inscribes the cell's SMALLER screen dimension —
+ * circles render as circles and ovals as 70%-height ovals whatever the
+ * dials do. TILE GAPS: each mixed tile can cut a real silhouette — the
+ * print fades to black across a rim band at the shape's boundary (and
+ * everywhere outside it), so circles read as beads, diamonds as gems and
+ * cubes as blocks; 0 keeps the seamless original glass. The factory
+ * single-cube path is byte-identical to the captured shader.
  *
  * That is the whole effect — there is no bevel, light or grout in the
- * original; the 3D read comes entirely from the edge-pull warp. The port
+ * original; the 3D read comes entirely from the edge-pull warp. (The tile
+ * gaps above are this port's one addition to the glass, and only for the
+ * shape mixes — the factory cube keeps the pure original.) The port
  * runs the IDENTICAL math on the GPU: two tiny WebGL programs share one
  * offscreen GL canvas — the captured original (used whenever the mix is
  * exactly the factory cube: byte-identical output AND its original
@@ -171,7 +185,10 @@ void main() {
 
 /* The tile-shape program — same pipeline, with the per-cell shape dispatch
  * (five tile geometries, checkerboard and hash mixes). Runs whenever the
- * mix is anything other than the single factory cube. */
+ * mix is anything other than the single factory cube. ONE warp per pixel:
+ * no per-channel dispersion (that glass belongs to the classic cube
+ * program — on shapes it stacked three ghost copies per tile), plus the
+ * tile-gap silhouette pass and screen-true bead geometry. */
 const FRAG_SRC_SHAPES = `
 precision highp float;
 uniform sampler2D iChannel0;
@@ -184,10 +201,10 @@ uniform float uHard;
 uniform float uAngle;
 uniform vec2 uPhase;
 uniform vec2 uSpeed;
-uniform float uDispersion;
 uniform vec4 uShapeA; // mixed tile shapes 1..4 (ids: 0 cube, 1 circle, 2 oval, 3 diamond, 4 triangle)
 uniform float uShapeB; // mixed tile shape 5
 uniform float uShapeN; // how many shapes mix (1..5)
+uniform float uGaps;   // tile silhouette rim, 0..1 (0 = seamless glass)
 
 vec2 toRel(vec2 fragPx) {
   float ar = iResolution.x / max(iResolution.y, 1e-6);
@@ -248,6 +265,18 @@ float pickShape(vec2 cell) {
   return s;
 }
 
+/* The grid cells are wider or taller than screen-square by the stretch dial
+ * (cell width : height = scy : scx = exp(∓2·uAspect) — the rel coordinate
+ * frame is screen-isotropic, so the exp ratio IS the screen aspect). These
+ * grow factors push the radial bead math off the square cell frame so a
+ * "circle" inscribes the cell's SMALLER screen dimension and renders round
+ * whatever the stretch does; the oval then squashes to 70% of that circle's
+ * height. */
+vec2 beadGrow() {
+  float ca = exp(-2.0 * uAspect);
+  return vec2(max(1.0, ca), max(1.0, 1.0 / ca));
+}
+
 /* One cell's warp — f is the fractional position inside the cell ([0,1)²;
  * corner-adjacent samples push past 1 in the rotated frames and the
  * smoothstep chain clamps them, exactly like the original). Hard mode snaps
@@ -263,13 +292,19 @@ vec2 warpCell(vec2 f, float shape, float k) {
   if (shape < 2.5) {
     // CIRCLE / OVAL — the same pull applied radially in the cell: inner
     // half pulls toward the bead's center, outer half toward its rim. The
-    // oval is the same bubble with the frame squashed to a 1.0 × 0.7
-    // ellipse (2 = 1/a for a=0.5, 2.857 ≈ 1/b for b=0.35).
-    vec2 p = shape < 1.5 ? (f - 0.5) * 2.0 : (f - 0.5) * vec2(2.0, 2.857);
+    // frame grows off the square cell (beadGrow) so the bead is screen-true
+    // (a circle inscribed in the cell's smaller dimension); the oval is the
+    // same bead squashed to a 0.7-height ellipse.
+    vec2 grow = beadGrow();
+    vec2 p = (f - 0.5) * 2.0 * grow;
+    if (shape > 1.5) p.y /= 0.7;
     float r = max(length(p), 1e-4);
     float rn = uHard > 0.5 ? step(0.5, r) : pull(r, k);
     vec2 outc = p * (rn / r);
-    return vec2(0.5) + (shape < 1.5 ? outc * 0.5 : outc * vec2(0.5, 0.35));
+    vec2 inv = 1.0 / (2.0 * grow);
+    return shape < 1.5
+      ? vec2(0.5) + outc * inv
+      : vec2(0.5) + vec2(outc.x * inv.x, outc.y * 0.7 * inv.y);
   }
   if (shape < 3.5) {
     // DIAMOND — the per-axis pull in a 45°-rotated, √2-scaled frame (the
@@ -292,7 +327,37 @@ vec2 warpCell(vec2 f, float shape, float k) {
   return uHard > 0.5 ? step(0.5, g) : vec2(pull(g.x, k), pull(g.y, k));
 }
 
-vec2 distort(vec2 pos, float strengthVal) {
+/* The tile-gap silhouette — fades the print to black across a rim band at
+ * each tile's boundary and everywhere outside it, so the mixed shapes read
+ * as real mosaic tiles (0 = the seamless original glass, edge stays 1).
+ * d is the pixel's shape distance: 0 at the cell's center, exactly 1 on the
+ * tile's rim (the same frame each warp uses, so silhouette and lens agree).
+ * The cube rims at its cell edges, the beads at their inscribed circle /
+ * 0.7 oval, the diamond at its g-square rim, the triangle at its fold. */
+float tileEdge(vec2 f, float shape) {
+  if (uGaps <= 0.001) return 1.0;
+  float d;
+  if (shape < 0.5) {
+    d = max(abs(f.x - 0.5), abs(f.y - 0.5)) * 2.0;
+  } else if (shape < 2.5) {
+    vec2 grow = beadGrow();
+    vec2 p = (f - 0.5) * 2.0 * grow;
+    if (shape > 1.5) p.y /= 0.7;
+    d = length(p);
+  } else if (shape < 3.5) {
+    vec2 g = vec2(f.x - f.y, f.x + f.y - 1.0) + 0.5;
+    d = max(abs(g.x - 0.5), abs(g.y - 0.5)) * 2.0;
+  } else {
+    d = f.x + f.y;
+  }
+  float w = mix(0.05, 0.3, uGaps);
+  return 1.0 - smoothstep(1.0 - w, 1.0, d);
+}
+
+void main() {
+  // ONE clean warp per pixel — the whole rotate → scale → phase → dispatch
+  // pipeline inline, then a single sample and the silhouette multiply.
+  vec2 pos = toRel(gl_FragCoord.xy);
   float s = sin(radians(uAngle));
   float c = cos(radians(uAngle));
   pos *= mat2(c, s, -s, c);
@@ -300,25 +365,14 @@ vec2 distort(vec2 pos, float strengthVal) {
   vec2 deltaPhase = uSpeed * iTimelineTime;
   pos = (pos * scxy) + (uPhase + deltaPhase);
   vec2 base = floor(pos);
-  pos = warpCell(pos - base, pickShape(base), strengthVal);
-  pos = (pos + base - (uPhase + deltaPhase)) / scxy;
-  pos *= mat2(c, -s, s, c);
-  return pos;
-}
-
-void main() {
-  const float baseIOR = 1.2;
-  vec2 pos = toRel(gl_FragCoord.xy);
-
-  float sG = uDepth * (baseIOR / baseIOR);
-  float sR = uDepth * ((baseIOR - uDispersion) / baseIOR);
-  float sB = uDepth * ((baseIOR + uDispersion) / baseIOR);
-
-  float r = pixel(distort(pos, sR)).r;
-  float g = pixel(distort(pos, sG)).g;
-  float b = pixel(distort(pos, sB)).b;
-
-  gl_FragColor = vec4(r, g, b, 1.0);
+  vec2 f = pos - base;
+  float shape = pickShape(base);
+  vec2 uv = warpCell(f, shape, uDepth);
+  uv = (uv + base - (uPhase + deltaPhase)) / scxy;
+  uv *= mat2(c, -s, s, c);
+  vec3 col = pixel(uv).rgb;
+  col *= tileEdge(f, shape);
+  gl_FragColor = vec4(col, 1.0);
 }
 `
 
@@ -357,7 +411,7 @@ const CLASSIC_UNIFORMS = [
   'iChannel0',
 ]
 
-const SHAPE_UNIFORMS = [...CLASSIC_UNIFORMS, 'uShapeA', 'uShapeB', 'uShapeN']
+const SHAPE_UNIFORMS = [...CLASSIC_UNIFORMS, 'uShapeA', 'uShapeB', 'uShapeN', 'uGaps']
 
 /** One GL context is enough: the preview and the offline export never
  *  interleave frames, so the bundle resizes to whoever renders next. */
@@ -495,6 +549,7 @@ function drawGL(g: CubifyGL, rc: RenderContext, p: CubifyParams): void {
     )
     gl.uniform1f(loc.uShapeB!, p.shapeIds[4] ?? 0)
     gl.uniform1f(loc.uShapeN!, p.shapeN)
+    gl.uniform1f(loc.uGaps!, p.gaps)
   }
   if (loc.iChannel0) gl.uniform1i(loc.iChannel0, 0)
 
@@ -548,31 +603,53 @@ function pickShape(bx: number, by: number, shapes: number[]): number {
   return shapes[seg] ?? 0
 }
 
+/** The grid cells' screen-aspect grow factors — the JS mirror of the
+ *  shader's beadGrow(): the stretch dial makes cells wider/taller than
+ *  screen-square (scy/scx = exp(∓2·stretch), and the rel frame is
+ *  screen-isotropic), so the beads grow off the square cell frame and
+ *  inscribe the cell's SMALLER screen dimension. */
+function beadGrow(stretch: number): [number, number] {
+  const ca = Math.exp(-2 * stretch)
+  return [Math.max(1, ca), Math.max(1, 1 / ca)]
+}
+
 /** One cell's warp — the JS mirror of the shader's warpCell: same five
- *  shapes, same hard-landmark snaps, same border-fixing pulls. */
-function warpCell(fx: number, fy: number, shape: number, k: number, hard: boolean): [number, number] {
+ *  shapes, same hard-landmark snaps, same border-fixing pulls, same
+ *  screen-true bead frame (grow) and 0.7-height oval. */
+function warpCell(
+  fx: number,
+  fy: number,
+  shape: number,
+  k: number,
+  hard: boolean,
+  gx: number,
+  gy: number,
+): [number, number] {
   if (shape < 0.5) {
     // CUBE — the original per-axis edge pull
     if (hard) return [fx >= 0.5 ? 1 : 0, fy >= 0.5 ? 1 : 0]
     return [pull(fx, k), pull(fy, k)]
   }
   if (shape < 2.5) {
-    // CIRCLE / OVAL — the radial bead pull (oval in a 1.0 × 0.7 frame)
+    // CIRCLE / OVAL — the radial bead pull in the screen-true frame (the
+    // oval squashes to 0.7 of the inscribed circle's height)
     const circle = shape < 1.5
-    const px = (fx - 0.5) * 2.0
-    const py = (fy - 0.5) * (circle ? 2.0 : 2.857)
+    const px = (fx - 0.5) * 2.0 * gx
+    const py = (fy - 0.5) * 2.0 * gy * (circle ? 1 : 1 / 0.7)
     const r = Math.max(Math.hypot(px, py), 1e-4)
     const rn = hard ? (r >= 0.5 ? 1 : 0) : pull(r, k)
     const ox = px * (rn / r)
     const oy = py * (rn / r)
-    return circle ? [0.5 + ox * 0.5, 0.5 + oy * 0.5] : [0.5 + ox * 0.5, 0.5 + oy * 0.35]
+    return circle
+      ? [0.5 + ox / (2 * gx), 0.5 + oy / (2 * gy)]
+      : [0.5 + ox / (2 * gx), 0.5 + (oy * 0.7) / (2 * gy)]
   }
   if (shape < 3.5) {
     // DIAMOND — the pull in the (x−y, x+y−1) frame
-    const gx = fx - fy + 0.5
-    const gy = fx + fy - 0.5
-    const wx = hard ? (gx >= 0.5 ? 1 : 0) : pull(gx, k)
-    const wy = hard ? (gy >= 0.5 ? 1 : 0) : pull(gy, k)
+    const dgx = fx - fy + 0.5
+    const dgy = fx + fy - 0.5
+    const wx = hard ? (dgx >= 0.5 ? 1 : 0) : pull(dgx, k)
+    const wy = hard ? (dgy >= 0.5 ? 1 : 0) : pull(dgy, k)
     const dx = wx - 0.5
     const dy = wy - 0.5
     return [0.5 + (dx + dy) * 0.5, 0.5 + (dy - dx) * 0.5]
@@ -580,15 +657,49 @@ function warpCell(fx: number, fy: number, shape: number, k: number, hard: boolea
   // TRIANGLE — the folded half-cell pull, mirrored (no unfold: the per-axis
   // pull is point-symmetric, so unfolding would collapse back to the cube)
   const fold = fx + fy < 1
-  const gx = fold ? fx : 1 - fx
-  const gy = fold ? fy : 1 - fy
-  if (hard) return [gx >= 0.5 ? 1 : 0, gy >= 0.5 ? 1 : 0]
-  return [pull(gx, k), pull(gy, k)]
+  const tgx = fold ? fx : 1 - fx
+  const tgy = fold ? fy : 1 - fy
+  if (hard) return [tgx >= 0.5 ? 1 : 0, tgy >= 0.5 ? 1 : 0]
+  return [pull(tgx, k), pull(tgy, k)]
+}
+
+/** The tile-gap silhouette — the JS mirror of the shader's tileEdge(): 1
+ *  inside the tile, fading to 0 across the rim band at the shape's boundary
+ *  and everywhere outside it (0 gaps = the seamless glass, always 1). */
+function tileEdge(
+  fx: number,
+  fy: number,
+  shape: number,
+  gaps: number,
+  gx: number,
+  gy: number,
+): number {
+  if (gaps <= 0.001) return 1
+  let d: number
+  if (shape < 0.5) {
+    d = Math.max(Math.abs(fx - 0.5), Math.abs(fy - 0.5)) * 2
+  } else if (shape < 2.5) {
+    const px = (fx - 0.5) * 2 * gx
+    const py = (fy - 0.5) * 2 * gy * (shape < 1.5 ? 1 : 1 / 0.7)
+    d = Math.hypot(px, py)
+  } else if (shape < 3.5) {
+    const dgx = fx - fy + 0.5
+    const dgy = fx + fy - 0.5
+    d = Math.max(Math.abs(dgx - 0.5), Math.abs(dgy - 0.5)) * 2
+  } else {
+    d = fx + fy
+  }
+  const w = 0.05 + 0.25 * gaps
+  const t = Math.min(Math.max((d - (1 - w)) / w, 0), 1)
+  return 1 - t * t * (3 - 2 * t)
 }
 
 /** The captured distort() — identical transforms, same order; the warp
  *  step dispatches through warpCell so every tile shape rides the same
- *  rotate → scale → phase → warp → undo pipeline the cube always did. */
+ *  rotate → scale → phase → warp → undo pipeline the cube always did.
+ *  Also returns the pixel's tile-gap edge factor (the pixel's own cell and
+ *  shape are identical across the dispersion's three warps — same grid,
+ *  same base, only the pull strength differs — so one factor serves all). */
 function distortX(
   x: number,
   y: number,
@@ -601,7 +712,10 @@ function distortX(
   phaseY: number,
   hard: boolean,
   shapes: number[],
-): [number, number] {
+  gaps: number,
+  gx: number,
+  gy: number,
+): [number, number, number] {
   // rotate by +angle (mat2(c,s,-s,c) in GLSL column-major)
   let px = cosA * x - sinA * y
   let py = sinA * x + cosA * y
@@ -609,11 +723,15 @@ function distortX(
   py = py * scy + phaseY
   const bx = Math.floor(px)
   const by = Math.floor(py)
-  const warped = warpCell(px - bx, py - by, pickShape(bx, by, shapes), m, hard)
+  const fx = px - bx
+  const fy = py - by
+  const shape = pickShape(bx, by, shapes)
+  const warped = warpCell(fx, fy, shape, m, hard, gx, gy)
   px = (warped[0] + bx - phaseX) / scx
   py = (warped[1] + by - phaseY) / scy
+  const edge = tileEdge(fx, fy, shape, gaps, gx, gy)
   // rotate back (mat2(c,-s,s,c))
-  return [cosA * px + sinA * py, -sinA * px + cosA * py]
+  return [cosA * px + sinA * py, -sinA * px + cosA * py, edge]
 }
 
 interface CubifyParams {
@@ -628,6 +746,9 @@ interface CubifyParams {
   speedX: number
   speedY: number
   dispersion: number
+  /** Tile-gap silhouette strength 0..1 — already gated to 0 for the
+   *  factory single-cube look (which never cuts silhouettes). */
+  gaps: number
   /** Tile shape ids in mix order (0 cube, 1 circle, 2 oval, 3 diamond,
    *  4 triangle) — 1..5 entries, normalized to canonical order. */
   shapeIds: number[]
@@ -665,7 +786,11 @@ function drawCPU(rc: RenderContext, p: CubifyParams, blend: number): void {
   const mG = p.depth
   const mR = (p.depth * (ior - p.dispersion)) / ior
   const mB = (p.depth * (ior + p.dispersion)) / ior
-  const split = p.dispersion > 0.0005
+  // One clean warp for shape mixes — the per-channel split would print
+  // three differently-warped ghost copies of every non-cube tile (stacked
+  // shapes). The chromatic glass stays a classic-cube feature.
+  const split = p.dispersion > 0.0005 && p.cubeOnly
+  const [gx, gy] = beadGrow(p.stretch)
 
   const sample = (u: number, v: number): [number, number, number] => {
     // uv 0..1 y-up (GL convention) → ImageData row 0 is the TOP row
@@ -702,21 +827,21 @@ function drawCPU(rc: RenderContext, p: CubifyParams, blend: number): void {
       let g: number
       let b: number
       if (split) {
-        const uvR = distortX(relX, relY, mR, cosA, sinA, scx, scy, phaseX, phaseY, p.hard, p.shapeIds)
-        const uvG = distortX(relX, relY, mG, cosA, sinA, scx, scy, phaseX, phaseY, p.hard, p.shapeIds)
-        const uvB = distortX(relX, relY, mB, cosA, sinA, scx, scy, phaseX, phaseY, p.hard, p.shapeIds)
+        const uvR = distortX(relX, relY, mR, cosA, sinA, scx, scy, phaseX, phaseY, p.hard, p.shapeIds, p.gaps, gx, gy)
+        const uvG = distortX(relX, relY, mG, cosA, sinA, scx, scy, phaseX, phaseY, p.hard, p.shapeIds, p.gaps, gx, gy)
+        const uvB = distortX(relX, relY, mB, cosA, sinA, scx, scy, phaseX, phaseY, p.hard, p.shapeIds, p.gaps, gx, gy)
         const cR = sample((uvR[0] / incX + 1) / 2, (uvR[1] / incY + 1) / 2)
         const cG = sample((uvG[0] / incX + 1) / 2, (uvG[1] / incY + 1) / 2)
         const cB = sample((uvB[0] / incX + 1) / 2, (uvB[1] / incY + 1) / 2)
-        r = cR[0]
-        g = cG[1]
-        b = cB[2]
+        r = cR[0] * uvG[2]
+        g = cG[1] * uvG[2]
+        b = cB[2] * uvG[2]
       } else {
-        const uv = distortX(relX, relY, mG, cosA, sinA, scx, scy, phaseX, phaseY, p.hard, p.shapeIds)
+        const uv = distortX(relX, relY, mG, cosA, sinA, scx, scy, phaseX, phaseY, p.hard, p.shapeIds, p.gaps, gx, gy)
         const c = sample((uv[0] / incX + 1) / 2, (uv[1] / incY + 1) / 2)
-        r = c[0]
-        g = c[1]
-        b = c[2]
+        r = c[0] * uv[2]
+        g = c[1] * uv[2]
+        b = c[2] * uv[2]
       }
       const o = (py * W + px) * 4
       d8[o] = r
@@ -775,6 +900,7 @@ export function drawCubifyFilter(
   const depthEff = (cfg.depth ?? 1.8) + beat * 1.5
 
   const shapeIds = normalizeShapeIds(cfg.shapes)
+  const cubeOnly = shapeIds.length === 1 && shapeIds[0] === 0
   const params: CubifyParams = {
     time: frame.styleTime,
     scale: cfg.scale ?? 0.6,
@@ -787,9 +913,12 @@ export function drawCubifyFilter(
     speedX: cfg.speedX ?? -0.34,
     speedY: cfg.speedY ?? 0.34,
     dispersion: clamp01(cfg.dispersion ?? 0.75),
+    // Tile gaps only cut silhouettes for shape mixes — the factory
+    // single-cube look stays byte-identical whatever the dial sits at.
+    gaps: cubeOnly ? 0 : clamp01(cfg.gaps ?? 0.5),
     shapeIds,
     shapeN: shapeIds.length,
-    cubeOnly: shapeIds.length === 1 && shapeIds[0] === 0,
+    cubeOnly,
   }
 
   const g = getGL(W, H)

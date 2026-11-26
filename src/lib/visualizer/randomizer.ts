@@ -954,7 +954,19 @@ const FILTER_EFFECTS: RandomEffect[] = [
       { ...param<CubifyFilterConfig>('stretch', -1, 1, 0.01), label: 'Cube stretch' },
       { ...param<CubifyFilterConfig>('depth', 0, 5, 0.01), label: 'Depth distortion' },
       { ...param<CubifyFilterConfig>('angle', 0, 90, 1), label: 'Rotation angle' },
-      { ...param<CubifyFilterConfig>('dispersion', 0, 1, 0.001), label: 'Dispersion' },
+      // The chromatic glass belongs to the lone factory cube — shape mixes
+      // run one clean warp (no RGB ghost stacks), so dispersion only rolls
+      // when the mix is cube-only, and the tile gaps only roll when it isn't.
+      {
+        ...param<CubifyFilterConfig>('dispersion', 0, 1, 0.001),
+        label: 'Dispersion',
+        when: (f) => f.shapes.length === 1 && f.shapes[0] === 'cube',
+      },
+      {
+        ...param<CubifyFilterConfig>('gaps', 0, 1, 0.05),
+        label: 'Tile gaps',
+        when: (f) => !(f.shapes.length === 1 && f.shapes[0] === 'cube'),
+      },
       { ...param<CubifyFilterConfig>('blend', 0, 1, 0.05), label: 'Mix' },
       { ...param<CubifyFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat lift', when: (f) => f.beatReactive },
     ],

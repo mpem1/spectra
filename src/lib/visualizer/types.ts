@@ -1000,8 +1000,13 @@ export const CUBIFY_SHAPE_ORDER: CubifyShape[] = ['cube', 'circle', 'oval', 'dia
  * squashed bead (oval), a 45°-twisted gem (diamond) or a folded prism
  * (triangle) — one shape tiles every cell, two alternate in a checkerboard,
  * three or more shuffle cell by cell by a stable hash that scrolls with the
- * grid. "Hard edges" snaps the warp to each shape's landmarks instead,
- * "dispersion" splits the warp per RGB channel. The grid can rotate, drift
+ * grid. Shape mixes run ONE clean warp per pixel and can cut visible tile
+ * silhouettes (`gaps` fades the rim outside each shape to black — round
+ * beads inscribe the cell's smaller screen dimension, so they render round
+ * whatever the stretch dial does). "Hard edges" snaps the warp to each
+ * shape's landmarks instead; "dispersion" splits the warp per RGB channel
+ * but belongs to the classic cube tiles only (on shapes it printed three
+ * stacked ghost copies per cell). The grid can rotate, drift
  * (animation speed) and be offset. Deterministic (no randomness — same
  * frame in, same pixels out), so exports match the preview frame-exactly.
  * Skipped on transparent backgrounds.
@@ -1039,8 +1044,18 @@ export interface CubifyFilterConfig {
   speedX: number
   speedY: number
   /** Dispersion 0..1 — the warp strength splits per RGB channel, fringing
-   *  the cube edges like chromatic glass */
+   *  the cube edges like chromatic glass. A CUBE-ONLY feature: shape mixes
+   *  run one clean warp per pixel (the per-channel split would print three
+   *  differently-warped ghost copies of every bead — stacked shapes), so
+   *  the dial only lives on the classic single-cube look. */
   dispersion: number
+  /** Tile gaps 0..1 — how hard each mixed tile's SILHOUETTE reads: outside
+   *  the tile shape (and across its rim band) the print fades to black, so
+   *  circles read as round beads, diamonds as gems, etc. 0 = the seamless
+   *  original glass (no silhouette at all — the shapes are then lenses you
+   *  can feel but not see). Only shape mixes cut silhouettes; the factory
+   *  single-cube look stays byte-identical with this parked anywhere. */
+  gaps: number
   /** Mix 0..1 — how much of the frame the cube print takes over (below 1
    *  the untouched frame fades back through) */
   blend: number
@@ -2930,6 +2945,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     offsetY: 0,
     speedX: -0.34,
     speedY: 0.34,
+    gaps: 0.5,
     dispersion: 0.75,
     blend: 1,
     beatReactive: false,

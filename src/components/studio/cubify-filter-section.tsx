@@ -66,7 +66,10 @@ const SHAPE_CHIPS: { id: CubifyShape; label: string; icon: LucideIcon }[] = [
  * per-cell edge-pull warp = the 3D depth, optional hard pixel snap, RGB
  * dispersion on the edges). The Shape mix chooser cuts the grid into cubes,
  * circles, ovals, diamonds or triangles — one shape tiles everything, two
- * alternate in a checkerboard, three or more shuffle cell by cell. Dials
+ * alternate in a checkerboard, three or more shuffle cell by cell. Shape
+ * mixes run one clean warp per pixel (no RGB split — that glass belongs to
+ * the lone cube) and cut visible tile silhouettes (Tile gaps). The beads are
+ * screen-true: circles render round whatever the stretch dial does. Dials
  * match the original effect's controls. Deterministic, so every export bakes
  * the identical look; skipped on transparent backgrounds.
  */
@@ -76,6 +79,10 @@ export function CubifyFilterSection() {
 
   const set = (key: keyof CubifyFilterConfig) => (value: number) =>
     patchCubifyFilter({ [key]: value } as Partial<CubifyFilterConfig>)
+
+  // The factory mix (the lone captured cube) is the one look that keeps the
+  // original's chromatic dispersion and never cuts silhouettes.
+  const cubeOnly = filter.shapes.length === 1 && filter.shapes[0] === 'cube'
 
   // Toggle one shape in or out of the mix, always re-stored in canonical
   // order. The last active shape can't leave — the grid is never shapeless.
@@ -113,7 +120,7 @@ export function CubifyFilterSection() {
         the frame snaps onto a rotated grid and every cell bends its content
         toward the tile edges, reading as 3D blocks, bubbles, gems or folded
         prisms. The real effect.app algorithm, dial for dial — plus tile
-        shapes beyond the original cube.
+        shapes beyond the original cube, each one cut out as a visible shape.
       </p>
 
       {filter.enabled ? (
@@ -133,9 +140,20 @@ export function CubifyFilterSection() {
             </div>
             <p className="text-[10px] leading-snug text-zinc-600" aria-live="polite">
               {mixNote} Tap more to mix them — the grid carries every shape at
-              once.
+              once, each cell printing exactly one of them.
             </p>
           </div>
+          {!cubeOnly ? (
+            <SliderRow
+              label="Tile gaps"
+              value={filter.gaps}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={set('gaps')}
+              format={(v) => `${Math.round(v * 100)}%`}
+            />
+          ) : null}
           <SliderRow
             label="Cube size"
             value={filter.scale}
@@ -213,15 +231,17 @@ export function CubifyFilterSection() {
             onChange={set('speedY')}
             format={(v) => `${v.toFixed(2)} cells/s`}
           />
-          <SliderRow
-            label="Dispersion"
-            value={filter.dispersion}
-            min={0}
-            max={1}
-            step={0.001}
-            onChange={set('dispersion')}
-            format={(v) => `${(v * 100).toFixed(1)}%`}
-          />
+          {cubeOnly ? (
+            <SliderRow
+              label="Dispersion"
+              value={filter.dispersion}
+              min={0}
+              max={1}
+              step={0.001}
+              onChange={set('dispersion')}
+              format={(v) => `${(v * 100).toFixed(1)}%`}
+            />
+          ) : null}
           <SliderRow
             label="Mix"
             value={filter.blend}
@@ -241,9 +261,14 @@ export function CubifyFilterSection() {
           <p className="text-[10px] leading-snug text-zinc-600">
             The grid drifts with the song (speed dials above). Hard edges
             snaps every tile to hard pixels — cubes to their corners, beads
-            to center-or-rim, diamonds to their points; dispersion fringes
-            the tile edges like chromatic glass. Skipped on transparent
-            backgrounds so alpha recordings stay clean.
+            to center-or-rim, diamonds to their points, triangles to the
+            fold. Tile gaps fades the rim outside each mixed shape to black
+            so circles read as round beads and diamonds as gems (beads
+            inscribe the cell's smaller screen dimension, so a circle is a
+            circle whatever the stretch dial does). The chromatic dispersion
+            glass belongs to the lone cube — shape mixes run one clean warp
+            so their shapes never print stacked RGB ghost copies. Skipped on
+            transparent backgrounds so alpha recordings stay clean.
           </p>
         </>
       ) : null}
