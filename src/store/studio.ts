@@ -42,6 +42,7 @@ import {
   type WaveWarpFilterConfig,
   type VignetteFilterConfig,
   type ShakeFilterConfig,
+  type StrobeFilterConfig,
 } from '@/lib/visualizer/types'
 import {
   exportMP4,
@@ -158,6 +159,8 @@ type StudioState = {
   patchVignetteFilter: (partial: Partial<VignetteFilterConfig>) => void
   /** Patches config.shakeFilter (the handheld camera drift) */
   patchShakeFilter: (partial: Partial<ShakeFilterConfig>) => void
+  /** Patches config.strobeFilter (the random-interval color inversion) */
+  patchStrobeFilter: (partial: Partial<StrobeFilterConfig>) => void
   /** Patches config.layers (the layers-vs-filters options) */
   patchLayers: (partial: Partial<LayersConfig>) => void
   /** Adds an imported font file to the shared lyrics/title library */
@@ -376,6 +379,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       config: { ...s.config, shakeFilter: { ...s.config.shakeFilter, ...partial } },
     })),
 
+  patchStrobeFilter: (partial) =>
+    set((s) => ({
+      config: { ...s.config, strobeFilter: { ...s.config.strobeFilter, ...partial } },
+    })),
+
   patchLayers: (partial) =>
     set((s) => ({
       config: { ...s.config, layers: { ...s.config.layers, ...partial } },
@@ -532,6 +540,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         waveWarpFilter: { ...DEFAULT_STUDIO_CONFIG.waveWarpFilter, ...config.waveWarpFilter },
         vignetteFilter: { ...DEFAULT_STUDIO_CONFIG.vignetteFilter, ...config.vignetteFilter },
         shakeFilter: { ...DEFAULT_STUDIO_CONFIG.shakeFilter, ...config.shakeFilter },
+        strobeFilter: { ...DEFAULT_STUDIO_CONFIG.strobeFilter, ...config.strobeFilter },
         // Layers-vs-filters options: new saves carry their own section; old
         // saves graduate the halftone's flip-gated "Layers stay colored".
         layers: resolveLayersConfig(config),

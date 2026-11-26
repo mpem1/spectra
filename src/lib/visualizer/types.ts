@@ -1148,6 +1148,46 @@ export interface ShakeFilterConfig {
 }
 
 /**
+ * Strobe filter — the screen flashes to its NEGATIVE at random intervals:
+ * every flash inverts the colors on screen for a split second, like a strobe
+ * light firing in front of the camera. The Frequency dial sets how often the
+ * strobe fires on average (the gaps between flashes stay random — each
+ * flash's moment is hashed from the song time, so exports flash frame-
+ * exactly); Mix fades the inverted print back over the untouched frame.
+ * Optional color overlay: the inverted flash takes the overlay color's hue
+ * instead of a pure negative, and the overlay hue itself can roll fresh on
+ * every flash when "randomize color" is on. React to beat fires the strobe
+ * on the song's low end too. Skipped on transparent backgrounds like every
+ * full-frame filter.
+ */
+export interface StrobeFilterConfig {
+  enabled: boolean
+  /** Frequency — average flashes per second, 0..8. The flashes land at
+   *  RANDOM intervals around this average (0 silences the schedule: only
+   *  the beat fires the strobe when React to beat is on) */
+  frequency: number
+  /** Mix 0..1 — how completely the flash inverts (below 1 the untouched
+   *  frame fades back through) */
+  mix: number
+  /** Color overlay — the inverted flash takes the overlay color's hue
+   *  (the negative keeps its flipped luminosity) instead of a pure
+   *  black/white negative */
+  colorOverlay: boolean
+  /** The overlay hue as '#rrggbb' (only shows while colorOverlay is on
+   *  and the per-flash color roll is off) */
+  overlayColor: string
+  /** Randomize color on beat — every flash lands a fresh random hue
+   *  instead of the dialed overlay color (only matters when colorOverlay
+   *  is on) */
+  randomColorOnBeat: boolean
+  /** React to beat — the song's low end fires the strobe too (a real kick
+   *  flashes the screen, between kicks the frame rests at the dialed look) */
+  beatReactive: boolean
+  /** How hard a kick must hit (and how fully it flashes), 0..1 */
+  beatStrength: number
+}
+
+/**
  * Phosphor monitor filter — the lo-fi sci-fi video-tube look: the whole
  * picture is repainted as glowing vertical lines or columns of short
  * horizontal dashes (one sample per cell, tone → shade of the picked
@@ -2057,6 +2097,9 @@ export interface StudioConfig {
   vignetteFilter: VignetteFilterConfig
   /** Full-frame camera-shake post-pass (handheld drift + beat jolt) */
   shakeFilter: ShakeFilterConfig
+  /** Full-frame strobe post-pass (random-interval color inversion + beat
+   *  flashes, tintable negative) */
+  strobeFilter: StrobeFilterConfig
   /** How the moving layers interact with the full-frame filter chain */
   layers: LayersConfig
   /** Imported font library — shared by the lyrics and the title card */
@@ -2873,6 +2916,16 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     amount: 10,
     speed: 1,
     wobble: 0.4,
+    beatReactive: false,
+    beatStrength: 0.5,
+  },
+  strobeFilter: {
+    enabled: false,
+    frequency: 2,
+    mix: 1,
+    colorOverlay: false,
+    overlayColor: '#ff3b5c',
+    randomColorOnBeat: false,
     beatReactive: false,
     beatStrength: 0.5,
   },

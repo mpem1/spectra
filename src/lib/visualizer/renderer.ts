@@ -47,6 +47,7 @@ import { drawKaleidoscopeFilter } from './kaleidoscope-filter'
 import { drawWaveWarpFilter } from './wave-warp-filter'
 import { drawVignetteFilter } from './vignette-filter'
 import { drawShakeFilter } from './shake-filter'
+import { drawStrobeFilter } from './strobe-filter'
 import { drawDotSphereStyle } from './dot-sphere-style'
 import { getWork, resetWork } from './filter-utils'
 
@@ -315,6 +316,12 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // inside each frame). After the dither so the wall always reads as the
   // outermost scene — the white cards never get re-postered by anything.
   drawPolaroidFilter(rc, config.polaroidFilter, frame, transparent)
+  // Strobe — the screen flashes to its negative at random intervals (beat
+  // flashes opt-in, tintable negative). The very outermost filter: a strobe
+  // light fires in front of the camera, so it lights up every scene it
+  // finds there — the wall included. Before the filter-alpha blend, so the
+  // lifted layers (stayColored / textClear) still escape the flash.
+  drawStrobeFilter(rc, config.strobeFilter, frame, transparent)
   // Filter alpha: fade the unfiltered snapshot back over the finished chain
   // BEFORE the layer overlay returns, so the lifted layers/text (stayColored
   // / textClear) still land at full strength above the blend.

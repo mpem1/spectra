@@ -16,6 +16,7 @@ import { CubifyFilterSection } from '@/components/studio/cubify-filter-section'
 import { DitherFilterSection } from '@/components/studio/dither-filter-section'
 import { VignetteFilterSection } from '@/components/studio/vignette-filter-section'
 import { ShakeFilterSection } from '@/components/studio/shake-filter-section'
+import { StrobeFilterSection } from '@/components/studio/strobe-filter-section'
 import { LayersSection } from '@/components/studio/layers-section'
 
 /**
@@ -90,6 +91,9 @@ export function FiltersTab() {
 
       {/* Camera shake — handheld drift + roll wobble + beat jolt */}
       <ShakeFilterSection />
+
+      {/* Strobe — random-interval color inversion + beat flashes + tintable negative */}
+      <StrobeFilterSection />
 
       {/* Layers — keep the moving layers colored above every filter.
           (The Polaroid wall lives in the Style tab: it is a background

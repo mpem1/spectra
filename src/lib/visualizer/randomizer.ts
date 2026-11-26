@@ -56,7 +56,10 @@
  * The React-to-beat toggles roll too: every picked effect that owns one
  * flips it 50/50, and when it lands on, that effect's punch dial (beat pop,
  * tape jolt, beat flare — whatever its own card calls it) rolls like every
- * other dial. A swept roll switches the toggle back off.
+ * other dial. The strobe's overlay switches roll the same 50/50 way (the
+ * color overlay on the invert, and the per-flash hue roll gated on it), so
+ * a picked strobe can land a tinted negative whose color churns on every
+ * flash. A swept roll switches every toggle back off.
  *
  * Slider geometry (min/max/step) mirrors the studio UI exactly; the factory
  * defaults are read live from DEFAULT_STUDIO_CONFIG so the two can never
@@ -86,6 +89,7 @@ import {
   type ScreenFilterConfig,
   type ShakeFilterConfig,
   type StudioConfig,
+  type StrobeFilterConfig,
   type TextureFilterConfig,
   type VignetteFilterConfig,
   type VisualizerConfig,
@@ -1010,6 +1014,36 @@ const FILTER_EFFECTS: RandomEffect[] = [
       { ...param<ShakeFilterConfig>('speed', 0, 3, 0.05), label: 'Drift speed' },
       { ...param<ShakeFilterConfig>('wobble', 0, 2, 0.05), label: 'Roll wobble' },
       { ...param<ShakeFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat jolt', when: (f) => f.beatReactive },
+    ],
+  }),
+  makeEffect<StrobeFilterConfig>({
+    label: 'Strobe',
+    get: (c) => c.strobeFilter,
+    defaults: DEFAULT_STUDIO_CONFIG.strobeFilter,
+    patch: (p) => useStudioStore.getState().patchStrobeFilter(p),
+    // Three switches, rolled in order: the beat trigger, the color overlay
+    // on the invert, and the per-flash hue roll — the last gated on the
+    // overlay (a rolled-on hue roll with no overlay would be a dead pick).
+    switches: [
+      { label: 'beat flash', key: 'beatReactive' },
+      { label: 'color overlay', key: 'colorOverlay' },
+      { label: 'color on every flash', key: 'randomColorOnBeat', when: (f) => f.colorOverlay },
+    ],
+    params: [
+      { ...param<StrobeFilterConfig>('frequency', 0, 8, 0.1), label: 'Frequency' },
+      { ...param<StrobeFilterConfig>('mix', 0, 1, 0.05), label: 'Mix' },
+      { ...param<StrobeFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat flash', when: (f) => f.beatReactive },
+    ],
+    colors: [
+      {
+        label: 'Overlay color',
+        keys: ['overlayColor'],
+        // Only while the dialed hue actually dresses the look — with the
+        // per-flash roll on, every flash lands its own hue and the picker
+        // stays at factory.
+        when: (v) => v.colorOverlay && !v.randomColorOnBeat,
+        roll: () => ({ overlayColor: vividColor() }),
+      },
     ],
   }),
 ]
