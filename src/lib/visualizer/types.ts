@@ -1035,15 +1035,18 @@ export interface CubifyFilterConfig {
 /**
  * Kaleidoscope filter — the whole picture mirrored through a radial array
  * of wedge slices around a center point: every wedge shows the same slice
- * of the picture (odd wedges mirrored about their own center axis, so the
- * seams always read as clean reflections), spinning slowly and zoomable.
- * Deterministic (the spin derives from the decorative style clock, no
- * randomness), so exports match the preview frame-exactly. Skipped on
- * transparent backgrounds.
+ * of the picture, treated per the segment style (classic alternating
+ * reflections, all-mirrored mandala, or a direct pinwheel fan), spinning
+ * slowly and zoomable. The SOURCE can drift around under the mirrors
+ * (wander + breathe + beat snap), so a still background image reads as a
+ * working kaleidoscope instead of one stationary mirrored picture.
+ * Deterministic (motion derives from the decorative style clock and
+ * integer hashes, no randomness), so exports match the preview
+ * frame-exactly. Skipped on transparent backgrounds.
  */
 export interface KaleidoscopeFilterConfig {
   enabled: boolean
-  /** Mirror wedges around the center, 2..16 (2 = a plain two-way mirror) */
+  /** Mirror wedges around the center, 2..24 (2 = a plain two-way mirror) */
   segments: number
   /** Spin — the whole mirror array rotates this many turns per second,
    *  -0.5..0.5 (negative spins the other way) */
@@ -1051,17 +1054,37 @@ export interface KaleidoscopeFilterConfig {
   /** Zoom into the slice, 1..4 (1 = the auto-cover framing, higher
    *  magnifies the slice) */
   zoom: number
+  /** Segment style — how each wedge treats the slice: 'alternate' is the
+   *  classic tiling (odd wedges mirrored, every seam reads as a clean
+   *  reflection); 'mandala' mirrors EVERY wedge about its own axis (a ring
+   *  of self-symmetric butterflies); 'direct' never mirrors (the slice
+   *  repeats rotationally, a pinwheel fan with hard seams) */
+  mirrorMode: 'alternate' | 'mandala' | 'direct'
+  /** Source drift — the sampled picture wanders around under the mirrors,
+   *  0..1 as a share of the frame. 0 keeps the slice still (the mirror
+   *  print of a still background image then freezes into one picture);
+   *  a drifting source is what makes a still image read as a WORKING
+   *  kaleidoscope — the wedges keep re-slicing a moving picture */
+  wander: number
+  /** Drift speed, 0..3 cycles/s — how fast the wander runs its path
+   *  (0 freezes it; the path itself is a Lissajous of two incommensurate
+   *  sines, so it never repeats) */
+  wanderSpeed: number
+  /** Breathe, 0..1 — the slice swells up to +40% zoom on a slow sine
+   *  (zoom-in only, so the auto-cover guarantee never breaks) */
+  breathe: number
   /** Kaleidoscope center, 0..100 % of the frame */
   centerX: number
   centerY: number
   /** Mix 0..1 — how much of the frame the mirror print takes over (below 1
    *  the untouched frame fades back through) */
   blend: number
-  /** React to beat — the array kicks around an extra wedge on the song's
-   *  low end (driven by frame.bass, additive, resting exactly at the dialed
-   *  look between kicks) */
+  /** React to beat — on the song's low end the array kicks around an extra
+   *  wedge AND the source snaps to a fresh hashed spot (the pattern
+   *  re-forms on every kick; driven by frame.bass, additive, resting
+   *  exactly at the dialed look between kicks) */
   beatReactive: boolean
-  /** How hard the beat spin hits, 0..1 (only matters when beatReactive) */
+  /** How hard the beat kick hits, 0..1 (only matters when beatReactive) */
   beatStrength: number
 }
 
@@ -2895,6 +2918,10 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     segments: 8,
     spin: 0.05,
     zoom: 1.4,
+    mirrorMode: 'alternate',
+    wander: 0,
+    wanderSpeed: 0.5,
+    breathe: 0,
     centerX: 50,
     centerY: 50,
     blend: 1,

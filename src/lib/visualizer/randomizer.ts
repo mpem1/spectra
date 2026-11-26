@@ -23,8 +23,9 @@
  * at least one step, so a pick is a real, visible change; zero-default dials
  * therefore move too) — switching each picked effect on. Every picked effect
  * also re-rolls its COLOR options: preset selectors (Neon Split's ramp, the
- * color grade's look, the gradient map's ramp library, the instant-film
- * stock, the dither palette) land a random preset, and color fields (halo
+ * color grade's look, the gradient map's ramp library and its shift motion,
+ * the instant-film stock, the dither palette, the kaleidoscope's segment
+ * style) land a random preset, and color fields (halo
  * tint, inks, papers, lens tints, custom-texture tints) get fresh random
  * colors in their own role — glows stay bright, backings stay dark, tints
  * stay tasteful (the vignette's edge tint rolls deep, and only while the
@@ -970,17 +971,38 @@ const FILTER_EFFECTS: RandomEffect[] = [
     get: (c) => c.kaleidoscopeFilter,
     defaults: DEFAULT_STUDIO_CONFIG.kaleidoscopeFilter,
     patch: (p) => useStudioStore.getState().patchKaleidoscopeFilter(p),
-    switches: [{ label: 'beat spin', key: 'beatReactive' }],
+    presets: [
+      {
+        // The Segment style chip chooser (Classic / Mandala / Fan) — how
+        // each wedge treats the slice, rolled like the gradient map's
+        // shift motion so every pick lands one of the three treatments.
+        label: 'Segment style',
+        key: 'mirrorMode',
+        options: ['alternate', 'mandala', 'direct'],
+        names: {
+          alternate: 'Classic tiling',
+          mandala: 'Mandala',
+          direct: 'Pinwheel fan',
+        },
+      },
+    ],
+    switches: [{ label: 'beat kick', key: 'beatReactive' }],
     params: [
       // The roll never lands 2 wedges (the plain two-way mirror reads as a
-      // break, not a look) — 3..16 keeps every pick a real kaleidoscope.
-      { ...param<KaleidoscopeFilterConfig>('segments', 3, 16, 1), label: 'Segments' },
+      // break, not a look) — 3..24 keeps every pick a real kaleidoscope.
+      { ...param<KaleidoscopeFilterConfig>('segments', 3, 24, 1), label: 'Segments' },
       { ...param<KaleidoscopeFilterConfig>('spin', -0.5, 0.5, 0.01), label: 'Spin' },
       { ...param<KaleidoscopeFilterConfig>('zoom', 1, 4, 0.05), label: 'Zoom' },
+      // Source motion — the drift is what makes a still background image
+      // read as a working scope, so the roll always lands a living wander
+      // (the zero-default moves too) and a breathe swell on top.
+      { ...param<KaleidoscopeFilterConfig>('wander', 0, 1, 0.05), label: 'Wander' },
+      { ...param<KaleidoscopeFilterConfig>('wanderSpeed', 0, 3, 0.05), label: 'Wander speed' },
+      { ...param<KaleidoscopeFilterConfig>('breathe', 0, 1, 0.05), label: 'Breathe' },
       { ...param<KaleidoscopeFilterConfig>('centerX', 0, 100, 1), label: 'Center X' },
       { ...param<KaleidoscopeFilterConfig>('centerY', 0, 100, 1), label: 'Center Y' },
       { ...param<KaleidoscopeFilterConfig>('blend', 0, 1, 0.05), label: 'Mix' },
-      { ...param<KaleidoscopeFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat spin', when: (f) => f.beatReactive },
+      { ...param<KaleidoscopeFilterConfig>('beatStrength', 0, 1, 0.05), label: 'Beat kick', when: (f) => f.beatReactive },
     ],
   }),
   makeEffect<VignetteFilterConfig>({
