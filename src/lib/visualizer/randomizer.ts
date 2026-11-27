@@ -75,8 +75,10 @@
  * dedicated WINDOWS (uniform across the whole declared window, wherever the
  * default sits): Neon Split's gradient shift only drifts within ±0.11 and
  * its repeat lands x1 or x2, its film grain rolls Preset → +15% and its
- * grain size fine (0.5px) → 1.2px, and the gradient map's shift rolls
- * anywhere from -100% to 90%.
+ * grain size fine (0.5px) → 1.2px, the gradient map's shift rolls
+ * anywhere from -100% to 90%, and the dither's MacPaint Bitmap width and
+ * Threshold roll anywhere on their full slider tracks (32..4096 cells,
+ * 0..100%).
  *
  * The React-to-beat toggles roll too: every picked effect that owns one
  * flips it 50/50, and when it lands on, that effect's punch dial (beat pop,
@@ -610,8 +612,10 @@ interface EffectParam<C> {
    *  around the factory default — for dials with a dedicated random window
    *  (Neon Split's gradient shift only drifts within ±0.11 of center, its
    *  gradient repeat only lands x1 or x2, its film grain rolls
-   *  Preset→+15% and its grain size fine→1.2px, and the gradient map's
-   *  shift rolls anywhere from -100% to 90%), wherever the default sits. */
+   *  Preset→+15% and its grain size fine→1.2px, the gradient map's
+   *  shift rolls anywhere from -100% to 90%, and the dither's MacPaint
+   *  Bitmap width and Threshold roll anywhere on their full slider
+   *  tracks), wherever the default sits. */
   uniform?: boolean
   /** Only randomized while this passes (sub-mode conditions, mirrored from the UI). */
   when?: (cfg: C) => boolean
@@ -1568,7 +1572,22 @@ const FILTER_EFFECTS: RandomEffect[] = [
     ],
     params: [
       // MacPaint mode swaps the dials for its own set (mirrors the UI).
-      { ...param<DitherFilterConfig>('macThreshold', 0, 1, 0.01), label: 'Threshold', when: (f) => f.mode === 'macpaint' },
+      // Bitmap width and Threshold carry the user's tuning: both roll
+      // ANYWHERE on their slider tracks (uniform), not a ±25% jitter around
+      // the factory 342 cells / 35% pivot — the whole 32..4096-cell grid
+      // range and the whole 0..100% pivot range are fair game.
+      {
+        ...param<DitherFilterConfig>('macBitmapWidth', 32, 4096, 2),
+        label: 'Bitmap width',
+        when: (f) => f.mode === 'macpaint',
+        uniform: true,
+      },
+      {
+        ...param<DitherFilterConfig>('macThreshold', 0, 1, 0.01),
+        label: 'Threshold',
+        when: (f) => f.mode === 'macpaint',
+        uniform: true,
+      },
       { ...param<DitherFilterConfig>('macContrast', 0.1, 4, 0.05), label: 'Contrast', when: (f) => f.mode === 'macpaint' },
       { ...param<DitherFilterConfig>('macGrain', 0, 1, 0.05), label: 'Grain', when: (f) => f.mode === 'macpaint' },
       { ...param<DitherFilterConfig>('macSmoothing', 0, 3, 1), label: 'Smooth', when: (f) => f.mode === 'macpaint' },
