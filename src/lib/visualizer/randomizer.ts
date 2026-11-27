@@ -58,7 +58,8 @@
  * is the one exception — the dice never yank the scene off the user's media,
  * so the mode stays on its tab and the toast says "Background image/video
  * kept" — and while the media stays, the invert-over-media look flips on
- * 50/50: the visualizer becomes a difference stencil that inverts the
+ * 20% of rolls (80% off — a statement look, not a default): the visualizer
+ * becomes a difference stencil that inverts the
  * picture wherever it overlaps. Choices the randomizer doesn't own are never
  * touched: the background gradient's geometry (stop layout, angle, shape,
  * cycling), the visualizer gradient's angle, cycle speed and stop layout
@@ -2059,14 +2060,15 @@ export function randomizeLook(): RandomizeSummary {
   // The one exception: an uploaded image or video IS the backdrop — the
   // dice never yank the scene off the user's media, so this roll is skipped
   // entirely and the toast just reports the media was kept. While the
-  // media stays, the INVERT-OVER-MEDIA look joins the dice 50/50: the
-  // visualizer flips into a difference stencil that inverts the picture
-  // wherever it overlaps (landed on speaks up; the clean slate already
-  // guarantees off).
+  // media stays, the INVERT-OVER-MEDIA look joins the dice on a 20/80
+  // weight: 20% of rolls flip the visualizer into a difference stencil
+  // that inverts the picture wherever it overlaps (landed on speaks up),
+  // 80% leave it off — the stencil look is a statement, not a default
+  // (the clean slate already guarantees off on the skipped 80%).
   const background = useStudioStore.getState().config.background
   if (background.mode === 'image' || background.mode === 'video') {
     changed.push(`Background ${background.mode} kept`)
-    if (Math.random() < 0.5) {
+    if (Math.random() < 0.2) {
       useStudioStore.getState().patchVisualizer({ invertOverlap: true })
       changed.push('Invert over media on')
     }
