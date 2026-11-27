@@ -89,6 +89,17 @@ export interface VisualizerConfig {
    *  sits behind it. Scales uniformly on top of every inner alpha, exactly
    *  like the lyrics layer's opacity dial does for the words. */
   transparency: number
+  /** Invert-overlap look — when the backdrop is an uploaded image or video,
+   *  the visualizer stops painting its own palette and instead INVERTS the
+   *  picture beneath it: the layer is redrawn as a difference-blend stencil
+   *  (white shapes composited with 'difference'), so every bar / wave /
+   *  dot flips the media's colors wherever it covers them — bright sky goes
+   *  dark under the bars, a dark stage glows. The fade-outs survive as
+   *  partial inversion (glow halos, anti-aliasing and the Transparency dial
+   *  all scale the flip instead of hard-cutting it). Off (the factory value)
+   *  the visualizer paints normally. Inert on solid / gradient / transparent
+   *  backdrops — there is nothing there to invert. */
+  invertOverlap: boolean
   /** Perspective road flow speed 0..1 — how fast the 3D equalizer's bars
    *  stream past the camera (0 = the road stands still, 1 = rush). The
    *  terrain landscape reads it too (its hills roll toward the camera);
@@ -2456,6 +2467,9 @@ export const DEFAULT_STUDIO_CONFIG: StudioConfig = {
     orientation: 'horizontal',
     anchor: 'right',
     transparency: 0,
+    // Factory off — the classic painted look. The invert-overlap stencil
+    // opts in through the Style tab (or a roll that landed it over media).
+    invertOverlap: false,
     flowSpeed: 0.5,
     perspUp: '#ff1f1f',
     perspDown: '#1e6bff',

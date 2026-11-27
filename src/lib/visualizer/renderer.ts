@@ -124,6 +124,19 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
   // Full-frame filter chain gate: transparent backgrounds skip them all so
   // alpha recordings stay clean.
   const transparent = config.background?.mode === 'transparent'
+  // "Invert over media" — the Style tab's stencil look: over an uploaded
+  // image or video backdrop the visualizer layer flips into a difference
+  // stencil that INVERTS the picture it covers. Only meaningful when real
+  // media sits beneath (solid / gradient / transparent backdrops have
+  // nothing to invert), and it pins the visualizer to the frame: a
+  // difference composite against the transparent "layers stay colored"
+  // overlay would be a silent no-op, so while the look is on the bars draw
+  // straight onto the backdrop (riding through the filter chain like the
+  // classic path) while every other lifted layer keeps the overlay.
+  const invertOverlap =
+    !transparent &&
+    (config.background?.mode === 'image' || config.background?.mode === 'video') &&
+    (config.visualizer as VisualizerConfig | undefined)?.invertOverlap === true
   // "Layers stay colored" — the moving layers (visualizer, pulse image,
   // vinyl disc) AND the text overlays render into their own transparent
   // overlay canvas instead of the main frame, and the overlay is drawn back
@@ -174,19 +187,24 @@ export function renderFrame(rc: RenderContext, frame: AudioFrame, config: Studio
     // vinyl & cover, 'front' (the default, and what very old saves merge to)
     // keeps them on top. Lyrics/title always stay above everything.
     const vizBehind = (config.visualizer as VisualizerConfig | undefined)?.layer === 'back'
+    // The invert-overlap stencil must composite against the backdrop (or the
+    // vinyl riding under front-layer bars), never against a transparent
+    // overlay — so while the look is on the visualizer's target pins to the
+    // frame. Every other layer keeps its own target, untouched.
+    const vizTarget = invertOverlap ? rc : target
     // Pulse image behind everything except the background (pre-disc saves
     // merge layer='front', so this only runs when the user asks for it).
     if (config.pulseImage?.enabled && config.pulseImage.layer === 'back') {
       drawPulseImage(target, frame, config.pulseImage, config.visualizer.gradient, S)
     }
-    if (vizBehind) drawVisualizer(target, frame, config.visualizer, S, transparent)
+    if (vizBehind) drawVisualizer(vizTarget, frame, config.visualizer, S, transparent, invertOverlap)
     // Album art layer (square cover + spinning vinyl/CD) — above the
     // visualizer, below the text overlays. Optional chaining keeps very old
     // saves (pre-disc) renderable even before the store merge runs.
     if (config.disc?.enabled) {
       drawDisc(target, frame, config.disc)
     }
-    if (!vizBehind) drawVisualizer(target, frame, config.visualizer, S, transparent)
+    if (!vizBehind) drawVisualizer(vizTarget, frame, config.visualizer, S, transparent, invertOverlap)
     // Pulse image in front of the bars & vinyl (the default placement).
     if (config.pulseImage?.enabled && config.pulseImage.layer !== 'back') {
       drawPulseImage(target, frame, config.pulseImage, config.visualizer.gradient, S)
@@ -604,6 +622,10 @@ function drawVisualizer(
   cfg: VisualizerConfig,
   S: number,
   transparent: boolean,
+  /** The invert-overlap stencil: the style's exact draws land in an
+   *  offscreen canvas, get whitened into an alpha stencil and composite
+   *  with 'difference' — every pixel the layer covers flips. */
+  invert = false,
 ): void {
   const { ctx, width: W, height: H } = rc
   // Layer transparency — the Style tab's Transparency dial fades the ENTIRE
@@ -616,6 +638,9 @@ function drawVisualizer(
   if (layerAlpha <= 0.002) return
   ctx.save()
   ctx.globalAlpha = layerAlpha
+  // The caller-space matrix, captured BEFORE the layout transform below —
+  // the stencil pass composites back in this space at the end.
+  const entry = ctx.getTransform()
   // Layer layout (move + resize): the canvas-center point of the visualizer
   // layer is re-anchored at (positionX%, positionY%) and everything scales
   // away from that anchor — resize in place, then slide. At the defaults
@@ -629,75 +654,116 @@ function drawVisualizer(
     ctx.scale(zoom, zoom)
     ctx.translate(-W / 2, -H / 2)
   }
-  switch (cfg.style) {
-    case 'bars':
-    case 'wave':
-    case 'grid':
-    case 'ribbon':
-    case 'perspective':
-    case 'terrain':
-    case 'serato': {
-      // These styles draw a classic left→right strip (the perspective road
-      // included — its vanishing point then sits past the right edge, and
-      // the terrain landscape's horizon runs through the middle). Vertical
-      // orientation rotates that strip 90° counter-clockwise into a
-      // top→bottom column: bass stays at the bottom, bars/wave grow sideways
-      // from the layer's right edge (the perspective road points its
-      // vanishing point at the bottom edge). The style code keeps drawing in
-      // its own left→right space — we hand it a swapped (H×W) canvas and
-      // rotate it into place, so every slider (count, mirror, glow, position,
-      // size) keeps behaving exactly as in horizontal mode, and the strip
-      // always fits the canvas without cropping (a plain rotation of a wide
-      // strip would overflow). anchor = 'left' mirrors the rotated strip
-      // horizontally: same math, flipped around the canvas' vertical center
-      // line, so the bars hang from the LEFT edge and grow rightward instead.
-      const vertical = (cfg.orientation ?? 'horizontal') === 'vertical'
-      if (vertical) {
-        ctx.translate(0, H)
-        ctx.rotate(-Math.PI / 2)
-        if ((cfg.anchor ?? 'right') === 'left') {
-          // In the strip's own space the canvas mirror is a vertical flip:
-          // shape (x, y) → (W − y, H − x) on the canvas.
-          ctx.translate(0, W)
-          ctx.scale(1, -1)
+  // The style dispatch, parameterized by target so the stencil pass can run
+  // the EXACT same draws into an offscreen canvas. The vertical-orientation
+  // branch rotates the target's own context; everything else is passthrough.
+  const runStyle = (target: RenderContext): void => {
+    const tctx = target.ctx
+    switch (cfg.style) {
+      case 'bars':
+      case 'wave':
+      case 'grid':
+      case 'ribbon':
+      case 'perspective':
+      case 'terrain':
+      case 'serato': {
+        // These styles draw a classic left→right strip (the perspective road
+        // included — its vanishing point then sits past the right edge, and
+        // the terrain landscape's horizon runs through the middle). Vertical
+        // orientation rotates that strip 90° counter-clockwise into a
+        // top→bottom column: bass stays at the bottom, bars/wave grow sideways
+        // from the layer's right edge (the perspective road points its
+        // vanishing point at the bottom edge). The style code keeps drawing in
+        // its own left→right space — we hand it a swapped (H×W) canvas and
+        // rotate it into place, so every slider (count, mirror, glow, position,
+        // size) keeps behaving exactly as in horizontal mode, and the strip
+        // always fits the canvas without cropping (a plain rotation of a wide
+        // strip would overflow). anchor = 'left' mirrors the rotated strip
+        // horizontally: same math, flipped around the canvas' vertical center
+        // line, so the bars hang from the LEFT edge and grow rightward instead.
+        const vertical = (cfg.orientation ?? 'horizontal') === 'vertical'
+        if (vertical) {
+          tctx.translate(0, H)
+          tctx.rotate(-Math.PI / 2)
+          if ((cfg.anchor ?? 'right') === 'left') {
+            // In the strip's own space the canvas mirror is a vertical flip:
+            // shape (x, y) → (W − y, H − x) on the canvas.
+            tctx.translate(0, W)
+            tctx.scale(1, -1)
+          }
         }
+        const styleRc: RenderContext = vertical ? { ...target, width: H, height: W } : target
+        if (cfg.style === 'bars') drawBars(styleRc, frame, cfg, S)
+        else if (cfg.style === 'wave') drawWave(styleRc, frame, cfg, S)
+        else if (cfg.style === 'ribbon') drawRibbon(styleRc, frame, cfg, S)
+        else if (cfg.style === 'perspective') drawPerspective(styleRc, frame, cfg, S)
+        else if (cfg.style === 'terrain') drawTerrain(styleRc, frame, cfg, S)
+        else if (cfg.style === 'serato') drawSerato(styleRc, frame, cfg, S)
+        else drawGrid(styleRc, frame, cfg, S)
+        break
       }
-      const styleRc: RenderContext = vertical ? { ...rc, width: H, height: W } : rc
-      if (cfg.style === 'bars') drawBars(styleRc, frame, cfg, S)
-      else if (cfg.style === 'wave') drawWave(styleRc, frame, cfg, S)
-      else if (cfg.style === 'ribbon') drawRibbon(styleRc, frame, cfg, S)
-      else if (cfg.style === 'perspective') drawPerspective(styleRc, frame, cfg, S)
-      else if (cfg.style === 'terrain') drawTerrain(styleRc, frame, cfg, S)
-      else if (cfg.style === 'serato') drawSerato(styleRc, frame, cfg, S)
-      else drawGrid(styleRc, frame, cfg, S)
-      break
+      case 'sphere':
+        drawSphere(target, frame, cfg, S)
+        break
+      case 'dotsphere':
+        // The 3D LED ball floating over the user's untouched background. Not
+        // a strip: it skips the vertical-orientation branch (same as the
+        // image style below).
+        drawDotSphereStyle(target, frame, cfg, transparent)
+        break
+      case 'imgviz':
+        // The custom PNG style — centered artwork + inner spectrum mask, glow
+        // and bolts. Not a strip: it skips the vertical-orientation branch.
+        drawImageViz(target, frame, cfg, S)
+        break
+      case 'radial':
+        drawRadial(target, frame, cfg, S)
+        break
+      case 'particles':
+        drawParticles(target, frame, cfg, S)
+        break
+      case 'blob':
+        drawBlob(target, frame, cfg, S)
+        break
+      default:
+        break
     }
-    case 'sphere':
-      drawSphere(rc, frame, cfg, S)
-      break
-    case 'dotsphere':
-      // The 3D LED ball floating over the user's untouched background. Not
-      // a strip: it skips the vertical-orientation branch (same as the
-      // image style below).
-      drawDotSphereStyle(rc, frame, cfg, transparent)
-      break
-    case 'imgviz':
-      // The custom PNG style — centered artwork + inner spectrum mask, glow
-      // and bolts. Not a strip: it skips the vertical-orientation branch.
-      drawImageViz(rc, frame, cfg, S)
-      break
-    case 'radial':
-      drawRadial(rc, frame, cfg, S)
-      break
-    case 'particles':
-      drawParticles(rc, frame, cfg, S)
-      break
-    case 'blob':
-      drawBlob(rc, frame, cfg, S)
-      break
-    default:
-      break
   }
+  if (!invert) {
+    runStyle(rc)
+    ctx.restore()
+    return
+  }
+  // Invert-overlap — the difference-blend stencil. The style's full draw
+  // (layout transform included, read straight off the live context) lands
+  // in an offscreen canvas; a 'source-in' white fill turns that result into
+  // a stencil carrying the layer's exact alpha shape — fills, glow halos,
+  // anti-aliasing and the Transparency dial all survive as PARTIAL
+  // inversion. Compositing the stencil with 'difference' flips every
+  // covered pixel: |backdrop − white| = the inverted picture, fading
+  // gracefully at the layer's soft edges. Deterministic — exports stay
+  // pixel-exact.
+  const work = getWork('viz:invert', W, H)
+  const wctx = resetWork(work.getContext('2d')!)
+  wctx.clearRect(0, 0, W, H)
+  const here = ctx.getTransform()
+  wctx.setTransform(here.a, here.b, here.c, here.d, here.e, here.f)
+  const workRc: RenderContext = { ...rc, ctx: wctx }
+  runStyle(workRc)
+  // The Image style records its artwork footprint on the rc it draws into —
+  // carry a stencil-run record back so the filter chain keeps its anchor.
+  rc.imageVizRect = workRc.imageVizRect
+  // Whiten in canvas space: the stencil is the layer's alpha, filled white.
+  wctx.setTransform(1, 0, 0, 1, 0, 0)
+  wctx.globalCompositeOperation = 'source-in'
+  wctx.fillStyle = '#ffffff'
+  wctx.fillRect(0, 0, W, H)
+  // Composite in the caller's space — the layer alpha set above scales the
+  // inversion exactly like it scales the classic draw. restore() puts every
+  // state (transform, alpha, composite op) back for the caller.
+  ctx.globalCompositeOperation = 'difference'
+  ctx.setTransform(entry.a, entry.b, entry.c, entry.d, entry.e, entry.f)
+  ctx.drawImage(work, 0, 0)
   ctx.restore()
 }
 

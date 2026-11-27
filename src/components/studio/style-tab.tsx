@@ -90,9 +90,13 @@ function AutoPaletteButton() {
 
 export function StyleTab() {
   const visualizer = useStudioStore((s) => s.config.visualizer)
+  const backgroundMode = useStudioStore((s) => s.config.background.mode)
   const patchVisualizer = useStudioStore((s) => s.patchVisualizer)
   const patchGradient = useStudioStore((s) => s.patchGradient)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  // The invert-overlap stencil only means something over real media — the
+  // toggle stays reachable but disabled until an image or video is up.
+  const mediaBg = backgroundMode === 'image' || backgroundMode === 'video'
 
   const handleImageFile = (file: File | undefined): void => {
     if (!file) return
@@ -144,6 +148,24 @@ export function StyleTab() {
         <p className="text-xs leading-relaxed text-zinc-500">
           See-through the bars: 0% is the solid classic look, 100% fades the whole
           visualizer into the background behind it.
+        </p>
+        {/* Invert over media — the visualizer becomes a difference-blend
+            stencil over an image or video backdrop: wherever it sits, the
+            picture's colors flip. Inert without media beneath, so the row
+            dims until something is loaded. */}
+        <div className="flex h-8 items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5">
+          <MicroLabel>Invert over image/video</MicroLabel>
+          <Switch
+            aria-label="Toggle invert over image or video"
+            checked={visualizer.invertOverlap}
+            disabled={!mediaBg}
+            onCheckedChange={(invertOverlap) => patchVisualizer({ invertOverlap })}
+          />
+        </div>
+        <p className="text-xs leading-relaxed text-zinc-500">
+          {mediaBg
+            ? 'Difference-blend stencil: the visualizer gives up its own colors and flips the picture wherever it overlaps — bright areas go dark under the bars, dark ones glow.'
+            : 'Arms over an image or video background: the visualizer then flips the picture\u2019s colors wherever it overlaps (a difference-blend stencil).'}
         </p>
       </section>
 

@@ -57,7 +57,9 @@
  * reading as always-dark. An uploaded image or video playing AS the backdrop
  * is the one exception — the dice never yank the scene off the user's media,
  * so the mode stays on its tab and the toast says "Background image/video
- * kept". Choices the randomizer doesn't own are never
+ * kept" — and while the media stays, the invert-over-media look flips on
+ * 50/50: the visualizer becomes a difference stencil that inverts the
+ * picture wherever it overlaps. Choices the randomizer doesn't own are never
  * touched: the background gradient's geometry (stop layout, angle, shape,
  * cycling), the visualizer gradient's angle, cycle speed and stop layout
  * (outside the preset branch), the layer Transparency dial and the Layers
@@ -946,6 +948,10 @@ const STYLE_FIELD_RESET: Record<string, unknown> = {
   anchor: 'right',
   mirror: 'none',
   glow: true,
+  // The invert-overlap stencil: swept off the slate every roll — it only
+  // ever lands back ON through the media-backdrop branch below (the dice
+  // flip it 50/50 when an image or video IS the backdrop).
+  invertOverlap: false,
   seratoColors: 'rainbow',
   perspUp: '#ff1f1f',
   perspDown: '#1e6bff',
@@ -2052,10 +2058,18 @@ export function randomizeLook(): RandomizeSummary {
   // cycling) stays exactly as the user set them; only the colors roll.
   // The one exception: an uploaded image or video IS the backdrop — the
   // dice never yank the scene off the user's media, so this roll is skipped
-  // entirely and the toast just reports the media was kept.
+  // entirely and the toast just reports the media was kept. While the
+  // media stays, the INVERT-OVER-MEDIA look joins the dice 50/50: the
+  // visualizer flips into a difference stencil that inverts the picture
+  // wherever it overlaps (landed on speaks up; the clean slate already
+  // guarantees off).
   const background = useStudioStore.getState().config.background
   if (background.mode === 'image' || background.mode === 'video') {
     changed.push(`Background ${background.mode} kept`)
+    if (Math.random() < 0.5) {
+      useStudioStore.getState().patchVisualizer({ invertOverlap: true })
+      changed.push('Invert over media on')
+    }
   } else {
     const mood = rollBackgroundMood()
     if (Math.random() < 0.5) {
