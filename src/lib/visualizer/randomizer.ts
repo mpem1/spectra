@@ -13,18 +13,23 @@
  *  - a different visualizer style card (the shape itself — Bars → Wave → …;
  *    Image only joins the pool when artwork is actually uploaded, since
  *    without it the style is an empty placeholder frame),
- *  - 1–2 style dials (visualizer sliders, drawn only from the ones the
- *    freshly picked style actually shows),
+ *  - the LAYOUT: Position X / Position Y land anywhere on their tracks
+ *    (the factory 50/50 sits dead center, so "50% either way" IS the whole
+ *    track) and Size lands between 20% and 160% — all three on every roll,
+ *  - EVERY SHAPE & MOTION dial the freshly picked style shows — all of its
+ *    sliders land a uniform random spot on their full tracks, and the
+ *    section's picks and switches roll too: Orientation (and the vertical
+ *    Side), the Mirror family (and the offset dials it uncovers), the Glow
+ *    switch, the perspective Up/Down colors, the Serato colors pick, the
+ *    Dot Sphere card's dot colors / orb face / beat swell, and the Image
+ *    card's inner visualizer, switches, glow & bolt color modes,
  *  - 0–2 color tools (the Color tab effects),
  *  - 0–2 filters (the Filters tab effects),
  *
- * and moves each picked dial to a random position within 25% of its factory
- * default — positive or negative along the horizontal slider track (always
- * at least one step, so a pick is a real, visible change; zero-default dials
- * therefore move too) — switching each picked effect on. Every picked effect
- * also re-rolls its COLOR options: preset selectors (Neon Split's ramp, the
- * color grade's look, the gradient map's ramp library and its shift motion,
- * the instant-film stock, the dither palette, the kaleidoscope's segment
+ * switching each picked effect on. Every picked effect also re-rolls its
+ * COLOR options: preset selectors (Neon Split's ramp, the color grade's
+ * look, the gradient map's ramp library and its shift motion, the
+ * instant-film stock, the dither palette, the kaleidoscope's segment
  * style, the cubify tile-shape mix) land a random preset, and color fields
  * (halo tint, inks, papers, lens tints, custom-texture tints) get fresh
  * random colors in their own role — glows stay bright, backings stay dark,
@@ -32,18 +37,18 @@
  * the lens carries its color function — the tint picker hides when the edge
  * blur owns the vignette). The Style tab's own GRADIENT section rolls as
  * well, wherever the tab still shows it (every style except perspective, which
- * keeps its strict two-color split): colors land fresh every roll — half
+ * gets its own two-color roll instead): colors land fresh every roll — half
  * the rolls one of the editor's five preset ramps, half a coordinated
  * vivid recolor of the current stops (the visualizer draws from this
- * palette, so it rolls bright where the backdrop rolls deep) — shape
- * flips linear/radial and Cycle colors flips on/off, each 50/50. The
- * BACKDROP rolls too: when the background is set to a Solid color or a
- * Gradient, its colors land fresh every roll — a deep, hue-tinted solid,
- * or the existing gradient stops recolored as one coordinated palette.
- * Choices the randomizer doesn't own are never touched: the background's
- * mode and gradient geometry (stop layout, angle, shape, cycling), the
- * visualizer gradient's angle, cycle speed and stop layout (outside the
- * preset branch), text, uploaded images, blend modes, sub-modes.
+ * palette) — shape flips linear/radial and Cycle colors flips on/off,
+ * each 50/50. The BACKDROP rolls too: every roll sets it to a Solid or a
+ * Gradient (50/50 — the mode itself joins the roll) and lands fresh colors
+ * in one of three brightness moods — deep, mid or bright — so it stops
+ * reading as always-dark. Choices the randomizer doesn't own are never
+ * touched: the background gradient's geometry (stop layout, angle, shape,
+ * cycling), the visualizer gradient's angle, cycle speed and stop layout
+ * (outside the preset branch), the layer Transparency dial, text, uploaded
+ * images, blend modes, sub-modes.
  *
  * A few dials carry hard TASTE CEILINGS: the roll never lands them above the
  * ceiling (the color grade's Strength ≤ 45%, the contour threads ≤ 46 lines
@@ -175,13 +180,6 @@ function jitterCapped(
   return v
 }
 
-/** "+18%" / "-7%" — how far the dial moved, as a share of the track. */
-function deltaLabel(def: number, v: number, min: number, max: number): string {
-  const span = max - min
-  const pct = span > 0 ? Math.round((Math.abs(v - def) / span) * 100) : 0
-  return `${v >= def ? '+' : '-'}${pct}%`
-}
-
 /* ------------------------------ random colors ------------------------------- */
 
 /** hsl(h° 0–360, s 0–1, l 0–1) → '#rrggbb' — the roll's color vocabulary. */
@@ -283,28 +281,54 @@ function rollVividStops(stops: ColorStop[]): ColorStop[] {
 /* ----------------------------- background colors ----------------------------- */
 
 /**
- * The backdrop's roll — fresh colors for the two color-bearing background
- * modes, always inside the site's dark-backing vocabulary so every
- * visualizer style stays readable on top of it.
+ * The backdrop's roll — every roll SETS the mode (solid or gradient, 50/50)
+ * and lands fresh colors in one of three brightness moods, so the backdrop
+ * stops reading as always-dark:
+ *  - deep — the classic near-black, hue-tinted backing (30% of rolls),
+ *  - mid — a confident colored wall, still behind the vivid visualizer (40%),
+ *  - bright — a loud, saturated backdrop (30%).
  *
- * Solid lands a deep, hue-tinted backing (the factory's near-black, but
- * colored). Gradient recolors the EXISTING stops as one coordinated
- * palette: one base hue drifting along the ramp, brightest (but still
- * deep) at the first stop and near-black at the last — the stop count,
- * positions, opacities, angle, shape and cycling stay exactly as the user
- * set them. Transparent / image / video backdrops carry their own colors
- * and are never touched.
+ * Solid paints one color in the mood's band. Gradient recolors the EXISTING
+ * stops as one coordinated palette: one base hue drifting along the ramp
+ * between the mood's bright end and deep end — the stop count, positions,
+ * opacities, angle, shape and cycling stay exactly as the user set them.
+ * The visualizer gradient rolls vivid and independent, so the scene stays
+ * readable on every mood.
  */
-function rollSolidBackground(): string {
-  return deepColor()
+type BackgroundMood = 'deep' | 'mid' | 'bright'
+
+function rollBackgroundMood(): BackgroundMood {
+  const r = Math.random()
+  return r < 0.3 ? 'deep' : r < 0.7 ? 'mid' : 'bright'
 }
 
-function rollBackgroundStops(stops: ColorStop[]): ColorStop[] {
+function rollSolidBackground(mood: BackgroundMood): string {
+  const sat = mood === 'deep' ? 0.55 + Math.random() * 0.35 : 0.45 + Math.random() * 0.4
+  const light =
+    mood === 'deep'
+      ? 0.06 + Math.random() * 0.1
+      : mood === 'mid'
+        ? 0.2 + Math.random() * 0.25
+        : 0.5 + Math.random() * 0.22
+  return hslHex(randHue(), sat, light)
+}
+
+function rollBackgroundStops(stops: ColorStop[], mood: BackgroundMood): ColorStop[] {
   const baseHue = randHue()
   const drift = (Math.random() < 0.5 ? -1 : 1) * (40 + Math.random() * 70) // ±40–110° along the ramp
-  const sat = 0.55 + Math.random() * 0.3
-  const topL = 0.16 + Math.random() * 0.14 // brightest stop — still deep enough to dress the scene
-  const deepL = 0.05 + Math.random() * 0.05 // near-black at the far end
+  const sat = 0.5 + Math.random() * 0.35
+  const topL =
+    mood === 'deep'
+      ? 0.16 + Math.random() * 0.14 // brightest stop — still deep enough to dress the scene
+      : mood === 'mid'
+        ? 0.32 + Math.random() * 0.18
+        : 0.55 + Math.random() * 0.17
+  const deepL =
+    mood === 'deep'
+      ? 0.05 + Math.random() * 0.05 // near-black at the far end
+      : mood === 'mid'
+        ? 0.12 + Math.random() * 0.13
+        : 0.28 + Math.random() * 0.22
   return stops.map((stop) => {
     const t = Math.min(1, Math.max(0, stop.position / 100))
     return { ...stop, color: hslHex(baseHue + drift * t, sat, topL + (deepL - topL) * t) }
@@ -440,22 +464,30 @@ const VISUALIZER_STYLES: { id: VisualizerStyle; label: string }[] = [
 ]
 
 /**
- * Style-tab dials, one entry per slider the UI can show. `when` mirrors the
- * Style tab's own visibility conditions so a dial is only ever picked when
- * it actually dresses the current style.
+ * Every numeric style dial the randomizer owns. The LAYOUT trio
+ * (Position X / Y, Size) rolls through `rollLayout` with its own dedicated
+ * ranges; Transparency is swept on the clean slate but never rolled (a
+ * rolled layer fade would read as a broken look); every other entry is a
+ * SHAPE & MOTION dial (or one of the Dot Sphere / Image cards' own dials)
+ * and lands a uniform random spot on its full track on every roll.
+ * `when` mirrors the Style tab's own visibility conditions so a dial is
+ * only ever rolled while the freshly picked style actually shows it —
+ * EVERY entry is still reset to its factory value on the clean slate,
+ * including dials the current style hides, so no stale roll resurfaces
+ * after a style switch.
  */
 const STYLE_DIALS: StyleDial[] = [
-  // Layout — every style
+  // Layout — every style (rolled by rollLayout, never jittered)
   { label: 'Position X', key: 'positionX', min: 0, max: 100, step: 1 },
   { label: 'Position Y', key: 'positionY', min: 0, max: 100, step: 1 },
-  { label: 'Size', key: 'scale', min: 0.1, max: 2.5, step: 0.05 },
+  { label: 'Size', key: 'scale', min: 0.2, max: 1.6, step: 0.05 },
   { label: 'Transparency', key: 'transparency', min: 0, max: 1, step: 0.05 },
-  { label: 'Sensitivity', key: 'sensitivity', min: 0.1, max: 3, step: 0.1 },
   // Shape & motion — every style except Serato / Dot Sphere
   { label: 'Bar count', key: 'barCount', min: 16, max: 256, step: 8, when: notStyle('serato', 'dotsphere') },
   { label: 'Smoothing', key: 'smoothing', min: 0, max: 0.95, step: 0.05, when: notStyle('serato', 'dotsphere') },
   { label: 'Roundness', key: 'roundness', min: 0, max: 1, step: 0.05, when: notStyle('ribbon', 'terrain', 'sphere', 'dotsphere') },
   { label: 'Gap', key: 'gap', min: 0, max: 0.8, step: 0.05, when: notStyle('ribbon', 'terrain', 'sphere', 'dotsphere', 'serato') },
+  { label: 'Sensitivity', key: 'sensitivity', min: 0.1, max: 3, step: 0.1 },
   // Perspective & Terrain road dressing
   { label: 'Horizon', key: 'mirrorOffset', min: 0.1, max: 0.9, step: 0.01, when: isStyle('perspective', 'terrain') },
   { label: 'Flow speed', key: 'flowSpeed', min: 0, max: 1, step: 0.05, when: isStyle('perspective', 'terrain') },
@@ -478,6 +510,24 @@ const STYLE_DIALS: StyleDial[] = [
     when: (viz) =>
       viz.mirror !== 'none' && (viz.style === 'bars' || viz.style === 'wave' || viz.style === 'grid'),
   },
+  // Terrain's signed water-line dial (both mirror modes)
+  {
+    label: 'Mirror offset',
+    key: 'terrainMirrorDrop',
+    min: -1,
+    max: 1,
+    step: 0.01,
+    when: (viz) => viz.style === 'terrain' && viz.mirror !== 'none',
+  },
+  // Perspective's water-line dial (the road reflection, mirror mode only)
+  {
+    label: 'Mirror offset',
+    key: 'perspMirrorDrop',
+    min: 0,
+    max: 1,
+    step: 0.01,
+    when: (viz) => viz.style === 'perspective' && viz.mirror === 'mirror',
+  },
   // Dot sphere dressing
   { label: 'Sphere size', key: 'dotSphereSize', min: 0.6, max: 2.6, step: 0.01, when: isStyle('dotsphere') },
   { label: 'Dot rows', key: 'dotSphereRows', min: 12, max: 80, step: 1, when: isStyle('dotsphere') },
@@ -489,6 +539,7 @@ const STYLE_DIALS: StyleDial[] = [
   { label: 'Band twist', key: 'dotSphereTwist', min: 0, max: 3, step: 0.01, when: isStyle('dotsphere') },
   { label: 'Music ripple', key: 'dotSphereRipple', min: 0, max: 1, step: 0.05, when: isStyle('dotsphere') },
   { label: 'Glow', key: 'dotSphereGlow', min: 0, max: 1, step: 0.05, when: isStyle('dotsphere') },
+  { label: 'Beat swell', key: 'dotSphereBeatStrength', min: 0, max: 1, step: 0.05, when: (viz) => viz.style === 'dotsphere' && viz.dotSphereBeat },
   // Image style dressing
   { label: 'Artwork size', key: 'imgvizSize', min: 15, max: 100, step: 1, when: isStyle('imgviz') },
   { label: 'Artwork dim', key: 'imgvizDim', min: 0, max: 1, step: 0.05, when: isStyle('imgviz') },
@@ -501,20 +552,261 @@ const STYLE_DIALS: StyleDial[] = [
   { label: 'Bolt reach', key: 'imgvizBoltLength', min: 0.3, max: 2, step: 0.05, when: (viz) => viz.style === 'imgviz' && viz.imgvizBolt },
 ]
 
-/** Nudge one style dial and report the move for the toast. */
-function applyStyleDial(dial: StyleDial): string | null {
-  const { config, patchVisualizer } = useStudioStore.getState()
-  const viz = config.visualizer
-  if (dial.when && !dial.when(viz)) return null
-  const def = (DEFAULT_STUDIO_CONFIG.visualizer as unknown as Record<string, unknown>)[
-    dial.key as string
-  ]
-  if (typeof def !== 'number' || !Number.isFinite(def)) return null
-  const value = jitter(def, dial.min, dial.max, dial.step)
-  const partial: Partial<VisualizerConfig> = {}
-  partial[dial.key] = value
-  patchVisualizer(partial)
-  return `${dial.label} ${deltaLabel(def, value, dial.min, dial.max)}`
+/** One enum-valued style field the roll flips (orientation, mirror, …). */
+interface StyleChoice {
+  /** Toast wording for the field. */
+  label: string
+  key: keyof VisualizerConfig
+  options: readonly string[]
+  /** Eligible only while this passes (the picker must be visible for the current style). */
+  when?: (viz: VisualizerConfig) => boolean
+  /** Toast wording per option — options missing from the map (the factory
+   *  defaults, usually) stay silent. */
+  say?: Record<string, string>
+}
+
+/**
+ * The enum-valued SHAPE & MOTION fields, in the order they gate each other
+ * (the orientation pick uncovers Side; the image card's switches uncover
+ * its placement and color-mode picks). Every condition is evaluated against
+ * the state MERGED with the roll so far — see rollShapeMotion.
+ */
+const STYLE_CHOICES: StyleChoice[] = [
+  {
+    label: 'Orientation',
+    key: 'orientation',
+    options: ['horizontal', 'vertical'],
+    when: isStyle('bars', 'wave', 'grid', 'ribbon', 'perspective', 'terrain', 'sphere', 'serato'),
+    say: { vertical: 'vertical' },
+  },
+  {
+    label: 'Side',
+    key: 'anchor',
+    options: ['left', 'right'],
+    when: (viz) => viz.orientation === 'vertical' && viz.style !== 'sphere',
+    say: { left: 'left edge' },
+  },
+  {
+    label: 'Mirror',
+    key: 'mirror',
+    options: ['none', 'mirror', 'center'],
+    when: notStyle('sphere', 'dotsphere', 'serato', 'imgviz'),
+    say: { mirror: 'mirror', center: 'center' },
+  },
+  {
+    label: 'Serato colors',
+    key: 'seratoColors',
+    options: ['rainbow', 'palette', 'solid'],
+    when: isStyle('serato'),
+    say: { palette: 'palette colors', solid: 'solid colors' },
+  },
+  {
+    label: 'Dot colors',
+    key: 'dotSphereColors',
+    options: ['neon', 'palette', 'picture'],
+    when: isStyle('dotsphere'),
+    say: { palette: 'palette dots', picture: 'picture dots' },
+  },
+  {
+    label: 'Orb face',
+    key: 'dotSphereFace',
+    options: ['dark', 'color'],
+    when: isStyle('dotsphere'),
+    say: { color: 'color face' },
+  },
+  {
+    label: 'Inner visualizer',
+    key: 'imgvizInner',
+    options: ['bars', 'wave', 'radial', 'particles', 'blob', 'grid', 'ribbon'],
+    when: isStyle('imgviz'),
+    say: { wave: 'inner wave', radial: 'inner radial', particles: 'inner dots', blob: 'inner blob', grid: 'inner grid', ribbon: 'inner ribbon' },
+  },
+  {
+    label: 'Inner orientation',
+    key: 'imgvizInnerOrient',
+    options: ['horizontal', 'vertical'],
+    when: (viz) =>
+      viz.style === 'imgviz' &&
+      (viz.imgvizInner === 'bars' || viz.imgvizInner === 'wave' || viz.imgvizInner === 'grid' || viz.imgvizInner === 'ribbon'),
+    say: { vertical: 'inner vertical' },
+  },
+  {
+    label: 'Glow placement',
+    key: 'imgvizGlowPlacement',
+    options: ['over', 'outside'],
+    when: (viz) => viz.style === 'imgviz' && viz.imgvizGlow,
+    say: { outside: 'glow outside only' },
+  },
+  {
+    label: 'Glow color',
+    key: 'imgvizGlowMode',
+    options: ['palette', 'custom'],
+    when: (viz) => viz.style === 'imgviz' && viz.imgvizGlow,
+    say: { custom: 'custom glow color' },
+  },
+  {
+    label: 'Bolt color',
+    key: 'imgvizBoltMode',
+    options: ['palette', 'custom'],
+    when: (viz) => viz.style === 'imgviz' && viz.imgvizBolt,
+    say: { custom: 'custom bolt color' },
+  },
+]
+
+/** One boolean style field the roll coin-flips (50/50). */
+interface StyleFlag {
+  key: keyof VisualizerConfig
+  /** The factory value the clean slate guarantees — a flip away from it
+   *  lands a toast note, a flip back to it stays silent. */
+  factory: boolean
+  /** Toast wording — `${word} on` / `${word} off`. */
+  word: string
+  when?: (viz: VisualizerConfig) => boolean
+}
+
+const STYLE_FLAGS: StyleFlag[] = [
+  { key: 'glow', factory: true, word: 'glow' },
+  { key: 'dotSphereBeat', factory: false, word: 'beat swell', when: isStyle('dotsphere') },
+  { key: 'imgvizMotion', factory: true, word: 'motion', when: isStyle('imgviz') },
+  { key: 'imgvizGlow', factory: true, word: 'edges', when: isStyle('imgviz') },
+  { key: 'imgvizBolt', factory: true, word: 'electricity', when: isStyle('imgviz') },
+]
+
+/**
+ * The non-numeric style fields the roll owns — swept back to factory on the
+ * clean slate (the numeric dials sweep through STYLE_DIALS) so a previous
+ * roll's vertical orientation, mirror pick or custom card colors never
+ * stacks onto the next one. Uploaded artwork (imgvizSrc, dotSphereFaceSrc)
+ * is NOT owned — it survives the sweep.
+ */
+const STYLE_FIELD_RESET: Record<string, unknown> = {
+  orientation: 'horizontal',
+  anchor: 'right',
+  mirror: 'none',
+  glow: true,
+  seratoColors: 'rainbow',
+  perspUp: '#ff1f1f',
+  perspDown: '#1e6bff',
+  dotSphereColors: 'neon',
+  dotSphereFace: 'dark',
+  dotSphereFaceColor: '#050109',
+  dotSphereBeat: false,
+  imgvizInner: 'bars',
+  imgvizInnerOrient: 'horizontal',
+  imgvizMotion: true,
+  imgvizGlow: true,
+  imgvizGlowMode: 'palette',
+  imgvizGlowPlacement: 'over',
+  imgvizGlowColor: '#ffffff',
+  imgvizBolt: true,
+  imgvizBoltMode: 'palette',
+  imgvizBoltColor: '#7df9ff',
+}
+
+/** The layout keys STYLE_DIALS holds for the sweep — rolled elsewhere, never jittered. */
+const LAYOUT_KEYS = new Set(['positionX', 'positionY', 'scale', 'transparency'])
+
+/** Uniform anywhere on the slider track, snapped to the step grid. */
+function rollTrack(min: number, max: number, step: number): number {
+  const steps = Math.max(1, Math.round((max - min) / step))
+  const v = min + Math.round(Math.random() * steps) * step
+  return Number(Math.min(max, Math.max(min, v)).toFixed(4))
+}
+
+/**
+ * The LAYOUT roll — Position X / Y anywhere on their tracks (the factory
+ * 50/50 sits dead center, so the user's "50% either way" IS the whole
+ * track) and Size between 20% and 160%. One line for the toast.
+ */
+function rollLayout(): string {
+  const positionX = rollTrack(0, 100, 1)
+  const positionY = rollTrack(0, 100, 1)
+  const scale = rollTrack(0.2, 1.6, 0.05)
+  useStudioStore.getState().patchVisualizer({ positionX, positionY, scale })
+  return `Position ${Math.round(positionX)}%/${Math.round(positionY)}% · Size ${Math.round(scale * 100)}%`
+}
+
+/**
+ * The SHAPE & MOTION roll — every field the section shows for the freshly
+ * picked style, all of it, on every roll: the switches flip first (50/50),
+ * then the picks roll with every condition read from the state MERGED with
+ * the roll so far (the orientation pick uncovers Side; the image card's
+ * glow switch uncovers its placement and color-mode picks), then every
+ * eligible slider lands a uniform random spot on its full track — the
+ * mirror pick decides which offset dial exists, the beat-swell switch
+ * decides whether its strength rolls. The Dot Sphere and Image cards' own
+ * dressing rolls with them (dot colors, orb face, inner visualizer, glow &
+ * bolt modes — the perspective style gets its Up/Down colors here instead
+ * of the shared gradient). Returns one summary line for the toast.
+ */
+function rollShapeMotion(): string {
+  const viz0 = useStudioStore.getState().config.visualizer
+  const patch: Record<string, unknown> = {}
+  const notes: string[] = []
+  const note = (n: string) => {
+    if (notes.length < 5) notes.push(n)
+    else if (notes.length === 5) notes.push('…')
+  }
+  // The roll-so-far view every `when` reads — picks gate later picks.
+  const vizR = () => ({ ...viz0, ...patch }) as VisualizerConfig
+
+  // 1 — the switches, 50/50 each (a flip off the factory value speaks up).
+  for (const flag of STYLE_FLAGS) {
+    if (flag.when && !flag.when(viz0)) continue
+    const v = Math.random() < 0.5
+    patch[flag.key as string] = v
+    if (v !== flag.factory) note(`${flag.word} ${v ? 'on' : 'off'}`)
+  }
+
+  // 2 — the picks, each condition read against the merged state so the
+  // chains fire (vertical orientation uncovers Side; glowing edges uncover
+  // the glow placement and color-mode picks). A pick that lands off the
+  // factory value speaks up.
+  for (const choice of STYLE_CHOICES) {
+    if (choice.when && !choice.when(vizR())) continue
+    const v = choice.options[Math.floor(Math.random() * choice.options.length)]
+    if (v === undefined) continue
+    patch[choice.key as string] = v
+    const said = choice.say?.[v]
+    if (said) note(said)
+  }
+
+  // 3 — the color fields the picks uncover: perspective's own two-color
+  // split (its card replaces the shared gradient — two vivid colors a
+  // half-wheel apart), the image card's custom glow / bolt colors, the orb
+  // face's paint when it lands 'color'.
+  if (viz0.style === 'perspective') {
+    const hue = randHue()
+    patch.perspUp = hslHex(hue, 0.7 + Math.random() * 0.25, 0.5 + Math.random() * 0.15)
+    patch.perspDown = hslHex(hue + 120 + Math.random() * 120, 0.7 + Math.random() * 0.25, 0.5 + Math.random() * 0.15)
+    note('up/down colors')
+  }
+  if (patch.imgvizGlowMode === 'custom') patch.imgvizGlowColor = vividColor()
+  if (patch.imgvizBoltMode === 'custom') patch.imgvizBoltColor = vividColor()
+  if (patch.dotSphereFace === 'color') patch.dotSphereFaceColor = deepColor()
+
+  if (Object.keys(patch).length) {
+    useStudioStore.getState().patchVisualizer(patch as Partial<VisualizerConfig>)
+  }
+
+  // 4 — the sliders, evaluated against the UPDATED config so the picks
+  // above (mirror mode, the image card's switches, the beat swell) decide
+  // which dials exist. All of them roll — that is the point of the section.
+  const viz = useStudioStore.getState().config.visualizer
+  const sliderPatch: Record<string, number> = {}
+  for (const dial of STYLE_DIALS) {
+    if (LAYOUT_KEYS.has(dial.key as string)) continue
+    if (dial.when && !dial.when(viz)) continue
+    sliderPatch[dial.key as string] = rollTrack(dial.min, dial.max, dial.step)
+  }
+  if (Object.keys(sliderPatch).length) {
+    useStudioStore.getState().patchVisualizer(sliderPatch as Partial<VisualizerConfig>)
+  }
+
+  const count = Object.keys(sliderPatch).length
+  const head = `${count} dial${count === 1 ? '' : 's'} rolled`
+  const said = notes.length ? `, ${notes.join(', ')}` : ''
+  return `Shape & motion — ${head}${said}`
 }
 
 /* --------------------------- color tools & filters --------------------------- */
@@ -1325,9 +1617,11 @@ export interface RandomizeSummary {
 /**
  * Roll one fresh look: first default everything the randomizer owns (so
  * previous picks never stack), then switch to a different visualizer style
- * and pick 1–2 of its dials, 0–2 color tools and 0–2 filters, every picked
- * dial within ±25% of its factory default on the slider track. Applies the
- * patches to the studio store and returns what moved.
+ * and roll its LAYOUT (position across the whole track, size 20–160%), ALL
+ * of its SHAPE & MOTION dials and picks, 0–2 color tools and 0–2 filters —
+ * every picked effect's colors and presets re-rolled in their own roles,
+ * and the backdrop set to a fresh solid or gradient in a fresh brightness
+ * mood. Applies the patches to the studio store and returns what moved.
  */
 export function randomizeLook(): RandomizeSummary {
   const changed: string[] = []
@@ -1335,9 +1629,11 @@ export function randomizeLook(): RandomizeSummary {
   /* ------------------------- clean slate ------------------------- */
 
   // Style dials: every dial the randomizer owns goes back to its factory
-  // value — including dials the current style hides, so no stale jitter
-  // resurfaces after a style switch. One patch for the whole sweep.
-  const styleReset: Record<string, number> = {}
+  // value — including dials the current style hides, so no stale roll
+  // resurfaces after a style switch. The non-numeric style fields it owns
+  // (orientation, mirror, glow, the cards' picks and switches) sweep back
+  // alongside them. One patch for the whole sweep.
+  const styleReset: Record<string, unknown> = { ...STYLE_FIELD_RESET }
   for (const dial of STYLE_DIALS) {
     const def = (DEFAULT_STUDIO_CONFIG.visualizer as unknown as Record<string, unknown>)[
       dial.key as string
@@ -1367,24 +1663,26 @@ export function randomizeLook(): RandomizeSummary {
     changed.push(`Style → ${nextStyle.label}`)
   }
 
-  // Style: always 1–2 dials (the eligible pool is never empty — five dials
-  // apply to every style). Eligibility is checked against the freshly
-  // switched style, mirroring the sliders its tab now shows.
-  const viz = useStudioStore.getState().config.visualizer
-  const eligible = STYLE_DIALS.filter((dial) => !dial.when || dial.when(viz))
-  const styleCount = 1 + Math.floor(Math.random() * 2)
-  for (const dial of pickRandom(eligible, styleCount)) {
-    const label = applyStyleDial(dial)
-    if (label) changed.push(label)
-  }
+  // Layout: position across the whole track (the factory 50/50 sits dead
+  // center, so 50%-either-way IS the full track) and size between 20% and
+  // 160% — every roll.
+  changed.push(rollLayout())
+
+  // Shape & motion: every slider the section (plus the Dot Sphere / Image
+  // cards' own dressing) shows for the freshly picked style lands a
+  // uniform random spot on its track; the picks and switches (orientation,
+  // mirror, glow, the cards' selectors, perspective's own colors) flip
+  // alongside them — all of it, every roll.
+  changed.push(rollShapeMotion())
 
   // Visualizer gradient: the Style tab's GRADIENT section joins every roll
   // when the freshly switched style still shows it (every style except
-  // perspective — mirrored from the tab). Colors land fresh each roll: half
-  // the rolls one of the editor's preset ramps, half a coordinated vivid
-  // recolor of the existing stops. Shape flips linear/radial and Cycle
-  // colors flips on/off, each 50/50 — angle, cycle speed and the stop
-  // layout (outside the preset branch) stay as the user set them.
+  // perspective — mirrored from the tab; perspective's own two-color split
+  // rolled with the shape & motion above). Colors land fresh each roll:
+  // half the rolls one of the editor's preset ramps, half a coordinated
+  // vivid recolor of the existing stops. Shape flips linear/radial and
+  // Cycle colors flips on/off, each 50/50 — angle, cycle speed and the
+  // stop layout (outside the preset branch) stay as the user set them.
   const vizAfter = useStudioStore.getState().config.visualizer
   if (vizAfter.style !== 'perspective') {
     const notes: string[] = []
@@ -1411,22 +1709,22 @@ export function randomizeLook(): RandomizeSummary {
     if (notes.length && last >= 0 && changed[last]) changed[last] += ` (${notes.join(', ')})`
   }
 
-  // Background colors: the two color-bearing backdrop modes join every
-  // roll — a solid lands a fresh deep backing, a gradient gets its
-  // existing stops recolored as one coordinated palette. The mode itself
-  // and the gradient's geometry (stop layout, angle, shape, cycling) stay
-  // exactly as the user set them; transparent / image / video backdrops
-  // carry their own colors and are never touched. Colors don't stack, so
-  // there is nothing to sweep — each roll simply lands fresh ones.
+  // Background: the mode itself joins the roll — every press sets the
+  // backdrop to a Solid or a Gradient (50/50) with fresh colors in one of
+  // three brightness moods (deep / mid / bright), so it stops reading as
+  // always-dark. The gradient's geometry (stop layout, angle, shape,
+  // cycling) stays exactly as the user set them; only the colors roll.
   const background = useStudioStore.getState().config.background
-  if (background.mode === 'solid') {
-    useStudioStore.getState().patchBackground({ color: rollSolidBackground() })
-    changed.push('Background color')
-  } else if (background.mode === 'gradient') {
+  const mood = rollBackgroundMood()
+  if (Math.random() < 0.5) {
+    useStudioStore.getState().patchBackground({ mode: 'solid', color: rollSolidBackground(mood) })
+    changed.push(`Background solid (${mood})`)
+  } else {
     useStudioStore.getState().patchBackground({
-      gradient: { ...background.gradient, stops: rollBackgroundStops(background.gradient.stops) },
+      mode: 'gradient',
+      gradient: { ...background.gradient, stops: rollBackgroundStops(background.gradient.stops, mood) },
     })
-    changed.push('Background gradient')
+    changed.push(`Background gradient (${mood})`)
   }
 
   // Color tools: 0–2.
