@@ -17,7 +17,9 @@
  *    (the factory 50/50 sits dead center, so "50% either way" IS the whole
  *    track) and Size lands between 20% and 160% — all three on every roll,
  *  - EVERY SHAPE & MOTION dial the freshly picked style shows — all of its
- *    sliders land a uniform random spot on their full tracks, and the
+ *    sliders land a uniform random spot on their tracks (Serato's
+ *    Sensitivity is the one bounded window: 0.2–0.7, the strip's usable
+ *    punch), and the
  *    section's picks and switches roll too: Orientation (and the vertical
  *    Side), the Mirror family (and the offset dials it uncovers), the Glow
  *    switch, the perspective Up/Down colors, the Serato colors pick, the
@@ -509,7 +511,9 @@ const VISUALIZER_STYLES: { id: VisualizerStyle; label: string }[] = [
  * ranges; Transparency is swept on the clean slate but never rolled (a
  * rolled layer fade would read as a broken look); every other entry is a
  * SHAPE & MOTION dial (or one of the Dot Sphere / Image cards' own dials)
- * and lands a uniform random spot on its full track on every roll.
+ * and lands a uniform random spot on its track on every roll — with
+ * per-style WINDOWS where a style needs one (Serato's Sensitivity rolls
+ * 0.2–0.7, the strip's usable punch).
  * `when` mirrors the Style tab's own visibility conditions so a dial is
  * only ever rolled while the freshly picked style actually shows it —
  * EVERY entry is still reset to its factory value on the clean slate,
@@ -527,7 +531,15 @@ const STYLE_DIALS: StyleDial[] = [
   { label: 'Smoothing', key: 'smoothing', min: 0, max: 0.95, step: 0.05, when: notStyle('serato', 'dotsphere') },
   { label: 'Roundness', key: 'roundness', min: 0, max: 1, step: 0.05, when: notStyle('ribbon', 'terrain', 'sphere', 'dotsphere') },
   { label: 'Gap', key: 'gap', min: 0, max: 0.8, step: 0.05, when: notStyle('ribbon', 'terrain', 'sphere', 'dotsphere', 'serato') },
-  { label: 'Sensitivity', key: 'sensitivity', min: 0.1, max: 3, step: 0.1 },
+  { label: 'Sensitivity', key: 'sensitivity', min: 0.1, max: 3, step: 0.1, when: notStyle('serato') },
+  // Serato's Sensitivity window: the DJ strip only ever rolls a punch
+  // between 0.2 and 0.7 — the shared full track (0.1..3) overshoots this
+  // style into mush above ~0.7 and near-freeze below 0.2. The UI slider
+  // keeps its 0.1..3 track; this is a randomizer window, like the taste
+  // ceilings. Same key as the entry above — the `when`s are mutually
+  // exclusive, and the clean-slate sweep writes the factory default by key
+  // (duplicates are harmless).
+  { label: 'Sensitivity', key: 'sensitivity', min: 0.2, max: 0.7, step: 0.1, when: isStyle('serato') },
   // Perspective & Terrain road dressing
   { label: 'Horizon', key: 'mirrorOffset', min: 0.1, max: 0.9, step: 0.01, when: isStyle('perspective', 'terrain') },
   { label: 'Flow speed', key: 'flowSpeed', min: 0, max: 1, step: 0.05, when: isStyle('perspective', 'terrain') },
@@ -772,7 +784,8 @@ function rollLayout(): string {
  * then the picks roll with every condition read from the state MERGED with
  * the roll so far (the orientation pick uncovers Side; the image card's
  * glow switch uncovers its placement and color-mode picks), then every
- * eligible slider lands a uniform random spot on its full track — the
+ * eligible slider lands a uniform random spot on its track (Serato's
+ * Sensitivity rolls its bounded 0.2–0.7 window) — the
  * mirror pick decides which offset dial exists, the beat-swell switch
  * decides whether its strength rolls. The Dot Sphere and Image cards' own
  * dressing rolls with them (dot colors, orb face, inner visualizer, glow &
@@ -1726,7 +1739,9 @@ export function randomizeLook(): RandomizeSummary {
 
   // Shape & motion: every slider the section (plus the Dot Sphere / Image
   // cards' own dressing) shows for the freshly picked style lands a
-  // uniform random spot on its track; the picks and switches (orientation,
+  // uniform random spot on its track (Serato's Sensitivity stays in its
+  // 0.2–0.7 window, and its colors pick lands rainbow, palette or solid);
+  // the picks and switches (orientation,
   // mirror, glow, the cards' selectors, perspective's own colors) flip
   // alongside them — all of it, every roll.
   changed.push(rollShapeMotion())
