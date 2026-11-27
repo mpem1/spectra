@@ -41,7 +41,9 @@ export function ControlPanel() {
   // picks never stack, then the visualizer switches to a different style
   // card, its LAYOUT rolls (position anywhere on the track, size 20–160%),
   // ALL of its Shape & Motion dials and picks roll, 0–2 color tools and
-  // 0–2 filters are picked, and the backdrop is set to a fresh solid or
+  // 0–2 filters are picked (the gradient map's ramp roll can land custom
+  // colors — sampled from the loaded background image or video when there
+  // is one), and the backdrop is set to a fresh solid or
   // gradient in a fresh brightness mood — unless an image or video IS the
   // backdrop, in which case the media stays put and the toast says so.
   // The toast lists exactly what moved.

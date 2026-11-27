@@ -41,7 +41,11 @@
  * random colors in their own role — glows stay bright, backings stay dark,
  * tints stay tasteful (the vignette's edge tint rolls deep, and only while
  * the lens carries its color function — the tint picker hides when the edge
- * blur owns the vignette). The Style tab's own GRADIENT section rolls as
+ * blur owns the vignette). The gradient map's ramp roll can also land
+ * CUSTOM colors: fresh editable stops sampled from the loaded background
+ * image or video (dominant colors, luminance-sorted, spread across the
+ * track) — vivid rolls when no media is up — exactly like the editor's
+ * Custom tab. The Style tab's own GRADIENT section rolls as
  * well, wherever the tab still shows it (every style except perspective, which
  * gets its own two-color roll instead): colors land fresh every roll — half
  * the rolls one of the editor's five preset ramps, half a coordinated
@@ -123,6 +127,8 @@ import { CUBIFY_SHAPE_ORDER } from '@/lib/visualizer/types'
 import { useStudioStore } from '@/store/studio'
 import { RAMPS } from '@/lib/visualizer/neon-split-data'
 import { EXPOSURE_STOCKS } from '@/lib/visualizer/exposure-filter'
+import { getBackgroundImage } from '@/lib/visualizer/image-cache'
+import { getBackgroundMedia, getGifAnimation, isGifSrc } from '@/lib/visualizer/animated-bg'
 
 /* -------------------------------- jitter math -------------------------------- */
 
@@ -350,6 +356,199 @@ function rollBackgroundStops(stops: ColorStop[], mood: BackgroundMood): ColorSto
   return stops.map((stop) => {
     const t = Math.min(1, Math.max(0, stop.position / 100))
     return { ...stop, color: hslHex(baseHue + drift * t, sat, topL + (deepL - topL) * t) }
+  })
+}
+
+/* ----------------------- gradient map custom ramp roll ----------------------- */
+
+/**
+ * Where the last rolled Gradient Map custom ramp came from — the Ramp
+ * preset's toast name reads it (the extra callback runs right before the
+ * pick is pushed, so the name always describes the roll that set it).
+ */
+let customRampFrom = 'vivid'
+
+/**
+ * The Gradient Map's CUSTOM ramp roll (the user's ask: the map's colors can
+ * also use custom colors, set according to other colors in the image).
+ * When a background image or video/GIF is loaded AND already decoded — it
+ * always is by roll time, the live preview paints it every frame — the
+ * ramp is SAMPLED from that media: dominant colors picked off a downscaled
+ * frame, luminance-sorted so shadows read dark and highlights bright, then
+ * spread evenly across the ramp track (3–6 stops). Near-monochrome media
+ * keeps its own hue as a shades-of-one-color ramp. Without media (solid /
+ * gradient / transparent backdrop, or the media still decoding) the ramp
+ * rolls vivid instead — one base hue drifting along the track from deep to
+ * bright, the same coordinated-palette philosophy as the visualizer
+ * gradient's roll. Either way the stops land in customStops with preset
+ * 'custom' — exactly like the editor's Custom tab.
+ */
+function rollCustomRampStops(): { t: number; c: string }[] {
+  const source = rampSampleSource()
+  if (source) {
+    const colors = sampleDominantColors(source.src)
+    if (colors && colors.length >= 2) {
+      customRampFrom = source.label
+      return colorsToRampStops(colors)
+    }
+    if (colors && colors.length === 1) {
+      // Near-monochrome media — keep its hue as a shades-of-one-color ramp.
+      customRampFrom = source.label
+      return shadesRampStops(colors[0] ?? '#000000')
+    }
+  }
+  // No media (or still decoding / nothing drawable): vivid rolls.
+  customRampFrom = 'vivid'
+  return rollVividRampStops(3 + Math.floor(Math.random() * 4)) // 3–6 stops
+}
+
+/**
+ * The media frame the custom ramp should sample from — the background
+ * image's decoded element, the current video frame (or a GIF's first
+ * decoded frame), or null when no media is up / it is not drawable yet.
+ */
+function rampSampleSource(): { src: CanvasImageSource; label: string } | null {
+  const bg = useStudioStore.getState().config.background
+  if (bg.mode === 'image' && bg.imageSrc) {
+    const img = getBackgroundImage(bg.imageSrc)
+    return img ? { src: img, label: 'from image' } : null
+  }
+  if (bg.mode === 'video' && bg.videoSrc) {
+    if (isGifSrc(bg.videoSrc)) {
+      const anim = getGifAnimation(bg.videoSrc)
+      const frame = anim?.frames[0]
+      if (anim && frame) return { src: frame, label: 'from video' }
+      return null
+    }
+    const media = getBackgroundMedia(bg.videoSrc)
+    if (media) return { src: media.media, label: 'from video' }
+  }
+  return null
+}
+
+/**
+ * Downscale the frame onto a small grid and pick the dominant colors:
+ * pixels quantized into coarse 16-level RGB buckets, buckets ranked by
+ * pixel count, then greedily accepted while each new color sits far enough
+ * from the already-picked ones (so a big flat sky and its near-identical
+ * clouds don't both land). The target count (3–6) is rolled per pick for
+ * variety; when distinct colors run out the distance floor is dropped so a
+ * quiet image still fills at least two slots with its real colors. Returns
+ * null when nothing drawable came off the frame (all transparent).
+ */
+function sampleDominantColors(src: CanvasImageSource): string[] | null {
+  try {
+    const W = 48
+    const H = 32
+    const canvas = document.createElement('canvas')
+    canvas.width = W
+    canvas.height = H
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return null
+    ctx.drawImage(src, 0, 0, W, H)
+    const data = ctx.getImageData(0, 0, W, H).data
+    const buckets = new Map<number, { n: number; r: number; g: number; b: number }>()
+    for (let i = 0; i < data.length; i += 4) {
+      if ((data[i + 3] ?? 0) < 128) continue // transparent pixels carry no color
+      const r = data[i] ?? 0
+      const g = data[i + 1] ?? 0
+      const b = data[i + 2] ?? 0
+      const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4)
+      const e = buckets.get(key) ?? { n: 0, r: 0, g: 0, b: 0 }
+      e.n += 1
+      e.r += r
+      e.g += g
+      e.b += b
+      buckets.set(key, e)
+    }
+    if (buckets.size === 0) return null
+    const ranked = [...buckets.values()].sort((a, b) => b.n - a.n)
+    const avg = (e: { n: number; r: number; g: number; b: number }) =>
+      [e.r / e.n, e.g / e.n, e.b / e.n] as const
+    const dist = (a: readonly number[], b: readonly number[]) =>
+      Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+    const want = 3 + Math.floor(Math.random() * 4) // 3–6 stops
+    const picked: (readonly number[])[] = []
+    for (const e of ranked) {
+      const c = avg(e)
+      if (picked.every((p) => dist(p, c) > 60)) picked.push(c)
+      if (picked.length >= want) break
+    }
+    // Quiet image — fill up to two slots ignoring the separation floor.
+    if (picked.length < 2) {
+      for (const e of ranked) {
+        if (picked.length >= 2) break
+        const c = avg(e)
+        if (!picked.some((p) => p[0] === c[0] && p[1] === c[1] && p[2] === c[2])) picked.push(c)
+      }
+    }
+    if (picked.length === 0) return null
+    return picked.map(rgbToHex)
+  } catch {
+    return null
+  }
+}
+
+/** Hex-encode a sampled rgb triple. */
+function rgbToHex(c: readonly number[]): string {
+  const hex = (v: number) =>
+    Math.round(Math.min(255, Math.max(0, v)))
+      .toString(16)
+      .padStart(2, '0')
+  return `#${hex(c[0] ?? 0)}${hex(c[1] ?? 0)}${hex(c[2] ?? 0)}`
+}
+
+function hexLuminance(hex: string): number {
+  const r = parseInt(hex.slice(1, 3), 16) || 0
+  const g = parseInt(hex.slice(3, 5), 16) || 0
+  const b = parseInt(hex.slice(5, 7), 16) || 0
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+/**
+ * Sampled colors → ramp stops: luminance-sorted (the natural duotone
+ * direction — dark pixels map to the dark end) and spread evenly across
+ * the track. The LUT sorts internally, but the emitted order matches it.
+ */
+function colorsToRampStops(colors: string[]): { t: number; c: string }[] {
+  const sorted = [...colors].sort((a, b) => hexLuminance(a) - hexLuminance(b))
+  const n = sorted.length
+  return sorted.map((c, i) => ({ t: n === 1 ? 0 : i / (n - 1), c }))
+}
+
+const RAMP_BLACK = [0, 0, 0] as const
+const RAMP_WHITE = [255, 255, 255] as const
+
+/** One color → a three-stop shades ramp (its own hue, dark → light). */
+function shadesRampStops(hex: string): { t: number; c: string }[] {
+  const r = parseInt(hex.slice(1, 3), 16) || 0
+  const g = parseInt(hex.slice(3, 5), 16) || 0
+  const b = parseInt(hex.slice(5, 7), 16) || 0
+  const mix = (other: readonly number[], k: number) =>
+    rgbToHex([r + (other[0] - r) * k, g + (other[1] - g) * k, b + (other[2] - b) * k])
+  return [
+    { t: 0, c: mix(RAMP_BLACK, 0.55) },
+    { t: 0.5, c: hex },
+    { t: 1, c: mix(RAMP_WHITE, 0.45) },
+  ]
+}
+
+/**
+ * The no-media fallback: a coordinated vivid ramp — one base hue drifting
+ * ±50–140° along the track from a deep end to a bright end (the same
+ * philosophy as the visualizer gradient's vivid recolor, stretched across
+ * the full luminance axis so the map keeps the picture's tonal structure).
+ */
+function rollVividRampStops(count: number): { t: number; c: string }[] {
+  const n = Math.max(2, count)
+  const baseHue = randHue()
+  const drift = (Math.random() < 0.5 ? -1 : 1) * (50 + Math.random() * 90)
+  const sat = 0.62 + Math.random() * 0.3
+  const deepL = 0.1 + Math.random() * 0.08
+  const brightL = 0.52 + Math.random() * 0.14
+  return Array.from({ length: n }, (_, i) => {
+    const t = i / (n - 1)
+    return { t, c: hslHex(baseHue + drift * t, sat, deepL + (brightL - deepL) * t) }
   })
 }
 
@@ -1612,9 +1811,13 @@ const COLOR_EFFECTS: RandomEffect[] = [
       {
         label: 'Ramp',
         key: 'preset',
-        // The built-in ramp library only — 'custom' is the user's own
-        // editable stops and never a random pick.
-        options: ['neon', 'uv', 'acid', 'ember', 'ice', 'sunset', 'magma', 'gold', 'rose', 'mono'],
+        // The built-in ramp library PLUS 'custom' (the user's ask: the map's
+        // colors can also use custom colors, set according to other colors
+        // in the image) — a custom pick writes fresh editable stops into
+        // customStops: sampled from the loaded background image or video
+        // when one is up (dominant colors, luminance-sorted), vivid rolls
+        // when there isn't. Exactly like the editor's Custom tab.
+        options: ['neon', 'uv', 'acid', 'ember', 'ice', 'sunset', 'magma', 'gold', 'rose', 'mono', 'custom'],
         names: {
           neon: 'Neon',
           uv: 'UV',
@@ -1626,6 +1829,18 @@ const COLOR_EFFECTS: RandomEffect[] = [
           gold: 'Gold',
           rose: 'Rose',
           mono: 'Mono',
+          // Getter — re-read on every roll so the toast names where the
+          // custom colors came from (the extra callback runs before the
+          // pick is pushed; see rollCustomRampStops).
+          get custom() {
+            return `Custom colors (${customRampFrom})`
+          },
+        },
+        extra: (id) => (id === 'custom' ? { customStops: rollCustomRampStops() } : null),
+        // Factory state carries the Neon seed stops in customStops — reset
+        // restores them, so the editor's Custom tab goes back to factory too.
+        reset: {
+          customStops: DEFAULT_STUDIO_CONFIG.gradientMapFilter.customStops.map((s) => ({ ...s })),
         },
       },
       {
@@ -1843,7 +2058,9 @@ export function randomizeLook(): RandomizeSummary {
   const layersNote = rollLayers()
   if (layersNote) changed.push(layersNote)
 
-  // Color tools: 0–2.
+  // Color tools: 0–2. (The gradient map's Ramp roll may land 'custom' —
+  // fresh editable stops sampled from the loaded background image / video,
+  // vivid rolls without one — see rollCustomRampStops.)
   const colorCount = Math.floor(Math.random() * 3)
   for (const effect of pickRandom(COLOR_EFFECTS, colorCount)) {
     const label = effect.apply()
