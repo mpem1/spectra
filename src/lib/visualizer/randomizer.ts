@@ -67,7 +67,12 @@
  * of its slider track just under the ceiling — always present, never
  * overcooked. The gradient map's Speed carries a softer ceiling (≤ 50%):
  * its factory default already respects it, so the usual ±25% jitter applies
- * with the ceiling enforced on picks that drift past.
+ * with the ceiling enforced on picks that drift past. More dials carry
+ * dedicated WINDOWS (uniform across the whole declared window, wherever the
+ * default sits): Neon Split's gradient shift only drifts within ±0.11 and
+ * its repeat lands x1 or x2, its film grain rolls Preset → +15% and its
+ * grain size fine (0.5px) → 1.2px, and the gradient map's shift rolls
+ * anywhere from -100% to 90%.
  *
  * The React-to-beat toggles roll too: every picked effect that owns one
  * flips it 50/50, and when it lands on, that effect's punch dial (beat pop,
@@ -404,8 +409,10 @@ interface EffectParam<C> {
   cap?: number
   /** Roll uniformly across the WHOLE window (min..max) instead of jittering
    *  around the factory default — for dials with a dedicated random window
-   *  (Neon Split's gradient shift only drifts within ±0.11 of center; its
-   *  gradient repeat only lands x1 or x2), wherever the default sits. */
+   *  (Neon Split's gradient shift only drifts within ±0.11 of center, its
+   *  gradient repeat only lands x1 or x2, its film grain rolls
+   *  Preset→+15% and its grain size fine→1.2px, and the gradient map's
+   *  shift rolls anywhere from -100% to 90%), wherever the default sits. */
   uniform?: boolean
   /** Only randomized while this passes (sub-mode conditions, mirrored from the UI). */
   when?: (cfg: C) => boolean
@@ -1529,7 +1536,9 @@ const COLOR_EFFECTS: RandomEffect[] = [
       // The gradient-map dials carry dedicated windows (the user's tuning):
       // the shift only drifts within ±0.11 of center and the repeat only
       // lands x1 or x2 — a rolled ramp stays a subtle re-tint of the frame,
-      // never a wild swing or a striped one.
+      // never a wild swing or a striped one. The noise dials have windows
+      // too: film grain rolls from the published Preset level to +15% over
+      // it, and grain size from the published fine speckle (0.5px) to 1.2px.
       {
         ...param<NeonSplitFilterConfig>('mapShift', -0.11, 0.11, 0.01),
         label: 'Gradient shift',
@@ -1546,9 +1555,24 @@ const COLOR_EFFECTS: RandomEffect[] = [
       { ...param<NeonSplitFilterConfig>('bloomThreshold', 0, 1, 0.05), label: 'Bloom threshold' },
       { ...param<NeonSplitFilterConfig>('bloomSoftness', 0, 1, 0.05), label: 'Bloom softness' },
       { ...param<NeonSplitFilterConfig>('bloomMix', 0, 1, 0.05), label: 'Bloom mix' },
-      { ...param<NeonSplitFilterConfig>('grain', 0, 1, 0.05), label: 'Film grain' },
+      // Film grain's dedicated window (the user's tuning): from the
+      // published Preset level (dial 0.5, the UI's 'Preset' label) to +15%
+      // over it (dial 0.65) — never cleaner than the preset, never noisier
+      // than +15%.
+      {
+        ...param<NeonSplitFilterConfig>('grain', 0.5, 0.65, 0.05),
+        label: 'Film grain',
+        uniform: true,
+      },
       { ...param<NeonSplitFilterConfig>('grainSpeed', 0, 1, 0.05), label: 'Grain speed' },
-      { ...param<NeonSplitFilterConfig>('grainSize', 0, 1, 0.05), label: 'Grain size' },
+      // Grain size's dedicated window (the user's tuning): from the
+      // published fine speckle (dial 0.5 = 0.5px, the UI's 'Preset (fine)'
+      // label) to 1.2px (dial 0.6) — chunkier grain never lands.
+      {
+        ...param<NeonSplitFilterConfig>('grainSize', 0.5, 0.6, 0.05),
+        label: 'Grain size',
+        uniform: true,
+      },
       { ...param<NeonSplitFilterConfig>('grainChroma', 0, 1, 0.05), label: 'Grain color' },
       { ...param<NeonSplitFilterConfig>('grainShadow', 0, 1, 0.05), label: 'Shadow grain' },
       { ...param<NeonSplitFilterConfig>('grainHighlight', 0, 1, 0.05), label: 'Highlight grain' },
@@ -1621,7 +1645,14 @@ const COLOR_EFFECTS: RandomEffect[] = [
     ],
     params: [
       { ...param<GradientMapFilterConfig>('opacity', 0, 1, 0.01), label: 'Opacity' },
-      { ...param<GradientMapFilterConfig>('shift', -1, 1, 0.01), label: 'Gradient shift' },
+      // Dedicated window (the user's tuning): the shift rolls ANYWHERE
+      // between -100% and 90% — uniform across the whole track except the
+      // last 10% of the far end, not the old ±25% jitter around center.
+      {
+        ...param<GradientMapFilterConfig>('shift', -1, 0.9, 0.01),
+        label: 'Gradient shift',
+        uniform: true,
+      },
       { ...param<GradientMapFilterConfig>('repeat', 1, 8, 1), label: 'Gradient repeat' },
       // Taste ceiling: the roll never cycles faster than 50% — runaway
       // speeds strobe the whole grade. The factory default (30%) already
