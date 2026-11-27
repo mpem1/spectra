@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { Dices } from 'lucide-react'
+import { Dices, Redo2, RotateCcw, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useStudioStore, type StudioTab } from '@/store/studio'
@@ -28,6 +28,12 @@ const TABS: { id: StudioTab; label: string }[] = [
 export function ControlPanel() {
   const activeTab = useStudioStore((s) => s.activeTab)
   const setActiveTab = useStudioStore((s) => s.setActiveTab)
+  const canUndo = useStudioStore((s) => s.lookPast.length > 0)
+  const canRedo = useStudioStore((s) => s.lookFuture.length > 0)
+  const pushLookSnapshot = useStudioStore((s) => s.pushLookSnapshot)
+  const undoLook = useStudioStore((s) => s.undoLook)
+  const redoLook = useStudioStore((s) => s.redoLook)
+  const resetLook = useStudioStore((s) => s.resetLook)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // Roll one fresh look on a clean slate: everything the randomizer owns
@@ -37,11 +43,30 @@ export function ControlPanel() {
   // ALL of its Shape & Motion dials and picks roll, 0–2 color tools and
   // 0–2 filters are picked, and the backdrop is set to a fresh solid or
   // gradient in a fresh brightness mood. The toast lists exactly what moved.
+  // The pre-roll snapshot lands first so Undo / Redo / Reset can walk the
+  // roll streak back and forward.
   const handleRandomize = () => {
+    pushLookSnapshot()
     const { changed } = randomizeLook()
     toast.success('Fresh look rolled', {
       description: changed.length ? changed.join(' · ') : 'Nothing to roll — the pool came up empty.',
     })
+  }
+
+  // The history trio: step back one roll, step forward again, or jump all
+  // the way back to the look from before the first roll (the rolled looks
+  // stay on the redo stack, so Redo walks them back in one at a time).
+  const handleUndo = () => {
+    if (undoLook()) toast.success('One roll undone')
+  }
+  const handleRedo = () => {
+    if (redoLook()) toast.success('Roll redone')
+  }
+  const handleReset = () => {
+    if (resetLook())
+      toast.success('Look reset', {
+        description: 'Back to the look from before the rolls — Redo brings them back.',
+      })
   }
 
   // Reset panel scroll when switching tabs so each tab opens at the top
@@ -80,8 +105,8 @@ export function ControlPanel() {
               previous picks never stack. */}
           <button
             type="button"
-            aria-label="Randomize the look: starts from a clean slate, switches to a different visualizer style, rolls its layout (position anywhere, size 20–160%) and ALL of its Shape & Motion dials and picks, sets the background to a fresh solid or gradient, then picks 0–2 color tools and 0–2 filters — re-rolling each picked effect's color presets and color fields too"
-            title="Randomize: clean slate, then a new visualizer style + all of its Shape & Motion rolled + fresh background solid/gradient + 0–2 color tools, 0–2 filters — colors and presets re-rolled"
+            aria-label="Randomize the look: starts from a clean slate, switches to a different visualizer style, rolls its layout (position anywhere, size 20–160%) and ALL of its Shape & Motion dials and picks, sets the background to a fresh solid or gradient, flips the Filters tab's Layers switches, then picks 0–2 color tools and 0–2 filters — re-rolling each picked effect's color presets and color fields too"
+            title="Randomize: clean slate, then a new visualizer style + all of its Shape & Motion rolled + fresh background solid/gradient + Layers switches flipped + 0–2 color tools, 0–2 filters — colors and presets re-rolled"
             onClick={handleRandomize}
             className="group flex h-12 w-full shrink-0 items-center justify-center gap-2.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-sm font-semibold text-emerald-300 transition-all duration-200 hover:border-emerald-400 hover:bg-emerald-500 hover:text-zinc-950 hover:shadow-[0_0_24px_-6px] hover:shadow-emerald-500/60 active:scale-[0.98]"
           >
@@ -91,14 +116,54 @@ export function ControlPanel() {
             />
             Randomize look
           </button>
+          {/* The history trio for the randomizer: Undo steps one roll back,
+              Redo steps forward again, Reset jumps back to the look from
+              before the first roll (the rolled looks stay on the redo
+              stack). All three sit disabled until a roll gives them
+              something to do, and Reset keeps Redo alive for walk-backs. */}
+          <div className="grid shrink-0 grid-cols-3 gap-1">
+            <button
+              type="button"
+              aria-label="Undo: step back one rolled look"
+              title="Undo — step back one rolled look"
+              onClick={handleUndo}
+              disabled={!canUndo}
+              className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950/70 text-xs text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200 disabled:pointer-events-none disabled:opacity-40"
+            >
+              <Undo2 className="size-3.5" aria-hidden />
+              Undo
+            </button>
+            <button
+              type="button"
+              aria-label="Redo: step forward one rolled look (after an undo or a reset)"
+              title="Redo — step forward one rolled look (after an undo or a reset)"
+              onClick={handleRedo}
+              disabled={!canRedo}
+              className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950/70 text-xs text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200 disabled:pointer-events-none disabled:opacity-40"
+            >
+              <Redo2 className="size-3.5" aria-hidden />
+              Redo
+            </button>
+            <button
+              type="button"
+              aria-label="Reset: back to the look from before the rolls — the rolled looks stay on the redo stack"
+              title="Reset — back to the look from before the rolls; Redo walks them back in"
+              onClick={handleReset}
+              disabled={!canUndo}
+              className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950/70 text-xs text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200 disabled:pointer-events-none disabled:opacity-40"
+            >
+              <RotateCcw className="size-3.5" aria-hidden />
+              Reset
+            </button>
+          </div>
           {/* lg:max-h safety cap sized to the fixed chrome above it on
               desktop: header 56 + main padding 32 + card padding 24 + the
-              two-row tab grid ~84 + the randomizer button 48 + two flex
-              gaps 24 → 268px. The flex min-h-0 chain does the real work;
-              this just backstops it. */}
+              two-row tab grid ~84 + the randomizer button 48 + the history
+              row 36 + three flex gaps 36 → 316px. The flex min-h-0 chain
+              does the real work; this just backstops it. */}
           <div
             ref={scrollRef}
-            className="slim-scrollbar min-h-0 flex-1 overflow-y-auto pr-1 lg:max-h-[calc(100vh-268px)]"
+            className="slim-scrollbar min-h-0 flex-1 overflow-y-auto pr-1 lg:max-h-[calc(100vh-316px)]"
           >
             <TabsContent value="style">
               <StyleTab />

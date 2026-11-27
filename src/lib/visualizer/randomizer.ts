@@ -25,6 +25,10 @@
  *    card's inner visualizer, switches, glow & bolt color modes,
  *  - 0–2 color tools (the Color tab effects),
  *  - 0–2 filters (the Filters tab effects),
+ *  - the LAYERS switches (the Filters tab's Layers card): "Layers stay
+ *    colored" flips 50/50 and, when it lands off, "Text stays legible"
+ *    flips too — both switches are written every roll, so a previous
+ *    roll's lifted layers never stack onto the next one,
  *
  * switching each picked effect on. Every picked effect also re-rolls its
  * COLOR options: preset selectors (Neon Split's ramp, the color grade's
@@ -47,8 +51,8 @@
  * reading as always-dark. Choices the randomizer doesn't own are never
  * touched: the background gradient's geometry (stop layout, angle, shape,
  * cycling), the visualizer gradient's angle, cycle speed and stop layout
- * (outside the preset branch), the layer Transparency dial, text, uploaded
- * images, blend modes, sub-modes.
+ * (outside the preset branch), the layer Transparency dial and the Layers
+ * card's alpha dials, text, uploaded images, blend modes, sub-modes.
  *
  * A few dials carry hard TASTE CEILINGS: the roll never lands them above the
  * ceiling (the color grade's Strength ≤ 45%, the contour threads ≤ 46 lines
@@ -335,6 +339,30 @@ function rollBackgroundStops(stops: ColorStop[], mood: BackgroundMood): ColorSto
   })
 }
 
+/* ------------------------------ layers vs filters ---------------------------- */
+
+/**
+ * The Filters tab's LAYERS switches join every roll: "Layers stay colored"
+ * (every moving layer and the text lifted in full color above the whole
+ * filter chain) flips 50/50, and when it lands off, its lighter sibling
+ * "Text stays legible" (only the words skip the chain) flips 50/50 too —
+ * mirroring the card's gated visibility. Both fields are written EVERY
+ * roll (a landed stayColored clears textClear, exactly like the card's
+ * gate), so nothing from a previous roll can stack onto the next one and
+ * the clean slate needs no sweep here. The alpha dials are not look dice
+ * (a rolled fade reads as a broken look), so they stay as the user set
+ * them. Returns a toast line when a switch lands ON — landing both off is
+ * the factory state and stays silent, like the style flags.
+ */
+function rollLayers(): string | null {
+  const stayColored = Math.random() < 0.5
+  const textClear = stayColored ? false : Math.random() < 0.5
+  useStudioStore.getState().patchLayers({ stayColored, textClear })
+  if (stayColored) return 'Layers stay colored'
+  if (textClear) return 'Text stays legible'
+  return null
+}
+
 /* --------------------------------- registry ---------------------------------- */
 
 type NumericKeys<C> = { [K in keyof C]: NonNullable<C[K]> extends number ? K : never }[keyof C]
@@ -365,6 +393,11 @@ interface EffectParam<C> {
    *  default may sit above the ceiling; the roll then stays in the quarter
    *  of the track just under it (see jitterCapped). */
   cap?: number
+  /** Roll uniformly across the WHOLE window (min..max) instead of jittering
+   *  around the factory default — for dials with a dedicated random window
+   *  (Neon Split's gradient shift only drifts within ±0.11 of center; its
+   *  gradient repeat only lands x1 or x2), wherever the default sits. */
+  uniform?: boolean
   /** Only randomized while this passes (sub-mode conditions, mirrored from the UI). */
   when?: (cfg: C) => boolean
 }
@@ -816,7 +849,8 @@ function rollShapeMotion(): string {
  * on (if it was off), lands random picks in its preset selectors, flips its
  * boolean switches (the React-to-beat toggles, 50/50), re-dials its numeric
  * parameters to random positions within 25% of the factory defaults (under
- * the dial's ceiling where one is set) and re-rolls its color options in
+ * the dial's ceiling where one is set, uniformly across the whole window
+ * where the dial declares its own) and re-rolls its color options in
  * their own roles; conditions
  * mirror the UI — a dial, color, preset or switch that the effect's current
  * sub-mode hides is left alone, and presets and switches are rolled FIRST so
@@ -923,8 +957,9 @@ function makeEffect<C extends { enabled: boolean }>(spec: {
         const def =
           param.def ?? (spec.defaults as unknown as Record<string, unknown>)[param.key as string]
         if (typeof def !== 'number' || !Number.isFinite(def)) continue
-        const value =
-          param.cap !== undefined
+        const value = param.uniform
+          ? rollTrack(param.min, param.max, param.step)
+          : param.cap !== undefined
             ? jitterCapped(def, param.cap, param.min, param.max, param.step)
             : jitter(def, param.min, param.max, param.step)
         partial[param.key as string] = value
@@ -1471,8 +1506,22 @@ const COLOR_EFFECTS: RandomEffect[] = [
     ],
     params: [
       { ...param<NeonSplitFilterConfig>('mapAmount', 0, 1, 0.05), label: 'Opacity' },
-      { ...param<NeonSplitFilterConfig>('mapShift', -1, 1, 0.01), label: 'Gradient shift', def: 0 },
-      { ...param<NeonSplitFilterConfig>('mapRepeat', 1, 8, 1), label: 'Gradient repeat', def: 1 },
+      // The gradient-map dials carry dedicated windows (the user's tuning):
+      // the shift only drifts within ±0.11 of center and the repeat only
+      // lands x1 or x2 — a rolled ramp stays a subtle re-tint of the frame,
+      // never a wild swing or a striped one.
+      {
+        ...param<NeonSplitFilterConfig>('mapShift', -0.11, 0.11, 0.01),
+        label: 'Gradient shift',
+        def: 0,
+        uniform: true,
+      },
+      {
+        ...param<NeonSplitFilterConfig>('mapRepeat', 1, 2, 1),
+        label: 'Gradient repeat',
+        def: 1,
+        uniform: true,
+      },
       { ...param<NeonSplitFilterConfig>('glow', 0, 1, 0.05), label: 'Bloom intensity' },
       { ...param<NeonSplitFilterConfig>('bloomThreshold', 0, 1, 0.05), label: 'Bloom threshold' },
       { ...param<NeonSplitFilterConfig>('bloomSoftness', 0, 1, 0.05), label: 'Bloom softness' },
@@ -1726,6 +1775,13 @@ export function randomizeLook(): RandomizeSummary {
     })
     changed.push(`Background gradient (${mood})`)
   }
+
+  // Filters > Layers: the card's switches join every roll — "Layers stay
+  // colored" flips 50/50 and, when it lands off, "Text stays legible"
+  // flips too. Both fields are written every roll, so a previous roll's
+  // lifted layers never stack onto the next one.
+  const layersNote = rollLayers()
+  if (layersNote) changed.push(layersNote)
 
   // Color tools: 0–2.
   const colorCount = Math.floor(Math.random() * 3)

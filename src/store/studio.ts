@@ -179,6 +179,22 @@ type StudioState = {
   setConfig: (config: StudioConfig) => void
   setLoop: (loop: boolean) => void
   setVolume: (volume: number) => void
+
+  /** Randomize-look history: pre-roll snapshots for Undo / Redo / Reset. */
+  lookPast: LookSnapshot[]
+  lookFuture: LookSnapshot[]
+  /** Snapshots the current look BEFORE a roll lands — call right before
+   *  randomizeLook() so the roll can be undone, redone and reset. */
+  pushLookSnapshot: () => void
+  /** Steps one roll back. False when there is nothing to undo. */
+  undoLook: () => boolean
+  /** Steps one roll forward (after an undo or a reset). False when there is
+   *  nothing to redo. */
+  redoLook: () => boolean
+  /** Jumps back to the look from before the FIRST roll of the streak; the
+   *  rolled looks stay on the redo stack. False when there is nothing to
+   *  reset. */
+  resetLook: () => boolean
 } & RecordingSlice &
   ExportSlice
 
@@ -219,6 +235,55 @@ export { downloadBlob }
 
 let exportCancelFlag = { cancelled: false }
 
+/* ------------------------------- look history -------------------------------- */
+
+/**
+ * The config slices the randomizer owns — exactly what Undo / Redo / Reset
+ * swap when walking the Randomize streak back and forward: the visualizer
+ * card (gradient included), the background, the Layers switches and every
+ * color tool / filter. Text, uploads, audio, fonts and the polaroid wall
+ * are not the randomizer's dice, so they are deliberately left out — a
+ * reset never touches them.
+ */
+const LOOK_KEYS = [
+  'visualizer',
+  'background',
+  'layers',
+  // Color tab tools
+  'neonSplitFilter',
+  'colorGradeFilter',
+  'gradientMapFilter',
+  'exposureFilter',
+  'halationFilter',
+  // Filters tab effects
+  'screenFilter',
+  'vhsFilter',
+  'camcorderFilter',
+  'filmFilter',
+  'textureFilter',
+  'halftoneFilter',
+  'glitchFilter',
+  'anaglyphFilter',
+  'ditherFilter',
+  'phosphorFilter',
+  'contourFilter',
+  'cubifyFilter',
+  'kaleidoscopeFilter',
+  'waveWarpFilter',
+  'vignetteFilter',
+  'shakeFilter',
+  'strobeFilter',
+] as const
+
+export type LookSnapshot = Pick<StudioConfig, (typeof LOOK_KEYS)[number]>
+
+/** Deep clone of the current look — safe to hold and restore later. */
+function captureLook(config: StudioConfig): LookSnapshot {
+  const snap = {} as Record<(typeof LOOK_KEYS)[number], unknown>
+  for (const key of LOOK_KEYS) snap[key] = config[key]
+  return structuredClone(snap) as LookSnapshot
+}
+
 export const useStudioStore = create<StudioState>()((set, get) => ({
   config: structuredClone(DEFAULT_STUDIO_CONFIG),
   activeTab: 'style',
@@ -227,6 +292,11 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
   exportSettings: { ...DEFAULT_EXPORT_SETTINGS },
   loop: false,
   volume: 1,
+
+  // Randomize-look history — empty until the first roll pushes its
+  // pre-roll snapshot (setConfig clears it when a project arrives).
+  lookPast: [],
+  lookFuture: [],
 
   recording: false,
   recordElapsed: 0,
@@ -552,12 +622,63 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
             )
           : [],
       },
+      // A project (or share link, or demo) arriving wholesale is a new look
+      // timeline — the previous rolls have nothing to do with it anymore.
+      lookPast: [],
+      lookFuture: [],
     })
   },
 
   setLoop: (loop) => {
     set({ loop })
     getEngine()?.setLoop(loop)
+  },
+
+  /* ----------------------------- look history ----------------------------- */
+
+  // Pre-roll snapshot for the Randomize button: the current look joins the
+  // undo stack and any redo future is cut off (a fresh roll is a new leaf).
+  pushLookSnapshot: () => {
+    set((s) => ({ lookPast: [...s.lookPast, captureLook(s.config)], lookFuture: [] }))
+  },
+
+  undoLook: () => {
+    const { lookPast, lookFuture, config } = get()
+    const previous = lookPast[lookPast.length - 1]
+    if (!previous) return false
+    set({
+      config: { ...config, ...structuredClone(previous) },
+      lookPast: lookPast.slice(0, -1),
+      lookFuture: [...lookFuture, captureLook(config)],
+    })
+    return true
+  },
+
+  redoLook: () => {
+    const { lookPast, lookFuture, config } = get()
+    const next = lookFuture[lookFuture.length - 1]
+    if (!next) return false
+    set({
+      config: { ...config, ...structuredClone(next) },
+      lookPast: [...lookPast, captureLook(config)],
+      lookFuture: lookFuture.slice(0, -1),
+    })
+    return true
+  },
+
+  resetLook: () => {
+    const { lookPast, config } = get()
+    const original = lookPast[0]
+    if (!original) return false
+    // Back to the look from before the first roll; every rolled look joins
+    // the redo stack nearest-first, so Redo walks the streak forward again
+    // one press at a time.
+    set({
+      config: { ...config, ...structuredClone(original) },
+      lookPast: [],
+      lookFuture: [captureLook(config), ...lookPast.slice(1).reverse()],
+    })
+    return true
   },
 
   setVolume: (volume) => {
