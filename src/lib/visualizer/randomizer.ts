@@ -48,7 +48,10 @@
  * each 50/50. The BACKDROP rolls too: every roll sets it to a Solid or a
  * Gradient (50/50 — the mode itself joins the roll) and lands fresh colors
  * in one of three brightness moods — deep, mid or bright — so it stops
- * reading as always-dark. Choices the randomizer doesn't own are never
+ * reading as always-dark. An uploaded image or video playing AS the backdrop
+ * is the one exception — the dice never yank the scene off the user's media,
+ * so the mode stays on its tab and the toast says "Background image/video
+ * kept". Choices the randomizer doesn't own are never
  * touched: the background gradient's geometry (stop layout, angle, shape,
  * cycling), the visualizer gradient's angle, cycle speed and stop layout
  * (outside the preset branch), the layer Transparency dial and the Layers
@@ -298,6 +301,10 @@ function rollVividStops(stops: ColorStop[]): ColorStop[] {
  * opacities, angle, shape and cycling stay exactly as the user set them.
  * The visualizer gradient rolls vivid and independent, so the scene stays
  * readable on every mood.
+ *
+ * When the backdrop IS an uploaded image or video, none of this runs — the
+ * dice never pull the scene off the user's media; the roll reports
+ * "Background image kept" / "Background video kept" and moves on.
  */
 type BackgroundMood = 'deep' | 'mid' | 'bright'
 
@@ -1763,17 +1770,24 @@ export function randomizeLook(): RandomizeSummary {
   // three brightness moods (deep / mid / bright), so it stops reading as
   // always-dark. The gradient's geometry (stop layout, angle, shape,
   // cycling) stays exactly as the user set them; only the colors roll.
+  // The one exception: an uploaded image or video IS the backdrop — the
+  // dice never yank the scene off the user's media, so this roll is skipped
+  // entirely and the toast just reports the media was kept.
   const background = useStudioStore.getState().config.background
-  const mood = rollBackgroundMood()
-  if (Math.random() < 0.5) {
-    useStudioStore.getState().patchBackground({ mode: 'solid', color: rollSolidBackground(mood) })
-    changed.push(`Background solid (${mood})`)
+  if (background.mode === 'image' || background.mode === 'video') {
+    changed.push(`Background ${background.mode} kept`)
   } else {
-    useStudioStore.getState().patchBackground({
-      mode: 'gradient',
-      gradient: { ...background.gradient, stops: rollBackgroundStops(background.gradient.stops, mood) },
-    })
-    changed.push(`Background gradient (${mood})`)
+    const mood = rollBackgroundMood()
+    if (Math.random() < 0.5) {
+      useStudioStore.getState().patchBackground({ mode: 'solid', color: rollSolidBackground(mood) })
+      changed.push(`Background solid (${mood})`)
+    } else {
+      useStudioStore.getState().patchBackground({
+        mode: 'gradient',
+        gradient: { ...background.gradient, stops: rollBackgroundStops(background.gradient.stops, mood) },
+      })
+      changed.push(`Background gradient (${mood})`)
+    }
   }
 
   // Filters > Layers: the card's switches join every roll — "Layers stay

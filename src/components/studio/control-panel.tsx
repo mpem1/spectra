@@ -42,7 +42,9 @@ export function ControlPanel() {
   // card, its LAYOUT rolls (position anywhere on the track, size 20–160%),
   // ALL of its Shape & Motion dials and picks roll, 0–2 color tools and
   // 0–2 filters are picked, and the backdrop is set to a fresh solid or
-  // gradient in a fresh brightness mood. The toast lists exactly what moved.
+  // gradient in a fresh brightness mood — unless an image or video IS the
+  // backdrop, in which case the media stays put and the toast says so.
+  // The toast lists exactly what moved.
   // The pre-roll snapshot lands first so Undo / Redo / Reset can walk the
   // roll streak back and forward.
   const handleRandomize = () => {
@@ -105,8 +107,8 @@ export function ControlPanel() {
               previous picks never stack. */}
           <button
             type="button"
-            aria-label="Randomize the look: starts from a clean slate, switches to a different visualizer style, rolls its layout (position anywhere, size 20–160%) and ALL of its Shape & Motion dials and picks, sets the background to a fresh solid or gradient, flips the Filters tab's Layers switches, then picks 0–2 color tools and 0–2 filters — re-rolling each picked effect's color presets and color fields too"
-            title="Randomize: clean slate, then a new visualizer style + all of its Shape & Motion rolled + fresh background solid/gradient + Layers switches flipped + 0–2 color tools, 0–2 filters — colors and presets re-rolled"
+            aria-label="Randomize the look: starts from a clean slate, switches to a different visualizer style, rolls its layout (position anywhere, size 20–160%) and ALL of its Shape & Motion dials and picks, sets the background to a fresh solid or gradient (an active image or video backdrop stays put), flips the Filters tab's Layers switches, then picks 0–2 color tools and 0–2 filters — re-rolling each picked effect's color presets and color fields too"
+            title="Randomize: clean slate, then a new visualizer style + all of its Shape & Motion rolled + fresh background solid/gradient (image/video backdrop stays put) + Layers switches flipped + 0–2 color tools, 0–2 filters — colors and presets re-rolled"
             onClick={handleRandomize}
             className="group flex h-12 w-full shrink-0 items-center justify-center gap-2.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-sm font-semibold text-emerald-300 transition-all duration-200 hover:border-emerald-400 hover:bg-emerald-500 hover:text-zinc-950 hover:shadow-[0_0_24px_-6px] hover:shadow-emerald-500/60 active:scale-[0.98]"
           >
